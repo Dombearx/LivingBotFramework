@@ -17,3 +17,10 @@ class MessageQueue:
             seen.setdefault(msg.channel, None)
         self._pending.clear()
         return list(seen.keys())
+
+    def flush_messages(self) -> list[discord.Message]:
+        latest: dict[discord.abc.Messageable, discord.Message] = {}
+        for msg in self._pending:
+            latest[msg.channel] = msg
+        self._pending.clear()
+        return list(latest.values())

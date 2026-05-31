@@ -5,17 +5,19 @@ import random
 
 import discord
 
+from livingbot.llm import LLMClient, LLMConfig
 from livingbot.queue import MessageQueue
 
 logger = logging.getLogger(__name__)
 
 
 class LivingBot(discord.Client):
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, llm_client: LLMClient | None = None, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._queue = MessageQueue()
         self._fatigue: float = 0.0
         self._resting: bool = False
+        self._llm_client = llm_client
 
     async def on_ready(self) -> None:
         logger.info(
@@ -39,8 +41,12 @@ class LivingBot(discord.Client):
     async def _attempt_response(self) -> bool:
         if random.random() < 1.0 / (self._fatigue + 1.0):
             self._fatigue += len(self._queue)
-            for channel in self._queue.flush():
-                await channel.send("I'm here")
+            for message in self._queue.flush_messages():
+                if self._llm_client is not None:
+                    response = await self._llm_client.complete(message.content)
+                else:
+                    response = "I'm here"
+                await message.channel.send(response)
             return True
         return False
 
@@ -72,5 +78,8 @@ def run() -> None:
     token = os.environ["DISCORD_BOT_TOKEN"]
     intents = discord.Intents.default()
     intents.message_content = True
-    bot = LivingBot(intents=intents)
+    llm_client = None
+    if llm_model := os.environ.get("LLM_MODEL"):
+        llm_client = LLMClient(LLMConfig(model=llm_model))
+    bot = LivingBot(llm_client=llm_client, intents=intents)
     bot.run(token, log_handler=None)
