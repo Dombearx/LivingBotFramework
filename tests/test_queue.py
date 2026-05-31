@@ -17,26 +17,23 @@ def make_message(channel: MagicMock) -> MagicMock:
     return msg
 
 
-def test_add_below_threshold_returns_false() -> None:
-    queue = MessageQueue(threshold=3)
-    channel = make_channel()
-
-    result1 = queue.add(make_message(channel))
-    result2 = queue.add(make_message(channel))
-
-    assert result1 is False
-    assert result2 is False
-
-
-def test_add_at_threshold_returns_true() -> None:
+def test_is_ready_below_threshold_returns_false() -> None:
     queue = MessageQueue(threshold=3)
     channel = make_channel()
     queue.add(make_message(channel))
     queue.add(make_message(channel))
 
-    result = queue.add(make_message(channel))
+    assert queue.is_ready() is False
 
-    assert result is True
+
+def test_is_ready_at_threshold_returns_true() -> None:
+    queue = MessageQueue(threshold=3)
+    channel = make_channel()
+    queue.add(make_message(channel))
+    queue.add(make_message(channel))
+    queue.add(make_message(channel))
+
+    assert queue.is_ready() is True
 
 
 def test_flush_returns_unique_channels() -> None:
@@ -60,9 +57,7 @@ def test_flush_clears_queue() -> None:
     queue.add(make_message(channel))
     queue.flush()
 
-    result = queue.add(make_message(channel))
-
-    assert result is False
+    assert queue.is_ready() is False
 
 
 def test_flush_on_empty_queue_returns_empty_list() -> None:

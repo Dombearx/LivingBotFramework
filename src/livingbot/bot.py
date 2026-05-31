@@ -25,7 +25,8 @@ class LivingBot(discord.Client):
         if not self._is_directed_at_bot(message):
             return
 
-        if self._queue.add(message):
+        self._queue.add(message)
+        if self._queue.is_ready():
             for channel in self._queue.flush():
                 await channel.send("I'm here")
 

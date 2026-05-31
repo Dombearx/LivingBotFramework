@@ -8,8 +8,10 @@ class MessageQueue:
         self._threshold = threshold
         self._pending: list[discord.Message] = []
 
-    def add(self, message: discord.Message) -> bool:
+    def add(self, message: discord.Message) -> None:
         self._pending.append(message)
+
+    def is_ready(self) -> bool:
         return len(self._pending) >= self._threshold
 
     def flush(self) -> list[discord.abc.Messageable]:
