@@ -20,21 +20,14 @@ class LivingBot(discord.Client):
             await message.channel.send("I'm here")
             return
 
-        if await self._is_reply_to_bot(message):
+        if self._is_reply_to_bot(message):
             await message.channel.send("I'm here")
 
-    async def _is_reply_to_bot(self, message: discord.Message) -> bool:
+    def _is_reply_to_bot(self, message: discord.Message) -> bool:
         if message.reference is None or self.user is None:
             return False
         ref = message.reference.resolved
-        if isinstance(ref, discord.Message):
-            return ref.author == self.user
-        # Message not in cache — fetch it
-        try:
-            fetched = await message.channel.fetch_message(message.reference.message_id)
-            return fetched.author == self.user
-        except discord.NotFound:
-            return False
+        return isinstance(ref, discord.Message) and ref.author == self.user
 
 
 def run() -> None:
