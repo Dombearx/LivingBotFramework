@@ -26,17 +26,21 @@ def test_len_returns_pending_count() -> None:
     assert len(queue) == 2
 
 
-def test_flush_returns_unique_channels() -> None:
+def test_flush_groups_all_messages_by_channel() -> None:
     queue = MessageQueue()
     channel_a = make_channel()
     channel_b = make_channel()
-    queue.add(make_message(channel_a))
-    queue.add(make_message(channel_b))
-    queue.add(make_message(channel_a))
+    msg_a1 = make_message(channel_a)
+    msg_b1 = make_message(channel_b)
+    msg_a2 = make_message(channel_a)
+    queue.add(msg_a1)
+    queue.add(msg_b1)
+    queue.add(msg_a2)
 
-    channels = queue.flush()
+    result = queue.flush()
 
-    assert channels == [channel_a, channel_b]
+    assert result[channel_a] == [msg_a1, msg_a2]
+    assert result[channel_b] == [msg_b1]
 
 
 def test_flush_clears_queue() -> None:
@@ -46,12 +50,12 @@ def test_flush_clears_queue() -> None:
 
     queue.flush()
 
-    assert queue.flush() == []
+    assert queue.flush() == {}
 
 
-def test_flush_on_empty_queue_returns_empty_list() -> None:
+def test_flush_on_empty_queue_returns_empty_dict() -> None:
     queue = MessageQueue()
 
-    channels = queue.flush()
+    result = queue.flush()
 
-    assert channels == []
+    assert result == {}
