@@ -231,8 +231,8 @@ async def test_rest_and_respond_loops_until_random_favors_response(
 
     await bot._rest_and_respond()
 
-    # iteration 1: reduce 3.0-1.0=2.0, read 1 msg → fatigue=3.0, roll 0.99 > 1/4 → loop
-    # iteration 2: reduce 3.0-1.0=2.0, read 1 msg → fatigue=3.0, roll 0.0 < 1/4 → respond
+    # iteration 1: reduce 3.0-1.0=2.0, roll 0.99 > 1/3 → loop (no fatigue change)
+    # iteration 2: reduce 2.0-1.0=1.0, roll 0.0 < 1/2 → respond, read 1 msg → fatigue=2.0
     channel.send.assert_called_once_with("I'm here")
     assert bot._resting is False
 
