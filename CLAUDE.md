@@ -79,6 +79,15 @@ Each step will be described in the task or issue. Before implementing:
 4. Verify the implementation matches the step description — no more, no less.
 5. Commit with a clear message referencing the step.
 
+## After Making Changes
+
+After any code change, run in order:
+
+1. **Format and lint**: `uv run ruff format . && uv run ruff check .`
+2. **Tests**: `uv run pytest`
+
+Both must pass before committing.
+
 ## Git Workflow
 
 - Branch: `claude/create-claude-md-BvVMa` (active development branch)
