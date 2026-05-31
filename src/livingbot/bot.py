@@ -51,7 +51,9 @@ class LivingBot(discord.Client):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
                 response = await self._llm_client.complete(
-                    [m.content for m in messages]
+                    [m.content for m in messages],
+                    channel,
+                    messages[0].id,
                 )
                 await _send_chunked(channel, response)
             return True
