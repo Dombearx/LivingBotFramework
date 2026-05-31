@@ -17,6 +17,15 @@ def make_message(channel: MagicMock) -> MagicMock:
     return msg
 
 
+def test_len_returns_pending_count() -> None:
+    queue = MessageQueue()
+    channel = make_channel()
+    queue.add(make_message(channel))
+    queue.add(make_message(channel))
+
+    assert len(queue) == 2
+
+
 def test_flush_returns_unique_channels() -> None:
     queue = MessageQueue()
     channel_a = make_channel()

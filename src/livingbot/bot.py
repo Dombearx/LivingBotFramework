@@ -30,7 +30,6 @@ class LivingBot(discord.Client):
             return
 
         self._queue.add(message)
-        self._fatigue += 1.0
 
         if not self._resting:
             if not await self._attempt_response():
@@ -38,6 +37,7 @@ class LivingBot(discord.Client):
                 asyncio.create_task(self._rest_and_respond())
 
     async def _attempt_response(self) -> bool:
+        self._fatigue += len(self._queue)
         if random.random() < 1.0 / (self._fatigue + 1.0):
             for channel in self._queue.flush():
                 await channel.send("I'm here")

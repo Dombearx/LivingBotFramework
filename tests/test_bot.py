@@ -71,21 +71,6 @@ async def test_on_message_when_unrelated_message_does_not_trigger_response(
     channel.send.assert_not_called()
 
 
-@patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_when_resting_increments_fatigue(
-    mock_user: PropertyMock,
-) -> None:
-    user = bot_user()
-    mock_user.return_value = user
-    bot = make_bot()
-    bot._resting = True
-    bot._fatigue = 2.0
-
-    await bot.on_message(make_message(author=other_user(), mentions=[user]))
-
-    assert bot._fatigue == 3.0
-
-
 @patch("random.random", return_value=0.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
 async def test_on_message_when_random_favors_immediate_sends_response(
@@ -246,8 +231,8 @@ async def test_rest_and_respond_loops_until_random_favors_response(
 
     await bot._rest_and_respond()
 
-    # iteration 1: reduce 3.0-1.0=2.0, roll 0.99 > 1/3 → loop
-    # iteration 2: reduce 2.0-1.0=1.0, roll 0.0 < 1/2 → respond
+    # iteration 1: reduce 3.0-1.0=2.0, read 1 msg → fatigue=3.0, roll 0.99 > 1/4 → loop
+    # iteration 2: reduce 3.0-1.0=2.0, read 1 msg → fatigue=3.0, roll 0.0 < 1/4 → respond
     channel.send.assert_called_once_with("I'm here")
     assert bot._resting is False
 

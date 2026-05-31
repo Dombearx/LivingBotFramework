@@ -5,6 +5,9 @@ class MessageQueue:
     def __init__(self) -> None:
         self._pending: list[discord.Message] = []
 
+    def __len__(self) -> int:
+        return len(self._pending)
+
     def add(self, message: discord.Message) -> None:
         self._pending.append(message)
 
