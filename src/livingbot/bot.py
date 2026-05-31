@@ -5,14 +5,22 @@ import random
 
 import discord
 
+from livingbot import config
 from livingbot.llm import LLMClient, LLMConfig
 from livingbot.queue import MessageQueue
 
 logger = logging.getLogger(__name__)
 
+DISCORD_MAX_LENGTH = 2000
+
+
+async def _send_chunked(channel: discord.abc.Messageable, text: str) -> None:
+    for i in range(0, len(text), DISCORD_MAX_LENGTH):
+        await channel.send(text[i : i + DISCORD_MAX_LENGTH])
+
 
 class LivingBot(discord.Client):
-    def __init__(self, llm_client: LLMClient | None = None, **kwargs: object) -> None:
+    def __init__(self, llm_client: LLMClient, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._queue = MessageQueue()
         self._fatigue: float = 0.0
@@ -41,12 +49,11 @@ class LivingBot(discord.Client):
     async def _attempt_response(self) -> bool:
         if random.random() < 1.0 / (self._fatigue + 1.0):
             self._fatigue += len(self._queue)
-            for message in self._queue.flush_messages():
-                if self._llm_client is not None:
-                    response = await self._llm_client.complete(message.content)
-                else:
-                    response = "I'm here"
-                await message.channel.send(response)
+            for channel, messages in self._queue.flush().items():
+                response = await self._llm_client.complete(
+                    [m.content for m in messages]
+                )
+                await _send_chunked(channel, response)
             return True
         return False
 
@@ -78,8 +85,8 @@ def run() -> None:
     token = os.environ["DISCORD_BOT_TOKEN"]
     intents = discord.Intents.default()
     intents.message_content = True
-    llm_client = None
-    if llm_model := os.environ.get("LLM_MODEL"):
-        llm_client = LLMClient(LLMConfig(model=llm_model))
+    llm_client = LLMClient(
+        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+    )
     bot = LivingBot(llm_client=llm_client, intents=intents)
     bot.run(token, log_handler=None)
