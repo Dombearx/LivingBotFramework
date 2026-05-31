@@ -58,56 +58,101 @@ async def test_on_message_when_author_is_bot_does_not_respond(
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_when_bot_is_mentioned_below_threshold_sends_nothing(
+async def test_on_message_when_unrelated_message_does_not_trigger_response(
     mock_user: PropertyMock,
 ) -> None:
-    user = bot_user()
-    mock_user.return_value = user
-    bot = make_bot()
-    message = make_message(author=other_user(), mentions=[user])
-
-    await bot.on_message(message)
-
-    message.channel.send.assert_not_called()
-
-
-@patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_when_threshold_reached_replies_to_each_channel_once(
-    mock_user: PropertyMock,
-) -> None:
-    user = bot_user()
-    mock_user.return_value = user
-    bot = make_bot()
-    channel_a = make_channel()
-    channel_b = make_channel()
-
-    await bot.on_message(
-        make_message(author=other_user(), mentions=[user], channel=channel_a)
-    )
-    await bot.on_message(
-        make_message(author=other_user(), mentions=[user], channel=channel_b)
-    )
-    await bot.on_message(
-        make_message(author=other_user(), mentions=[user], channel=channel_a)
-    )
-
-    channel_a.send.assert_called_once_with("I'm here")
-    channel_b.send.assert_called_once_with("I'm here")
-
-
-@patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_after_flush_queue_resets(mock_user: PropertyMock) -> None:
     user = bot_user()
     mock_user.return_value = user
     bot = make_bot()
     channel = make_channel()
 
-    for _ in range(3):
-        await bot.on_message(
-            make_message(author=other_user(), mentions=[user], channel=channel)
-        )
+    await bot.on_message(make_message(author=other_user(), channel=channel))
 
-    channel.send.reset_mock()
+    channel.send.assert_not_called()
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_on_message_when_random_favors_immediate_sends_response(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    channel = make_channel()
+
+    await bot.on_message(
+        make_message(author=other_user(), mentions=[user], channel=channel)
+    )
+
+    channel.send.assert_called_once_with("I'm here")
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.99)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_on_message_when_random_disfavors_immediate_does_not_send(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    bot._fatigue = 1.0
+    channel = make_channel()
+
+    await bot.on_message(
+        make_message(author=other_user(), mentions=[user], channel=channel)
+    )
+
+    channel.send.assert_not_called()
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.99)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_on_message_when_random_disfavors_immediate_sets_resting(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    bot._fatigue = 1.0
+
+    await bot.on_message(make_message(author=other_user(), mentions=[user]))
+
+    assert bot._resting is True
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_on_message_increments_fatigue_on_directed_message(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+
+    await bot.on_message(make_message(author=other_user(), mentions=[user]))
+
+    assert bot._fatigue == 1.0
+
+
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_on_message_when_resting_queues_without_sending(
+    mock_user: PropertyMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    bot._resting = True
+    channel = make_channel()
+
     await bot.on_message(
         make_message(author=other_user(), mentions=[user], channel=channel)
     )
@@ -116,37 +161,78 @@ async def test_on_message_after_flush_queue_resets(mock_user: PropertyMock) -> N
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_when_unrelated_message_does_not_contribute_to_queue(
+async def test_on_message_when_resting_increments_fatigue(
     mock_user: PropertyMock,
 ) -> None:
     user = bot_user()
     mock_user.return_value = user
     bot = make_bot()
-    channel = make_channel()
+    bot._resting = True
+    bot._fatigue = 2.0
 
-    for _ in range(3):
-        await bot.on_message(make_message(author=other_user(), channel=channel))
+    await bot.on_message(make_message(author=other_user(), mentions=[user]))
 
-    channel.send.assert_not_called()
+    assert bot._fatigue == 3.0
 
 
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.uniform", return_value=5.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_when_reply_to_bot_below_threshold_sends_nothing(
+async def test_rest_and_respond_sends_to_queued_channels_and_clears_resting(
     mock_user: PropertyMock,
+    mock_uniform: MagicMock,
+    mock_sleep: AsyncMock,
 ) -> None:
     user = bot_user()
     mock_user.return_value = user
     bot = make_bot()
+    bot._resting = True
+    bot._fatigue = 2.0
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
 
-    bot_message = object.__new__(discord.Message)
-    bot_message.author = user
-    reference = MagicMock(spec=discord.MessageReference)
-    reference.resolved = bot_message
-    message = make_message(author=other_user(), reference=reference)
+    await bot._rest_and_respond(2.0)
 
-    await bot.on_message(message)
+    channel.send.assert_called_once_with("I'm here")
+    assert bot._resting is False
 
-    message.channel.send.assert_not_called()
+
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.uniform", return_value=10.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_rest_and_respond_reduces_fatigue_by_actual_delay_over_five(
+    mock_user: PropertyMock,
+    mock_uniform: MagicMock,
+    mock_sleep: AsyncMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    bot._fatigue = 3.0
+
+    await bot._rest_and_respond(2.0)
+
+    # actual=10 min, reduction=10/5=2.0, new_fatigue=max(0, 3.0-2.0)=1.0
+    assert bot._fatigue == 1.0
+
+
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.uniform", return_value=10.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_rest_and_respond_fatigue_does_not_go_below_zero(
+    mock_user: PropertyMock,
+    mock_uniform: MagicMock,
+    mock_sleep: AsyncMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    bot._fatigue = 1.0
+
+    await bot._rest_and_respond(2.0)
+
+    # actual=10 min, reduction=10/5=2.0, new_fatigue=max(0, 1.0-2.0)=0.0
+    assert bot._fatigue == 0.0
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
