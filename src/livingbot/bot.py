@@ -32,29 +32,31 @@ class LivingBot(discord.Client):
         self._queue.add(message)
 
         if self._resting:
-            self._fatigue += 1.0
             return
 
-        responds_immediately = random.random() < 1.0 / (self._fatigue + 1.0)
-        self._fatigue += 1.0
-
-        if responds_immediately:
+        if random.random() < 1.0 / (self._fatigue + 1.0):
             for channel in self._queue.flush():
                 await channel.send("I'm here")
+            self._fatigue += 1.0
         else:
             self._resting = True
             asyncio.create_task(self._rest_and_respond(self._fatigue))
 
     async def _rest_and_respond(self, fatigue_at_rest: float) -> None:
-        max_delay_minutes = 5.0 * fatigue_at_rest
+        max_delay_minutes = max(3.0, 5.0 * fatigue_at_rest)
         actual_delay_minutes = random.uniform(3.0, max_delay_minutes)
         await asyncio.sleep(actual_delay_minutes * 60.0)
 
         self._fatigue = max(0.0, self._fatigue - actual_delay_minutes / 5.0)
         self._resting = False
 
-        for channel in self._queue.flush():
-            await channel.send("I'm here")
+        if random.random() < 1.0 / (self._fatigue + 1.0):
+            for channel in self._queue.flush():
+                await channel.send("I'm here")
+            self._fatigue += 1.0
+        else:
+            self._resting = True
+            asyncio.create_task(self._rest_and_respond(self._fatigue))
 
     def _is_directed_at_bot(self, message: discord.Message) -> bool:
         if self.user is not None and self.user in message.mentions:

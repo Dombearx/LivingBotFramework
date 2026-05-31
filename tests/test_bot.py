@@ -130,7 +130,7 @@ async def test_on_message_when_random_disfavors_immediate_sets_resting(
 
 @patch("random.random", return_value=0.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_increments_fatigue_on_directed_message(
+async def test_on_message_when_immediate_response_increments_fatigue(
     mock_user: PropertyMock,
     mock_random: MagicMock,
 ) -> None:
@@ -161,7 +161,7 @@ async def test_on_message_when_resting_queues_without_sending(
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_when_resting_increments_fatigue(
+async def test_on_message_when_resting_does_not_change_fatigue(
     mock_user: PropertyMock,
 ) -> None:
     user = bot_user()
@@ -172,15 +172,17 @@ async def test_on_message_when_resting_increments_fatigue(
 
     await bot.on_message(make_message(author=other_user(), mentions=[user]))
 
-    assert bot._fatigue == 3.0
+    assert bot._fatigue == 2.0
 
 
 @patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.random", return_value=0.0)
 @patch("random.uniform", return_value=5.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
 async def test_rest_and_respond_sends_to_queued_channels_and_clears_resting(
     mock_user: PropertyMock,
     mock_uniform: MagicMock,
+    mock_random: MagicMock,
     mock_sleep: AsyncMock,
 ) -> None:
     user = bot_user()
@@ -198,11 +200,13 @@ async def test_rest_and_respond_sends_to_queued_channels_and_clears_resting(
 
 
 @patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.random", return_value=0.0)
 @patch("random.uniform", return_value=10.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
 async def test_rest_and_respond_reduces_fatigue_by_actual_delay_over_five(
     mock_user: PropertyMock,
     mock_uniform: MagicMock,
+    mock_random: MagicMock,
     mock_sleep: AsyncMock,
 ) -> None:
     user = bot_user()
@@ -212,16 +216,18 @@ async def test_rest_and_respond_reduces_fatigue_by_actual_delay_over_five(
 
     await bot._rest_and_respond(2.0)
 
-    # actual=10 min, reduction=10/5=2.0, new_fatigue=max(0, 3.0-2.0)=1.0
-    assert bot._fatigue == 1.0
+    # actual=10 min, reduction=10/5=2.0, after reduction=1.0, then +1 for response → 2.0
+    assert bot._fatigue == 2.0
 
 
 @patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.random", return_value=0.0)
 @patch("random.uniform", return_value=10.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_rest_and_respond_fatigue_does_not_go_below_zero(
+async def test_rest_and_respond_fatigue_reduction_is_clamped_to_zero(
     mock_user: PropertyMock,
     mock_uniform: MagicMock,
+    mock_random: MagicMock,
     mock_sleep: AsyncMock,
 ) -> None:
     user = bot_user()
@@ -231,8 +237,32 @@ async def test_rest_and_respond_fatigue_does_not_go_below_zero(
 
     await bot._rest_and_respond(2.0)
 
-    # actual=10 min, reduction=10/5=2.0, new_fatigue=max(0, 1.0-2.0)=0.0
-    assert bot._fatigue == 0.0
+    # actual=10 min, reduction=10/5=2.0 > fatigue=1.0, clamped to 0.0, then +1 for response → 1.0
+    assert bot._fatigue == 1.0
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.random", return_value=0.99)
+@patch("random.uniform", return_value=5.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_rest_and_respond_when_random_disfavors_response_starts_new_rest(
+    mock_user: PropertyMock,
+    mock_uniform: MagicMock,
+    mock_random: MagicMock,
+    mock_sleep: AsyncMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    bot._fatigue = 3.0
+
+    await bot._rest_and_respond(3.0)
+
+    # actual=5 min, reduction=5/5=1.0, after reduction=2.0, prob=1/3=0.33, random=0.99 → rest again
+    assert bot._resting is True
+    mock_create_task.assert_called_once()
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
