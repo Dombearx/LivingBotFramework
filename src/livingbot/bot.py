@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+import random
 
 import discord
 
@@ -12,6 +14,8 @@ class LivingBot(discord.Client):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._queue = MessageQueue()
+        self._fatigue: float = 0.0
+        self._resting: bool = False
 
     async def on_ready(self) -> None:
         logger.info(
@@ -26,9 +30,31 @@ class LivingBot(discord.Client):
             return
 
         self._queue.add(message)
-        if self._queue.is_ready():
+
+        if not self._resting:
+            if not await self._attempt_response():
+                self._resting = True
+                asyncio.create_task(self._rest_and_respond())
+
+    async def _attempt_response(self) -> bool:
+        if random.random() < 1.0 / (self._fatigue + 1.0):
+            self._fatigue += len(self._queue)
             for channel in self._queue.flush():
                 await channel.send("I'm here")
+            return True
+        return False
+
+    async def _rest_and_respond(self) -> None:
+        while True:
+            max_delay = max(3.0, 5.0 * self._fatigue)
+            actual_delay = random.uniform(3.0, max_delay)
+            await asyncio.sleep(actual_delay * 60.0)
+
+            self._fatigue = max(0.0, self._fatigue - actual_delay / 5.0)
+
+            if await self._attempt_response():
+                self._resting = False
+                return
 
     def _is_directed_at_bot(self, message: discord.Message) -> bool:
         if self.user is not None and self.user in message.mentions:

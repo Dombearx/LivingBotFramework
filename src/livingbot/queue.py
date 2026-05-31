@@ -1,18 +1,15 @@
 import discord
 
-THRESHOLD = 3
-
 
 class MessageQueue:
-    def __init__(self, threshold: int = THRESHOLD) -> None:
-        self._threshold = threshold
+    def __init__(self) -> None:
         self._pending: list[discord.Message] = []
+
+    def __len__(self) -> int:
+        return len(self._pending)
 
     def add(self, message: discord.Message) -> None:
         self._pending.append(message)
-
-    def is_ready(self) -> bool:
-        return len(self._pending) >= self._threshold
 
     def flush(self) -> list[discord.abc.Messageable]:
         seen: dict[discord.abc.Messageable, None] = {}
