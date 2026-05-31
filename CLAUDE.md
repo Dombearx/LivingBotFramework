@@ -34,7 +34,7 @@ A Python framework built incrementally across multiple implementation steps.
 - Tests must exercise real behaviour, not just satisfy coverage metrics.
 - Use `pytest`.
 - Test mechanisms, not permutations. Each test should verify a distinct code path or guard against a meaningful failure; if you can't articulate what specific behaviour would break if this test didn't exist, skip it.
-- Mock external dependencies with `unittest.mock.patch` via the `@patch` decorator. Patch at the point of use, not at the point of definition.
+- Mock external dependencies with `unittest.mock.patch`. Prefer the `@patch` decorator over `with patch(...)` context managers — it keeps mock setup out of the test body. Patch at the point of use, not at the point of definition.
 - Every test function must have a descriptive name that states what behaviour it verifies: `test_<unit>_<condition>_<expected_result>`, e.g. `test_on_message_when_bot_mentioned_sends_response`.
 - Each test function tests exactly one behaviour. Split tests that need multiple assertions to verify one logical outcome into separate functions.
 - Arrange–Act–Assert: set up state, call the unit under test, then assert the outcome — in that order, with a blank line between each phase.
