@@ -35,13 +35,20 @@ A Python framework built incrementally across multiple implementation steps.
 
 ## Python Conventions
 
-- Python 3.11+
+- Python 3.14
 - Use type hints on all function signatures.
-- Use `dataclasses` or `pydantic` models for structured data (choose one per step, stay consistent).
+- Use `pydantic` models for all structured data.
 - Keep functions small and single-purpose.
 - Prefer `pathlib.Path` over `os.path`.
 - Use `logging` (not `print`) for diagnostic output in library code.
-- Format with `black`, lint with `ruff`.
+- Format and lint with `ruff`.
+
+## Package Management
+
+- Use `uv` for all package management tasks.
+- Add dependencies with `uv add <package>`.
+- Run scripts and tools with `uv run <command>`.
+- Keep `pyproject.toml` as the single source of truth for dependencies.
 
 ## Project Structure
 
