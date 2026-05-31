@@ -3,10 +3,16 @@ import os
 
 import discord
 
+from livingbot.queue import MessageQueue
+
 logger = logging.getLogger(__name__)
 
 
 class LivingBot(discord.Client):
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._queue = MessageQueue()
+
     async def on_ready(self) -> None:
         logger.info(
             "Logged in as %s (id=%s)", self.user, self.user.id if self.user else None
@@ -16,12 +22,18 @@ class LivingBot(discord.Client):
         if message.author == self.user:
             return
 
-        if self.user is not None and self.user in message.mentions:
-            await message.channel.send("I'm here")
+        if not self._is_directed_at_bot(message):
             return
 
-        if self._is_reply_to_bot(message):
-            await message.channel.send("I'm here")
+        self._queue.add(message)
+        if self._queue.is_ready():
+            for channel in self._queue.flush():
+                await channel.send("I'm here")
+
+    def _is_directed_at_bot(self, message: discord.Message) -> bool:
+        if self.user is not None and self.user in message.mentions:
+            return True
+        return self._is_reply_to_bot(message)
 
     def _is_reply_to_bot(self, message: discord.Message) -> bool:
         if message.reference is None or self.user is None:

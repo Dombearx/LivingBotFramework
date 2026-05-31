@@ -30,6 +30,7 @@ A Python framework built incrementally across multiple implementation steps.
 - Do not add fallbacks or retries unless the current step explicitly requires them.
 
 ### Testing
+- **Never add or modify tests until the user has explicitly accepted the code changes.** Write tests only after the implementation is approved.
 - Write tests only if the current step requests them.
 - Tests must exercise real behaviour, not just satisfy coverage metrics.
 - Use `pytest`.
