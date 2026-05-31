@@ -32,6 +32,12 @@ A Python framework built incrementally across multiple implementation steps.
 ### Testing
 - Write tests only if the current step requests them.
 - Tests must exercise real behaviour, not just satisfy coverage metrics.
+- Use `pytest`. Add it as a dev dependency with `uv add --dev pytest`.
+- Mock external dependencies with `unittest.mock.patch` via the `@patch` decorator. Patch at the point of use, not at the point of definition.
+- Every test function must have a descriptive name that states what behaviour it verifies: `test_<unit>_<condition>_<expected_result>`, e.g. `test_on_message_when_bot_mentioned_sends_response`.
+- Each test function tests exactly one behaviour. Split tests that need multiple assertions to verify one logical outcome into separate functions.
+- Arrange–Act–Assert: set up state, call the unit under test, then assert the outcome — in that order, with a blank line between each phase.
+- Prefer testing observable outputs and side-effects (return values, calls on mocks) over testing internal state.
 
 ## Python Conventions
 
