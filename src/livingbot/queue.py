@@ -11,9 +11,9 @@ class MessageQueue:
     def add(self, message: discord.Message) -> None:
         self._pending.append(message)
 
-    def flush(self) -> list[discord.abc.Messageable]:
-        seen: dict[discord.abc.Messageable, None] = {}
+    def flush(self) -> dict[discord.abc.Messageable, list[discord.Message]]:
+        grouped: dict[discord.abc.Messageable, list[discord.Message]] = {}
         for msg in self._pending:
-            seen.setdefault(msg.channel, None)
+            grouped.setdefault(msg.channel, []).append(msg)
         self._pending.clear()
-        return list(seen.keys())
+        return grouped

@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
 
-from livingbot.bot import LivingBot
+from livingbot.bot import LivingBot, _send_chunked
 
 
 def bot_user() -> MagicMock:
@@ -13,10 +13,16 @@ def other_user() -> MagicMock:
     return MagicMock(spec=discord.User)
 
 
-def make_bot() -> LivingBot:
+def make_llm_client(response: str = "llm response") -> MagicMock:
+    client = MagicMock()
+    client.complete = AsyncMock(return_value=response)
+    return client
+
+
+def make_bot(llm_client: MagicMock | None = None) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
-    return LivingBot(intents=intents)
+    return LivingBot(llm_client=llm_client or make_llm_client(), intents=intents)
 
 
 def make_message(
@@ -73,7 +79,7 @@ async def test_on_message_when_unrelated_message_does_not_trigger_response(
 
 @patch("random.random", return_value=0.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_on_message_when_random_favors_immediate_sends_response(
+async def test_on_message_when_random_favors_immediate_sends_llm_response(
     mock_user: PropertyMock,
     mock_random: MagicMock,
 ) -> None:
@@ -86,7 +92,7 @@ async def test_on_message_when_random_favors_immediate_sends_response(
         make_message(author=other_user(), mentions=[user], channel=channel)
     )
 
-    channel.send.assert_called_once_with("I'm here")
+    channel.send.assert_called_once_with("llm response")
 
 
 @patch("asyncio.create_task", side_effect=lambda coro: coro.close())
@@ -149,7 +155,7 @@ async def test_on_message_when_resting_queues_without_sending(
 @patch("random.random", return_value=0.0)
 @patch("random.uniform", return_value=5.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_rest_and_respond_sends_to_queued_channels_and_clears_resting(
+async def test_rest_and_respond_sends_llm_response_and_clears_resting(
     mock_user: PropertyMock,
     mock_uniform: MagicMock,
     mock_random: MagicMock,
@@ -165,7 +171,7 @@ async def test_rest_and_respond_sends_to_queued_channels_and_clears_resting(
 
     await bot._rest_and_respond()
 
-    channel.send.assert_called_once_with("I'm here")
+    channel.send.assert_called_once_with("llm response")
     assert bot._resting is False
 
 
@@ -231,10 +237,33 @@ async def test_rest_and_respond_loops_until_random_favors_response(
 
     await bot._rest_and_respond()
 
-    # iteration 1: reduce 3.0-1.0=2.0, roll 0.99 > 1/3 → loop (no fatigue change)
-    # iteration 2: reduce 2.0-1.0=1.0, roll 0.0 < 1/2 → respond, read 1 msg → fatigue=2.0
-    channel.send.assert_called_once_with("I'm here")
+    # iteration 1: reduce 3.0-1.0=2.0, roll 0.99 > 1/3 → loop
+    # iteration 2: reduce 2.0-1.0=1.0, roll 0.0 < 1/2 → respond, 1 msg → fatigue=2.0
+    channel.send.assert_called_once_with("llm response")
     assert bot._resting is False
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client)
+    channel = make_channel()
+    msg1 = make_message(author=other_user(), mentions=[user], channel=channel)
+    msg1.content = "first"
+    msg2 = make_message(author=other_user(), mentions=[user], channel=channel)
+    msg2.content = "second"
+    bot._queue.add(msg1)
+    bot._queue.add(msg2)
+
+    await bot._attempt_response()
+
+    llm_client.complete.assert_called_once_with(["first", "second"])
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
@@ -271,3 +300,22 @@ def test_is_reply_to_bot_when_resolved_reference_is_bots_returns_true(
     result = bot._is_reply_to_bot(message)
 
     assert result is True
+
+
+async def test_send_chunked_when_response_fits_sends_single_message() -> None:
+    channel = make_channel()
+
+    await _send_chunked(channel, "short response")
+
+    channel.send.assert_called_once_with("short response")
+
+
+async def test_send_chunked_when_response_exceeds_limit_splits_into_chunks() -> None:
+    channel = make_channel()
+    text = "x" * 2500
+
+    await _send_chunked(channel, text)
+
+    assert channel.send.call_count == 2
+    channel.send.assert_any_call("x" * 2000)
+    channel.send.assert_any_call("x" * 500)
