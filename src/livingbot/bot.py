@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 DISCORD_MAX_LENGTH = 2000
 
 
+def _format_message(msg: discord.Message) -> str:
+    timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+    return f"[id:{msg.id}] [{timestamp}] {msg.author.display_name}: {msg.content}"
+
+
 async def _send_chunked(channel: discord.abc.Messageable, text: str) -> None:
     for i in range(0, len(text), DISCORD_MAX_LENGTH):
         await channel.send(text[i : i + DISCORD_MAX_LENGTH])
@@ -51,9 +56,8 @@ class LivingBot(discord.Client):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
                 response = await self._llm_client.complete(
-                    [m.content for m in messages],
+                    [_format_message(m) for m in messages],
                     channel,
-                    messages[0].id,
                 )
                 await _send_chunked(channel, response)
             return True

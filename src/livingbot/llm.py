@@ -22,8 +22,7 @@ class LLMClient:
         self,
         user_messages: list[str],
         channel: discord.abc.Messageable,
-        anchor_message_id: int,
     ) -> str:
-        deps = BotDeps(channel=channel, anchor_message_id=anchor_message_id)
+        deps = BotDeps(channel=channel)
         result = await self._agent.run("\n".join(user_messages), deps=deps)
         return result.output
