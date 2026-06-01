@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
 
-from livingbot.bot import LivingBot, _send_chunked
+from livingbot.bot import LivingBot, _format_message, _send_chunked
 
 
 def bot_user() -> MagicMock:
@@ -243,6 +243,18 @@ async def test_rest_and_respond_loops_until_random_favors_response(
     assert bot._resting is False
 
 
+def test_format_message_includes_id_timestamp_author_and_content() -> None:
+    msg = MagicMock(spec=discord.Message)
+    msg.id = 987654321
+    msg.created_at.strftime.return_value = "2024-06-01 10:00:00"
+    msg.author.display_name = "Alice"
+    msg.content = "hello world"
+
+    result = _format_message(msg)
+
+    assert result == "[id:987654321] [2024-06-01 10:00:00] Alice: hello world"
+
+
 @patch("random.random", return_value=0.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
 async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
@@ -263,7 +275,10 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
 
     await bot._attempt_response()
 
-    llm_client.complete.assert_called_once_with(["first", "second"])
+    llm_client.complete.assert_called_once_with(
+        [_format_message(msg1), _format_message(msg2)],
+        channel,
+    )
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)

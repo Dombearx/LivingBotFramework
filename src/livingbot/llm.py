@@ -1,5 +1,8 @@
+import discord
 from pydantic import BaseModel
 from pydantic_ai import Agent
+
+from livingbot.tools import BotDeps, load_context
 
 
 class LLMConfig(BaseModel):
@@ -9,10 +12,17 @@ class LLMConfig(BaseModel):
 
 class LLMClient:
     def __init__(self, config: LLMConfig) -> None:
-        self._agent: Agent[None, str] = Agent(
-            config.model, system_prompt=config.system_prompt
+        self._agent: Agent[BotDeps, str] = Agent(
+            config.model,
+            system_prompt=config.system_prompt,
+            tools=[load_context],
         )
 
-    async def complete(self, user_messages: list[str]) -> str:
-        result = await self._agent.run("\n".join(user_messages))
+    async def complete(
+        self,
+        user_messages: list[str],
+        channel: discord.abc.Messageable,
+    ) -> str:
+        deps = BotDeps(channel=channel)
+        result = await self._agent.run("\n".join(user_messages), deps=deps)
         return result.output
