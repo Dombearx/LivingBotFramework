@@ -14,8 +14,10 @@ def other_user() -> MagicMock:
 
 
 def make_llm_client(response: str = "llm response") -> MagicMock:
+    mock_result = MagicMock()
+    mock_result.output = response
     client = MagicMock()
-    client.complete = AsyncMock(return_value=response)
+    client.complete = AsyncMock(return_value=mock_result)
     return client
 
 

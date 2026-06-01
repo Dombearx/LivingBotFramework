@@ -55,11 +55,11 @@ class LivingBot(discord.Client):
         if random.random() < 1.0 / (self._fatigue + 1.0):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
-                response = await self._llm_client.complete(
+                result = await self._llm_client.complete(
                     [_format_message(m) for m in messages],
                     channel,
                 )
-                await _send_chunked(channel, response)
+                await _send_chunked(channel, result.output)
             return True
         return False
 
