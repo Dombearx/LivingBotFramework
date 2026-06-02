@@ -7,6 +7,7 @@ import discord
 
 from livingbot import config
 from livingbot.llm import LLMClient, LLMConfig
+from livingbot.memory import MemoryStore
 from livingbot.queue import MessageQueue
 
 logger = logging.getLogger(__name__)
@@ -25,12 +26,15 @@ async def _send_chunked(channel: discord.abc.Messageable, text: str) -> None:
 
 
 class LivingBot(discord.Client):
-    def __init__(self, llm_client: LLMClient, **kwargs: object) -> None:
+    def __init__(
+        self, llm_client: LLMClient, memory_store: MemoryStore, **kwargs: object
+    ) -> None:
         super().__init__(**kwargs)
         self._queue = MessageQueue()
         self._fatigue: float = 0.0
         self._resting: bool = False
         self._llm_client = llm_client
+        self._memory_store = memory_store
 
     async def on_ready(self) -> None:
         logger.info(
@@ -55,13 +59,31 @@ class LivingBot(discord.Client):
         if random.random() < 1.0 / (self._fatigue + 1.0):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
-                result = await self._llm_client.complete(
-                    [_format_message(m) for m in messages],
-                    channel,
+                formatted = [_format_message(m) for m in messages]
+                author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
+                memories = await self._memory_store.retrieve(
+                    "\n".join(formatted), user_ids=author_ids
                 )
+                result = await self._llm_client.complete(formatted, channel, memories)
                 await _send_chunked(channel, result.output)
+                sole_author = author_ids[0] if len(author_ids) == 1 else None
+                asyncio.create_task(
+                    self._store_memories(messages, result.output, sole_author)
+                )
             return True
         return False
+
+    async def _store_memories(
+        self, messages: list[discord.Message], bot_response: str, user_id: str | None
+    ) -> None:
+        conversation = [
+            {"role": "user", "content": _format_message(m)} for m in messages
+        ]
+        conversation.append({"role": "assistant", "content": bot_response})
+        try:
+            await self._memory_store.store(conversation, user_id=user_id)
+        except Exception:
+            logger.exception("Failed to store memories for user_id=%s", user_id)
 
     async def _rest_and_respond(self) -> None:
         while True:
@@ -94,5 +116,6 @@ def run() -> None:
     llm_client = LLMClient(
         LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
     )
-    bot = LivingBot(llm_client=llm_client, intents=intents)
+    memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
+    bot = LivingBot(llm_client=llm_client, memory_store=memory_store, intents=intents)
     bot.run(token, log_handler=None)
