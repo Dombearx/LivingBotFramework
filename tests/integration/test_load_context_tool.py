@@ -13,20 +13,13 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
+from livingbot import config
 from livingbot.llm import LLMClient, LLMConfig
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENAI_API_KEY"),
     reason="OPENAI_API_KEY not set",
 )
-
-_MODEL = os.environ.get("LLM_INTEGRATION_MODEL", "openai:gpt-4o-mini")
-
-_SYSTEM_PROMPT = """Jesteś pomocnym botem na polskim serwerze Discord dla graczy.
-Gdy użytkownik pyta o poprzednie wiadomości, historię rozmowy lub co było wcześniej
-napisane, użyj narzędzia load_context, aby pobrać wcześniejsze wiadomości z kanału.
-Identyfikatory wiadomości (id:XXXXX) znajdziesz w treści wiadomości — użyj ich jako
-before_message_id przy wywołaniu load_context."""
 
 
 def _make_history_message(id: int, author: str, content: str) -> MagicMock:
@@ -60,7 +53,9 @@ def _load_context_was_called(result) -> bool:
 
 @pytest.fixture
 def client() -> LLMClient:
-    return LLMClient(LLMConfig(model=_MODEL, system_prompt=_SYSTEM_PROMPT))
+    return LLMClient(
+        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+    )
 
 
 async def test_load_context_called_when_explicitly_asked(client: LLMClient) -> None:
