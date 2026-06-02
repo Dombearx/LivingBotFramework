@@ -21,10 +21,21 @@ def make_llm_client(response: str = "llm response") -> MagicMock:
     return client
 
 
+def make_memory_store() -> MagicMock:
+    store = MagicMock()
+    store.retrieve = AsyncMock(return_value=[])
+    store.store = AsyncMock()
+    return store
+
+
 def make_bot(llm_client: MagicMock | None = None) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
-    return LivingBot(llm_client=llm_client or make_llm_client(), intents=intents)
+    return LivingBot(
+        llm_client=llm_client or make_llm_client(),
+        memory_store=make_memory_store(),
+        intents=intents,
+    )
 
 
 def make_message(
@@ -280,6 +291,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
     llm_client.complete.assert_called_once_with(
         [_format_message(msg1), _format_message(msg2)],
         channel,
+        [],
     )
 
 
