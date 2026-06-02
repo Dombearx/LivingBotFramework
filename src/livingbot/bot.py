@@ -9,6 +9,7 @@ from livingbot import config
 from livingbot.llm import LLMClient, LLMConfig
 from livingbot.memory import MemoryStore
 from livingbot.queue import MessageQueue
+from livingbot.relations import RelationStore, RelationUpdater
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,12 @@ async def _send_chunked(channel: discord.abc.Messageable, text: str) -> None:
 
 class LivingBot(discord.Client):
     def __init__(
-        self, llm_client: LLMClient, memory_store: MemoryStore, **kwargs: object
+        self,
+        llm_client: LLMClient,
+        memory_store: MemoryStore,
+        relation_store: RelationStore,
+        relation_updater: RelationUpdater,
+        **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
         self._queue = MessageQueue()
@@ -35,6 +41,8 @@ class LivingBot(discord.Client):
         self._resting: bool = False
         self._llm_client = llm_client
         self._memory_store = memory_store
+        self._relation_store = relation_store
+        self._relation_updater = relation_updater
 
     async def on_ready(self) -> None:
         logger.info(
@@ -64,12 +72,21 @@ class LivingBot(discord.Client):
                 memories = await self._memory_store.retrieve(
                     "\n".join(formatted), user_ids=author_ids
                 )
-                result = await self._llm_client.complete(formatted, channel, memories)
-                await _send_chunked(channel, result.output)
                 sole_author = author_ids[0] if len(author_ids) == 1 else None
+                relation = (
+                    self._relation_store.load(sole_author) if sole_author else None
+                )
+                result = await self._llm_client.complete(
+                    formatted, channel, memories, relation
+                )
+                await _send_chunked(channel, result.output)
                 asyncio.create_task(
                     self._store_memories(messages, result.output, sole_author)
                 )
+                if sole_author and relation is not None:
+                    asyncio.create_task(
+                        self._update_relation(relation, messages, result.output)
+                    )
             return True
         return False
 
@@ -84,6 +101,20 @@ class LivingBot(discord.Client):
             await self._memory_store.store(conversation, user_id=user_id)
         except Exception:
             logger.exception("Failed to store memories for user_id=%s", user_id)
+
+    async def _update_relation(
+        self,
+        relation,
+        messages: list[discord.Message],
+        bot_response: str,
+    ) -> None:
+        conversation = [
+            {"role": "user", "content": _format_message(m)} for m in messages
+        ]
+        conversation.append({"role": "assistant", "content": bot_response})
+        updated = await self._relation_updater.update(relation, conversation)
+        self._relation_store.save(updated)
+        logger.debug("Updated relation for user_id=%s", relation.user_id)
 
     async def _rest_and_respond(self) -> None:
         while True:
@@ -117,5 +148,13 @@ def run() -> None:
         LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
     )
     memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
-    bot = LivingBot(llm_client=llm_client, memory_store=memory_store, intents=intents)
+    relation_store = RelationStore(config.RELATION_DATA_PATH)
+    relation_updater = RelationUpdater(config.LLM_MODEL)
+    bot = LivingBot(
+        llm_client=llm_client,
+        memory_store=memory_store,
+        relation_store=relation_store,
+        relation_updater=relation_updater,
+        intents=intents,
+    )
     bot.run(token, log_handler=None)

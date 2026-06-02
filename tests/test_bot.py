@@ -28,6 +28,23 @@ def make_memory_store() -> MagicMock:
     return store
 
 
+def make_relation_store() -> MagicMock:
+    from livingbot.relations import Relation
+
+    store = MagicMock()
+    store.load = MagicMock(return_value=Relation(user_id="123"))
+    store.save = MagicMock()
+    return store
+
+
+def make_relation_updater() -> MagicMock:
+    from livingbot.relations import Relation
+
+    updater = MagicMock()
+    updater.update = AsyncMock(return_value=Relation(user_id="123"))
+    return updater
+
+
 def make_bot(
     llm_client: MagicMock | None = None, memory_store: MagicMock | None = None
 ) -> LivingBot:
@@ -36,6 +53,8 @@ def make_bot(
     return LivingBot(
         llm_client=llm_client or make_llm_client(),
         memory_store=memory_store or make_memory_store(),
+        relation_store=make_relation_store(),
+        relation_updater=make_relation_updater(),
         intents=intents,
     )
 
@@ -294,6 +313,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         [_format_message(msg1), _format_message(msg2)],
         channel,
         [],
+        None,
     )
 
 
