@@ -28,12 +28,14 @@ def make_memory_store() -> MagicMock:
     return store
 
 
-def make_bot(llm_client: MagicMock | None = None) -> LivingBot:
+def make_bot(
+    llm_client: MagicMock | None = None, memory_store: MagicMock | None = None
+) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
     return LivingBot(
         llm_client=llm_client or make_llm_client(),
-        memory_store=make_memory_store(),
+        memory_store=memory_store or make_memory_store(),
         intents=intents,
     )
 
@@ -293,6 +295,129 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         channel,
         [],
     )
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_retrieves_memories_with_single_author_id(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    memory_store = make_memory_store()
+    bot = make_bot(memory_store=memory_store)
+    author = other_user()
+    channel = make_channel()
+    msg = make_message(author=author, mentions=[user], channel=channel)
+    bot._queue.add(msg)
+
+    await bot._attempt_response()
+
+    memory_store.retrieve.assert_called_once_with(
+        _format_message(msg), user_ids=[str(author.id)]
+    )
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_retrieves_memories_for_all_unique_authors(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    memory_store = make_memory_store()
+    bot = make_bot(memory_store=memory_store)
+    author_a, author_b = other_user(), other_user()
+    channel = make_channel()
+    msg1 = make_message(author=author_a, mentions=[user], channel=channel)
+    msg2 = make_message(author=author_b, mentions=[user], channel=channel)
+    bot._queue.add(msg1)
+    bot._queue.add(msg2)
+
+    await bot._attempt_response()
+
+    memory_store.retrieve.assert_called_once_with(
+        f"{_format_message(msg1)}\n{_format_message(msg2)}",
+        user_ids=[str(author_a.id), str(author_b.id)],
+    )
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_passes_retrieved_memories_to_llm(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    memory_store = make_memory_store()
+    memory_store.retrieve = AsyncMock(return_value=["remember this"])
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client=llm_client, memory_store=memory_store)
+    channel = make_channel()
+    msg = make_message(author=other_user(), mentions=[user], channel=channel)
+    bot._queue.add(msg)
+
+    await bot._attempt_response()
+
+    assert llm_client.complete.call_args.args[2] == ["remember this"]
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_stores_memories_with_user_id_for_single_author(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    memory_store = make_memory_store()
+    bot = make_bot(memory_store=memory_store)
+    author = other_user()
+    channel = make_channel()
+    msg = make_message(author=author, mentions=[user], channel=channel)
+    bot._queue.add(msg)
+
+    tasks: list = []
+    with patch("asyncio.create_task", side_effect=lambda c: tasks.append(c)):
+        await bot._attempt_response()
+    for t in tasks:
+        await t
+
+    assert memory_store.store.call_args.kwargs["user_id"] == str(author.id)
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_stores_memories_globally_for_multiple_authors(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    memory_store = make_memory_store()
+    bot = make_bot(memory_store=memory_store)
+    channel = make_channel()
+    msg1 = make_message(author=other_user(), mentions=[user], channel=channel)
+    msg2 = make_message(author=other_user(), mentions=[user], channel=channel)
+    bot._queue.add(msg1)
+    bot._queue.add(msg2)
+
+    tasks: list = []
+    with patch("asyncio.create_task", side_effect=lambda c: tasks.append(c)):
+        await bot._attempt_response()
+    for t in tasks:
+        await t
+
+    assert memory_store.store.call_args.kwargs["user_id"] is None
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
