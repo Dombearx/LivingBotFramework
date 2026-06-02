@@ -66,14 +66,15 @@ class LivingBot(discord.Client):
                 )
                 result = await self._llm_client.complete(formatted, channel, memories)
                 await _send_chunked(channel, result.output)
+                sole_author = author_ids[0] if len(author_ids) == 1 else None
                 asyncio.create_task(
-                    self._store_memories(messages, result.output, author_ids[0])
+                    self._store_memories(messages, result.output, sole_author)
                 )
             return True
         return False
 
     async def _store_memories(
-        self, messages: list[discord.Message], bot_response: str, user_id: str
+        self, messages: list[discord.Message], bot_response: str, user_id: str | None
     ) -> None:
         conversation = [
             {"role": "user", "content": _format_message(m)} for m in messages
@@ -82,7 +83,7 @@ class LivingBot(discord.Client):
         try:
             await self._memory_store.store(conversation, user_id=user_id)
         except Exception:
-            logger.exception("Failed to store memories for user %s", user_id)
+            logger.exception("Failed to store memories for user_id=%s", user_id)
 
     async def _rest_and_respond(self) -> None:
         while True:

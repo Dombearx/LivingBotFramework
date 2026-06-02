@@ -54,15 +54,16 @@ class MemoryStore:
                     memories.append(text)
         return memories[:limit]
 
-    async def store(self, conversation: list[dict], user_id: str) -> None:
+    async def store(self, conversation: list[dict], user_id: str | None = None) -> None:
         loop = asyncio.get_event_loop()
+        targets = [GLOBAL_USER_ID] if user_id is None else [user_id, GLOBAL_USER_ID]
         await asyncio.gather(
-            loop.run_in_executor(
-                None, lambda: self._memory.add(conversation, user_id=user_id)
-            ),
-            loop.run_in_executor(
-                None,
-                lambda: self._memory.add(conversation, user_id=GLOBAL_USER_ID),
-            ),
+            *[
+                loop.run_in_executor(
+                    None,
+                    lambda uid=uid: self._memory.add(conversation, user_id=uid),
+                )
+                for uid in targets
+            ]
         )
-        logger.debug("Stored memories for user %s and global", user_id)
+        logger.debug("Stored memories for %s", targets)
