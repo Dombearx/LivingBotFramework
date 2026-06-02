@@ -1,6 +1,6 @@
 import discord
 from pydantic import BaseModel
-from pydantic_ai import Agent
+from pydantic_ai import Agent, AgentRunResult
 
 from livingbot.tools import BotDeps, load_context
 
@@ -22,7 +22,6 @@ class LLMClient:
         self,
         user_messages: list[str],
         channel: discord.abc.Messageable,
-    ) -> str:
+    ) -> AgentRunResult[str]:
         deps = BotDeps(channel=channel)
-        result = await self._agent.run("\n".join(user_messages), deps=deps)
-        return result.output
+        return await self._agent.run("\n".join(user_messages), deps=deps)
