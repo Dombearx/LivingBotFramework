@@ -60,14 +60,14 @@ class LivingBot(discord.Client):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
                 formatted = [_format_message(m) for m in messages]
-                author_id = str(messages[-1].author.id)
+                author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
                 memories = await self._memory_store.retrieve(
-                    formatted[-1], user_id=author_id
+                    "\n".join(formatted), user_ids=author_ids
                 )
                 result = await self._llm_client.complete(formatted, channel, memories)
                 await _send_chunked(channel, result.output)
                 asyncio.create_task(
-                    self._store_memories(messages, result.output, author_id)
+                    self._store_memories(messages, result.output, author_ids[0])
                 )
             return True
         return False

@@ -27,25 +27,31 @@ class MemoryStore:
         }
         return cls(Memory.from_config(config))
 
-    async def retrieve(self, query: str, user_id: str, limit: int = 5) -> list[str]:
+    async def retrieve(
+        self, query: str, user_ids: list[str], limit: int = 5
+    ) -> list[str]:
         loop = asyncio.get_event_loop()
-        user_results, global_results = await asyncio.gather(
-            loop.run_in_executor(
-                None, lambda: self._memory.search(query, user_id=user_id, limit=limit)
-            ),
-            loop.run_in_executor(
-                None,
-                lambda: self._memory.search(query, user_id=GLOBAL_USER_ID, limit=limit),
-            ),
+        all_user_ids = list(dict.fromkeys(user_ids + [GLOBAL_USER_ID]))
+        result_lists = await asyncio.gather(
+            *[
+                loop.run_in_executor(
+                    None,
+                    lambda uid=uid: self._memory.search(
+                        query, user_id=uid, limit=limit
+                    ),
+                )
+                for uid in all_user_ids
+            ]
         )
 
         seen: set[str] = set()
         memories: list[str] = []
-        for result in user_results + global_results:
-            text: str = result["memory"]
-            if text not in seen:
-                seen.add(text)
-                memories.append(text)
+        for results in result_lists:
+            for result in results:
+                text: str = result["memory"]
+                if text not in seen:
+                    seen.add(text)
+                    memories.append(text)
         return memories[:limit]
 
     async def store(self, conversation: list[dict], user_id: str) -> None:
