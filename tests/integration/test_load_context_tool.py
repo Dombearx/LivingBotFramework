@@ -14,12 +14,18 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import config
+from livingbot.calendar import CalendarStore
 from livingbot.llm import LLMClient, LLMConfig
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENAI_API_KEY"),
     reason="OPENAI_API_KEY not set",
 )
+
+
+@pytest.fixture
+def calendar_store(tmp_path) -> CalendarStore:
+    return CalendarStore(tmp_path, home_location="home")
 
 
 def _make_history_message(id: int, author: str, content: str) -> MagicMock:
@@ -58,7 +64,9 @@ def client() -> LLMClient:
     )
 
 
-async def test_load_context_called_when_explicitly_asked(client: LLMClient) -> None:
+async def test_load_context_called_when_explicitly_asked(
+    client: LLMClient, calendar_store: CalendarStore
+) -> None:
     """Sanity check: bot fetches history when user directly asks for it."""
     channel = _make_channel(
         [
@@ -70,7 +78,9 @@ async def test_load_context_called_when_explicitly_asked(client: LLMClient) -> N
         "[id:1000] [2026-05-31 12:00:00] TestUser: Can you check what messages were sent before this one? Use the load_context tool with id 1000."
     ]
 
-    result = await client.complete(user_messages, channel)
+    result = await client.complete(
+        user_messages, channel, calendar_store, datetime.now()
+    )
 
     assert _load_context_was_called(result), (
         f"Expected load_context to be called. LLM response: {result.output}"
@@ -79,6 +89,7 @@ async def test_load_context_called_when_explicitly_asked(client: LLMClient) -> N
 
 async def test_load_context_called_for_polish_history_question(
     client: LLMClient,
+    calendar_store: CalendarStore,
 ) -> None:
     """Bot fetches history when asked in Polish what was discussed earlier."""
     channel = _make_channel(
@@ -92,7 +103,9 @@ async def test_load_context_called_for_polish_history_question(
         "[id:2000] [2026-05-31 14:00:00] Marek: hej, co gadaliście wcześniej? o czym była rozmowa?"
     ]
 
-    result = await client.complete(user_messages, channel)
+    result = await client.complete(
+        user_messages, channel, calendar_store, datetime.now()
+    )
 
     assert _load_context_was_called(result), (
         f"Expected load_context to be called. LLM response: {result.output}"
@@ -101,6 +114,7 @@ async def test_load_context_called_for_polish_history_question(
 
 async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     client: LLMClient,
+    calendar_store: CalendarStore,
 ) -> None:
     """Bot fetches history when asked to recall what a specific person wrote."""
     channel = _make_channel(
@@ -114,7 +128,9 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
         "[id:3000] [2026-05-31 15:30:00] Kasia: hej, możesz mi przypomnieć co Tomek pisał o evencie? przegapiłam"
     ]
 
-    result = await client.complete(user_messages, channel)
+    result = await client.complete(
+        user_messages, channel, calendar_store, datetime.now()
+    )
 
     assert _load_context_was_called(result), (
         f"Expected load_context to be called. LLM response: {result.output}"
@@ -123,6 +139,7 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
 
 async def test_load_context_called_to_summarize_channel_discussion(
     client: LLMClient,
+    calendar_store: CalendarStore,
 ) -> None:
     """Bot fetches history when asked to summarize the recent discussion."""
     channel = _make_channel(
@@ -138,7 +155,9 @@ async def test_load_context_called_to_summarize_channel_discussion(
         "[id:4000] [2026-05-31 16:00:00] Ania: hej, właśnie weszłam — streść mi ostatnią dyskusję na kanale"
     ]
 
-    result = await client.complete(user_messages, channel)
+    result = await client.complete(
+        user_messages, channel, calendar_store, datetime.now()
+    )
 
     assert _load_context_was_called(result), (
         f"Expected load_context to be called. LLM response: {result.output}"
@@ -147,6 +166,7 @@ async def test_load_context_called_to_summarize_channel_discussion(
 
 async def test_load_context_called_for_implicit_context_reference(
     client: LLMClient,
+    calendar_store: CalendarStore,
 ) -> None:
     """Bot fetches history when user implicitly refers to something decided earlier."""
     channel = _make_channel(
@@ -162,7 +182,9 @@ async def test_load_context_called_for_implicit_context_reference(
         "[id:5000] [2026-05-31 17:00:00] Kasia: a co w końcu ustaliliście? o której i gdzie?"
     ]
 
-    result = await client.complete(user_messages, channel)
+    result = await client.complete(
+        user_messages, channel, calendar_store, datetime.now()
+    )
 
     assert _load_context_was_called(result), (
         f"Expected load_context to be called. LLM response: {result.output}"

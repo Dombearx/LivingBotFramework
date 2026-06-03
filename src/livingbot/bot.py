@@ -2,10 +2,12 @@ import asyncio
 import logging
 import os
 import random
+from datetime import datetime, timedelta
 
 import discord
 
 from livingbot import config
+from livingbot.calendar import CalendarStore, WeekPlanner
 from livingbot.llm import LLMClient, LLMConfig
 from livingbot.memory import MemoryStore
 from livingbot.queue import MessageQueue
@@ -33,6 +35,8 @@ class LivingBot(discord.Client):
         memory_store: MemoryStore,
         relation_store: RelationStore,
         relation_updater: RelationUpdater,
+        calendar_store: CalendarStore,
+        week_planner: WeekPlanner,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -43,6 +47,35 @@ class LivingBot(discord.Client):
         self._memory_store = memory_store
         self._relation_store = relation_store
         self._relation_updater = relation_updater
+        self._calendar_store = calendar_store
+        self._week_planner = week_planner
+
+    async def setup_hook(self) -> None:
+        self.loop.create_task(self._life_loop())
+
+    async def _life_loop(self) -> None:
+        while True:
+            try:
+                await self._ensure_week_planned()
+            except Exception:
+                logger.exception("Life loop iteration failed")
+            await asyncio.sleep(config.LIFE_LOOP_INTERVAL_SECONDS)
+
+    async def _ensure_week_planned(self) -> None:
+        now = datetime.now()
+        week_start = now.date() - timedelta(days=now.weekday())
+        calendar = self._calendar_store.load()
+        calendar.prune_past(now)
+        if calendar.planned_week_start != week_start:
+            entries = await self._week_planner.plan(
+                week_start, config.HOBBIES, calendar.home_location
+            )
+            calendar.entries.extend(entries)
+            calendar.planned_week_start = week_start
+            logger.info(
+                "Planned week starting %s with %d entries", week_start, len(entries)
+            )
+        self._calendar_store.save(calendar)
 
     async def on_ready(self) -> None:
         logger.info(
@@ -74,7 +107,12 @@ class LivingBot(discord.Client):
                 )
                 relations = [self._relation_store.load(uid) for uid in author_ids]
                 result = await self._llm_client.complete(
-                    formatted, channel, memories, relations
+                    formatted,
+                    channel,
+                    self._calendar_store,
+                    datetime.now(),
+                    memories,
+                    relations,
                 )
                 await _send_chunked(channel, result.output)
                 sole_author = author_ids[0] if len(author_ids) == 1 else None
@@ -148,11 +186,15 @@ def run() -> None:
     memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
     relation_store = RelationStore(config.RELATION_DATA_PATH)
     relation_updater = RelationUpdater(config.LLM_MODEL)
+    calendar_store = CalendarStore(config.CALENDAR_DATA_PATH, config.HOME_LOCATION)
+    week_planner = WeekPlanner(config.LLM_MODEL)
     bot = LivingBot(
         llm_client=llm_client,
         memory_store=memory_store,
         relation_store=relation_store,
         relation_updater=relation_updater,
+        calendar_store=calendar_store,
+        week_planner=week_planner,
         intents=intents,
     )
     bot.run(token, log_handler=None)
