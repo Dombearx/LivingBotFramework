@@ -61,6 +61,12 @@ def make_week_planner(entries: list[PlanEntry] | None = None) -> MagicMock:
     return planner
 
 
+def make_inventory_store() -> MagicMock:
+    store = MagicMock()
+    store.all = AsyncMock(return_value=[])
+    return store
+
+
 def make_bot(
     llm_client: MagicMock | None = None,
     memory_store: MagicMock | None = None,
@@ -68,6 +74,7 @@ def make_bot(
     relation_updater: MagicMock | None = None,
     calendar_store: MagicMock | None = None,
     week_planner: MagicMock | None = None,
+    inventory_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
@@ -78,6 +85,7 @@ def make_bot(
         relation_updater=relation_updater or make_relation_updater(),
         calendar_store=calendar_store or make_calendar_store(),
         week_planner=week_planner or make_week_planner(),
+        inventory_store=inventory_store or make_inventory_store(),
         intents=intents,
     )
 
@@ -336,6 +344,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         [_format_message(msg1), _format_message(msg2)],
         channel,
         bot._calendar_store,
+        bot._inventory_store,
         ANY,
         [],
         [Relation(user_id="123"), Relation(user_id="123")],
@@ -413,7 +422,7 @@ async def test_attempt_response_passes_retrieved_memories_to_llm(
 
     await bot._attempt_response()
 
-    assert llm_client.complete.call_args.args[4] == ["remember this"]
+    assert llm_client.complete.call_args.args[5] == ["remember this"]
 
 
 @patch("random.random", return_value=0.0)

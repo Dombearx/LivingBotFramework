@@ -1,7 +1,8 @@
 from datetime import datetime
 
 from livingbot.calendar import Calendar, PlanEntry
-from livingbot.llm import _build_calendar_block
+from livingbot.inventory import InventoryItem
+from livingbot.llm import _build_calendar_block, _build_inventory_block
 
 NOW = datetime(2026, 6, 3, 14, 30)
 
@@ -43,3 +44,19 @@ def test_build_calendar_block_lists_upcoming_entry_with_id() -> None:
 
     assert f"[id:{upcoming.id}]" in block
     assert "Zakopane" in block
+
+
+def test_build_inventory_block_lists_owned_item_with_id_and_description() -> None:
+    item = InventoryItem(name="biała spódniczka", description="w czerwone kropki")
+
+    block = _build_inventory_block([item])
+
+    assert f"[id:{item.id}]" in block
+    assert "biała spódniczka" in block
+    assert "w czerwone kropki" in block
+
+
+def test_build_inventory_block_when_empty_notes_nothing_special() -> None:
+    block = _build_inventory_block([])
+
+    assert "nothing special yet" in block
