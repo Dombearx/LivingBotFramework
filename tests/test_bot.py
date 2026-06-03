@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import discord
 
 from livingbot.bot import LivingBot, _format_message, _send_chunked
+from livingbot.relations import Relation
 
 
 def bot_user() -> MagicMock:
@@ -29,8 +30,6 @@ def make_memory_store() -> MagicMock:
 
 
 def make_relation_store() -> MagicMock:
-    from livingbot.relations import Relation
-
     store = MagicMock()
     store.load = MagicMock(return_value=Relation(user_id="123"))
     store.save = MagicMock()
@@ -38,8 +37,6 @@ def make_relation_store() -> MagicMock:
 
 
 def make_relation_updater() -> MagicMock:
-    from livingbot.relations import Relation
-
     updater = MagicMock()
     updater.update = AsyncMock(return_value=Relation(user_id="123"))
     return updater
@@ -312,8 +309,6 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
 
     await bot._attempt_response()
 
-    from livingbot.relations import Relation
-
     llm_client.complete.assert_called_once_with(
         [_format_message(msg1), _format_message(msg2)],
         channel,
@@ -556,8 +551,6 @@ async def test_update_relations_calls_updater_and_saves_for_each_relation(
     mock_user: PropertyMock,
     mock_random: MagicMock,
 ) -> None:
-    from livingbot.relations import Relation
-
     user = bot_user()
     mock_user.return_value = user
     relation_a = Relation(user_id="aaa", attitude=10)
@@ -584,8 +577,6 @@ async def test_update_relations_includes_bot_response_in_conversation(
     mock_user: PropertyMock,
     mock_random: MagicMock,
 ) -> None:
-    from livingbot.relations import Relation
-
     user = bot_user()
     mock_user.return_value = user
     relation = Relation(user_id="aaa")
