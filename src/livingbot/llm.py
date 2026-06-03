@@ -1,9 +1,12 @@
+from datetime import datetime
+
 import discord
 from pydantic import BaseModel
 from pydantic_ai import Agent, AgentRunResult
 
+from livingbot.calendar import Calendar, CalendarStore
 from livingbot.relations import Relation
-from livingbot.tools import BotDeps, load_context
+from livingbot.tools import BotDeps, add_plan, load_context, remove_plan
 
 
 class LLMConfig(BaseModel):
@@ -17,24 +20,51 @@ class LLMClient:
         self._agent: Agent[BotDeps, str] = Agent(
             config.model,
             system_prompt=config.system_prompt,
-            tools=[load_context],
+            tools=[load_context, add_plan, remove_plan],
         )
 
     async def complete(
         self,
         user_messages: list[str],
         channel: discord.abc.Messageable,
+        calendar_store: CalendarStore,
+        now: datetime,
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
     ) -> AgentRunResult[str]:
-        deps = BotDeps(channel=channel)
+        deps = BotDeps(channel=channel, calendar_store=calendar_store)
         prompt = "\n".join(user_messages)
         if memories:
             memory_block = "\n".join(f"- {m}" for m in memories)
             prompt = f"What I remember:\n{memory_block}\n\n{prompt}"
         if relations:
             prompt = _build_relations_block(relations) + prompt
+        prompt = _build_calendar_block(calendar_store.load(), now) + prompt
         return await self._agent.run(prompt, deps=deps)
+
+
+def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
+    lines: list[str] = [f"Right now it is {now:%A, %Y-%m-%d %H:%M}."]
+    current = calendar.current_entry(now)
+    if current is not None:
+        lines.append(
+            f"You are at {current.location}, busy with {current.activity} "
+            f"until {current.end:%H:%M}."
+        )
+    else:
+        lines.append(f"You are at {calendar.home_location} with nothing scheduled.")
+    upcoming = calendar.upcoming(now)
+    if upcoming:
+        lines.append("Your calendar:")
+        for entry in upcoming:
+            line = (
+                f"  [id:{entry.id}] {entry.start:%a %m-%d %H:%M}"
+                f"–{entry.end:%a %m-%d %H:%M} {entry.activity} @ {entry.location}"
+            )
+            if entry.note:
+                line += f" ({entry.note})"
+            lines.append(line)
+    return "\n".join(lines) + "\n\n"
 
 
 def _build_relations_block(relations: list[Relation]) -> str:
