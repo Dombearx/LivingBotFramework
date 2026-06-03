@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from livingbot.calendar import Calendar, PlanEntry
+from livingbot.calendar import Busyness, Calendar, PlanEntry
 from livingbot.llm import _build_calendar_block
 
 NOW = datetime(2026, 6, 3, 14, 30)
@@ -19,6 +19,21 @@ def test_build_calendar_block_when_busy_reports_location_and_end_time() -> None:
 
     assert "gym" in block
     assert "until 16:00" in block
+
+
+def test_build_calendar_block_for_deep_event_signals_hard_to_reach() -> None:
+    ongoing = PlanEntry(
+        activity="gym session",
+        location="gym",
+        start=datetime(2026, 6, 3, 14, 0),
+        end=datetime(2026, 6, 3, 16, 0),
+        busyness=Busyness.deep,
+    )
+    calendar = Calendar(home_location="home", entries=[ongoing])
+
+    block = _build_calendar_block(calendar, NOW)
+
+    assert "hard to reach" in block
 
 
 def test_build_calendar_block_when_free_reports_home_location() -> None:

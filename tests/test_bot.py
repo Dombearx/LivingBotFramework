@@ -3,9 +3,23 @@ from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
 
+from livingbot import config
 from livingbot.bot import LivingBot, _format_message, _send_chunked
-from livingbot.calendar import Calendar, PlanEntry
+from livingbot.calendar import Busyness, Calendar, PlanEntry
 from livingbot.relations import Relation
+
+BUSY_NOW = datetime(2026, 6, 3, 18, 30)
+
+
+def busy_calendar(busyness: Busyness, end: datetime) -> Calendar:
+    entry = PlanEntry(
+        activity="gym",
+        location="gym",
+        start=datetime(2026, 6, 3, 18, 0),
+        end=end,
+        busyness=busyness,
+    )
+    return Calendar(home_location="home", entries=[entry])
 
 
 def bot_user() -> MagicMock:
@@ -684,3 +698,116 @@ async def test_ensure_week_planned_prunes_finished_entries(
 
     saved = calendar_store.save.call_args.args[0]
     assert saved.entries == []
+
+
+def test_busy_factors_when_free_returns_zero_weights_and_no_end() -> None:
+    bot = make_bot()
+
+    assert bot._busy_factors(BUSY_NOW) == (0.0, 0.0, None)
+
+
+def test_busy_factors_for_ongoing_event_returns_config_weights_and_end() -> None:
+    end = datetime(2026, 6, 3, 19, 30)
+    calendar = busy_calendar(Busyness.deep, end)
+    bot = make_bot(calendar_store=make_calendar_store(calendar))
+
+    assert bot._busy_factors(BUSY_NOW) == (
+        config.BUSYNESS_REPLY_WEIGHT["deep"],
+        config.BUSYNESS_REST_MINUTES["deep"],
+        end,
+    )
+
+
+@patch("livingbot.bot.datetime")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.5)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_when_deep_busy_does_not_respond_on_roll(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_datetime: MagicMock,
+) -> None:
+    mock_datetime.now.return_value = BUSY_NOW
+    user = bot_user()
+    mock_user.return_value = user
+    calendar = busy_calendar(Busyness.deep, datetime(2026, 6, 3, 19, 30))
+    channel = make_channel()
+    bot = make_bot(calendar_store=make_calendar_store(calendar))
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    result = await bot._attempt_response()
+
+    assert result is False
+    channel.send.assert_not_called()
+
+
+@patch("livingbot.bot.datetime")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.5)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_when_free_responds_on_same_roll(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_datetime: MagicMock,
+) -> None:
+    mock_datetime.now.return_value = BUSY_NOW
+    user = bot_user()
+    mock_user.return_value = user
+    channel = make_channel()
+    bot = make_bot()
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    result = await bot._attempt_response()
+
+    assert result is True
+    channel.send.assert_called_once_with("llm response")
+
+
+@patch("livingbot.bot.datetime")
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.uniform", return_value=48.0)
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_rest_and_respond_uses_busy_floor_for_delay_bounds(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_uniform: MagicMock,
+    mock_sleep: AsyncMock,
+    mock_datetime: MagicMock,
+) -> None:
+    mock_datetime.now.return_value = BUSY_NOW
+    user = bot_user()
+    mock_user.return_value = user
+    calendar = busy_calendar(Busyness.deep, datetime(2026, 6, 3, 23, 0))
+    bot = make_bot(calendar_store=make_calendar_store(calendar))
+
+    await bot._rest_and_respond()
+
+    # deep rest floor (45) added to both bounds at fatigue 0: uniform(3+45, 3+45)
+    mock_uniform.assert_called_once_with(48.0, 48.0)
+
+
+@patch("livingbot.bot.datetime")
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.uniform", return_value=48.0)
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_rest_and_respond_caps_delay_at_event_end(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_uniform: MagicMock,
+    mock_sleep: AsyncMock,
+    mock_datetime: MagicMock,
+) -> None:
+    mock_datetime.now.return_value = BUSY_NOW
+    user = bot_user()
+    mock_user.return_value = user
+    calendar = busy_calendar(Busyness.deep, datetime(2026, 6, 3, 18, 40))
+    bot = make_bot(calendar_store=make_calendar_store(calendar))
+
+    await bot._rest_and_respond()
+
+    # event ends in 10 min, so the 48-min nap is capped to 10 + RESUME_BUFFER(1)
+    mock_sleep.assert_called_once_with((10.0 + 1.0) * 60.0)

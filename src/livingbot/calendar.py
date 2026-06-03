@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import date, datetime, timedelta
+from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -9,12 +10,19 @@ from pydantic_ai import Agent
 logger = logging.getLogger(__name__)
 
 
+class Busyness(str, Enum):
+    light = "light"
+    moderate = "moderate"
+    deep = "deep"
+
+
 class PlanEntry(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     activity: str
     location: str
     start: datetime
     end: datetime
+    busyness: Busyness = Busyness.moderate
     note: str = ""
 
 
@@ -60,6 +68,7 @@ class PlannedActivity(BaseModel):
     location: str
     start: datetime
     end: datetime
+    busyness: Busyness = Busyness.moderate
     note: str = ""
 
 
@@ -78,6 +87,10 @@ Rules:
 - Do not overschedule. Leave most of her time open.
 - Each activity needs a start and end datetime that fall within the planned week.
 - location is where she physically is during the activity (e.g. "gym", "home", "city centre").
+- busyness is how unreachable the activity makes her, one of:
+    "deep": fully absorbed, phone away (gym, cinema, an important meeting).
+    "moderate": occupied but can glance at her phone now and then (coffee with a friend, cooking).
+    "light": barely occupied, easily reachable (errands, a relaxed walk, visiting parents).
 Return only valid JSON matching the schema. No extra text.\
 """
 

@@ -16,6 +16,7 @@ from livingbot.relations import Relation, RelationStore, RelationUpdater
 logger = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000
+RESUME_BUFFER = 1.0
 
 
 def _format_message(msg: discord.Message) -> str:
@@ -96,8 +97,19 @@ class LivingBot(discord.Client):
                 self._resting = True
                 asyncio.create_task(self._rest_and_respond())
 
+    def _busy_factors(self, now: datetime) -> tuple[float, float, datetime | None]:
+        entry = self._calendar_store.load().current_entry(now)
+        if entry is None:
+            return 0.0, 0.0, None
+        return (
+            config.BUSYNESS_REPLY_WEIGHT[entry.busyness.value],
+            config.BUSYNESS_REST_MINUTES[entry.busyness.value],
+            entry.end,
+        )
+
     async def _attempt_response(self) -> bool:
-        if random.random() < 1.0 / (self._fatigue + 1.0):
+        reply_weight, _, _ = self._busy_factors(datetime.now())
+        if random.random() < 1.0 / (self._fatigue + 1.0 + reply_weight):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
                 formatted = [_format_message(m) for m in messages]
@@ -154,8 +166,13 @@ class LivingBot(discord.Client):
 
     async def _rest_and_respond(self) -> None:
         while True:
-            max_delay = max(3.0, 5.0 * self._fatigue)
-            actual_delay = random.uniform(3.0, max_delay)
+            now = datetime.now()
+            _, busy_minutes, busy_until = self._busy_factors(now)
+            max_delay = max(3.0, 5.0 * self._fatigue) + busy_minutes
+            actual_delay = random.uniform(3.0 + busy_minutes, max_delay)
+            if busy_until is not None:
+                minutes_left = (busy_until - now).total_seconds() / 60.0
+                actual_delay = min(actual_delay, max(0.0, minutes_left) + RESUME_BUFFER)
             await asyncio.sleep(actual_delay * 60.0)
 
             self._fatigue = max(0.0, self._fatigue - actual_delay / 5.0)
