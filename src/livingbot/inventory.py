@@ -17,6 +17,7 @@ class InventoryItem(BaseModel):
     name: str
     description: str = ""
     acquired_at: datetime = Field(default_factory=datetime.now)
+    last_used_at: datetime = Field(default_factory=datetime.now)
 
     def document(self) -> str:
         if self.description:
@@ -46,6 +47,10 @@ class InventoryStore:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._all)
 
+    async def recent(self, limit: int = 5) -> list[InventoryItem]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._recent, limit)
+
     async def search(self, query: str, limit: int = 5) -> list[InventoryItem]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._search, query, limit)
@@ -54,13 +59,7 @@ class InventoryStore:
         self._collection.upsert(
             ids=[item.id],
             documents=[item.document()],
-            metadatas=[
-                {
-                    "name": item.name,
-                    "description": item.description,
-                    "acquired_at": item.acquired_at.isoformat(),
-                }
-            ],
+            metadatas=[_metadata(item)],
         )
 
     def _remove(self, item_id: str) -> bool:
@@ -77,14 +76,41 @@ class InventoryStore:
         ]
         return sorted(items, key=lambda item: item.acquired_at)
 
+    def _recent(self, limit: int) -> list[InventoryItem]:
+        items = self._all()
+        items.sort(key=lambda item: item.last_used_at, reverse=True)
+        return items[:limit]
+
     def _search(self, query: str, limit: int) -> list[InventoryItem]:
         result = self._collection.query(
             query_texts=[query], n_results=limit, include=["metadatas"]
         )
-        return [
+        items = [
             _to_item(item_id, metadata)
             for item_id, metadata in zip(result["ids"][0], result["metadatas"][0])
         ]
+        self._touch(items)
+        return items
+
+    def _touch(self, items: list[InventoryItem]) -> None:
+        if not items:
+            return
+        now = datetime.now()
+        for item in items:
+            item.last_used_at = now
+        self._collection.update(
+            ids=[item.id for item in items],
+            metadatas=[_metadata(item) for item in items],
+        )
+
+
+def _metadata(item: InventoryItem) -> dict:
+    return {
+        "name": item.name,
+        "description": item.description,
+        "acquired_at": item.acquired_at.isoformat(),
+        "last_used_at": item.last_used_at.isoformat(),
+    }
 
 
 def _to_item(item_id: str, metadata: dict) -> InventoryItem:
@@ -93,4 +119,5 @@ def _to_item(item_id: str, metadata: dict) -> InventoryItem:
         name=metadata["name"],
         description=metadata["description"],
         acquired_at=metadata["acquired_at"],
+        last_used_at=metadata["last_used_at"],
     )

@@ -25,13 +25,14 @@ def test_document_is_name_only_when_description_empty() -> None:
     assert document == "strój kąpielowy"
 
 
-async def test_add_upserts_item_with_datetime_serialized_to_isoformat() -> None:
+async def test_add_upserts_item_with_datetimes_serialized_to_isoformat() -> None:
     store, collection = make_store()
     item = InventoryItem(
         id="abc123",
         name="biała spódniczka",
         description="w czerwone kropki",
         acquired_at=datetime(2026, 6, 1, 12, 0),
+        last_used_at=datetime(2026, 6, 2, 9, 0),
     )
 
     await store.add(item)
@@ -44,6 +45,7 @@ async def test_add_upserts_item_with_datetime_serialized_to_isoformat() -> None:
                 "name": "biała spódniczka",
                 "description": "w czerwone kropki",
                 "acquired_at": "2026-06-01T12:00:00",
+                "last_used_at": "2026-06-02T09:00:00",
             }
         ],
     )
@@ -54,14 +56,55 @@ async def test_all_returns_items_sorted_by_acquired_at() -> None:
     collection.get.return_value = {
         "ids": ["newer", "older"],
         "metadatas": [
-            {"name": "kozaki", "description": "", "acquired_at": "2026-06-02T10:00:00"},
-            {"name": "szalik", "description": "", "acquired_at": "2026-06-01T10:00:00"},
+            {
+                "name": "kozaki",
+                "description": "",
+                "acquired_at": "2026-06-02T10:00:00",
+                "last_used_at": "2026-06-02T10:00:00",
+            },
+            {
+                "name": "szalik",
+                "description": "",
+                "acquired_at": "2026-06-01T10:00:00",
+                "last_used_at": "2026-06-01T10:00:00",
+            },
         ],
     }
 
     items = await store.all()
 
     assert [item.name for item in items] == ["szalik", "kozaki"]
+
+
+async def test_recent_returns_most_recently_used_items_capped_to_limit() -> None:
+    store, collection = make_store()
+    collection.get.return_value = {
+        "ids": ["a", "b", "c"],
+        "metadatas": [
+            {
+                "name": "szalik",
+                "description": "",
+                "acquired_at": "2026-06-01T10:00:00",
+                "last_used_at": "2026-06-01T10:00:00",
+            },
+            {
+                "name": "kozaki",
+                "description": "",
+                "acquired_at": "2026-06-01T10:00:00",
+                "last_used_at": "2026-06-03T10:00:00",
+            },
+            {
+                "name": "torebka",
+                "description": "",
+                "acquired_at": "2026-06-01T10:00:00",
+                "last_used_at": "2026-06-02T10:00:00",
+            },
+        ],
+    }
+
+    items = await store.recent(2)
+
+    assert [item.name for item in items] == ["kozaki", "torebka"]
 
 
 async def test_remove_returns_false_when_item_absent() -> None:
@@ -94,6 +137,7 @@ async def test_search_maps_query_results_to_items() -> None:
                     "name": "strój kąpielowy",
                     "description": "niebieski",
                     "acquired_at": "2026-06-01T10:00:00",
+                    "last_used_at": "2026-06-01T10:00:00",
                 }
             ]
         ],
@@ -103,3 +147,26 @@ async def test_search_maps_query_results_to_items() -> None:
 
     assert len(items) == 1
     assert items[0].name == "strój kąpielowy"
+
+
+async def test_search_bumps_last_used_at_of_returned_items() -> None:
+    store, collection = make_store()
+    collection.query.return_value = {
+        "ids": [["abc123"]],
+        "metadatas": [
+            [
+                {
+                    "name": "strój kąpielowy",
+                    "description": "niebieski",
+                    "acquired_at": "2026-06-01T10:00:00",
+                    "last_used_at": "2026-06-01T10:00:00",
+                }
+            ]
+        ],
+    }
+
+    items = await store.search("coś na basen")
+
+    collection.update.assert_called_once()
+    assert collection.update.call_args.kwargs["ids"] == ["abc123"]
+    assert items[0].last_used_at > datetime(2026, 6, 1, 10, 0)

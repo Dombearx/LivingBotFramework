@@ -28,6 +28,41 @@ pytestmark = pytest.mark.skipif(
 
 NOW = datetime(2026, 6, 3, 14, 30)
 
+RECENTLY_USED = datetime(2026, 6, 2, 12, 0)
+LONG_AGO = datetime(2026, 4, 1, 12, 0)
+
+
+def _recent_filler_items() -> list[InventoryItem]:
+    """Five recently-used everyday items that crowd out older things from the slice
+    of the inventory shown in the prompt, forcing a search to find anything else."""
+    return [
+        InventoryItem(
+            name="czarna sukienka koktajlowa",
+            description="elegancka, do kolan",
+            last_used_at=RECENTLY_USED,
+        ),
+        InventoryItem(
+            name="kozaki za kolano",
+            description="czarne, skórzane",
+            last_used_at=RECENTLY_USED,
+        ),
+        InventoryItem(
+            name="skórzana ramoneska",
+            description="brązowa kurtka",
+            last_used_at=RECENTLY_USED,
+        ),
+        InventoryItem(
+            name="srebrny naszyjnik z księżycem",
+            description="drobny, na cienkim łańcuszku",
+            last_used_at=RECENTLY_USED,
+        ),
+        InventoryItem(
+            name="jedwabna apaszka w kwiaty",
+            description="pastelowa",
+            last_used_at=RECENTLY_USED,
+        ),
+    ]
+
 
 def _tool_was_called(result, tool_name: str) -> bool:
     for message in result.all_messages():
@@ -101,9 +136,16 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
 ) -> None:
-    """Explicit: when asked to check her inventory for something, she should search it."""
+    """Explicit: when asked to check her inventory for something not in the recently
+    used slice shown in the prompt, she should search it rather than guess."""
+    for item in _recent_filler_items():
+        await inventory_store.add(item)
     await inventory_store.add(
-        InventoryItem(name="strój kąpielowy", description="niebieski, jednoczęściowy")
+        InventoryItem(
+            name="strój kąpielowy",
+            description="niebieski, jednoczęściowy",
+            last_used_at=LONG_AGO,
+        )
     )
     channel = MagicMock()
     user_messages = [
@@ -198,15 +240,18 @@ async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_pa
     inventory_store: InventoryStore,
 ) -> None:
     """Implicit, real conversation: invited to a themed party, she should look through
-    what she owns to figure out if she has a suitable outfit, without being told to."""
-    for item in [
-        InventoryItem(name="neonowe legginsy", description="jaskrawe różowe, lata 80"),
-        InventoryItem(name="czarna sukienka koktajlowa", description="elegancka"),
-        InventoryItem(name="kozaki za kolano", description="czarne, skórzane"),
-        InventoryItem(name="kurtka jeansowa", description="oversize, z naszywkami"),
-        InventoryItem(name="naszyjnik z księżycem", description="srebrny"),
-    ]:
+    what she owns to figure out if she has a suitable outfit, without being told to.
+    The matching item is not in the recently used slice shown in the prompt, so she has
+    to search to find it."""
+    for item in _recent_filler_items():
         await inventory_store.add(item)
+    await inventory_store.add(
+        InventoryItem(
+            name="neonowe legginsy",
+            description="jaskrawe różowe, w stylu lat 80",
+            last_used_at=LONG_AGO,
+        )
+    )
     channel = MagicMock()
     user_messages = [
         "[id:2600] [2026-06-03 14:30:00] Bartek: Mugda w piątek robimy imprezę w "

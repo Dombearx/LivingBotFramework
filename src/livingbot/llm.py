@@ -60,7 +60,7 @@ class LLMClient:
             prompt = f"What I remember:\n{memory_block}\n\n{prompt}"
         if relations:
             prompt = _build_relations_block(relations) + prompt
-        prompt = _build_inventory_block(await inventory_store.all()) + prompt
+        prompt = _build_inventory_block(await inventory_store.recent()) + prompt
         prompt = _build_calendar_block(calendar_store.load(), now) + prompt
         return await self._agent.run(prompt, deps=deps)
 
@@ -91,8 +91,8 @@ def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
 
 def _build_inventory_block(items: list[InventoryItem]) -> str:
     lines = [
-        "Your belongings (only special items you own; assume you always have ordinary "
-        "basics like everyday clothes, food and toiletries):"
+        "Your most recently used special belongings (you may own more than this; assume "
+        "you always have ordinary basics like everyday clothes, food and toiletries):"
     ]
     if items:
         for item in items:
@@ -103,9 +103,10 @@ def _build_inventory_block(items: list[InventoryItem]) -> str:
     else:
         lines.append("  (nothing special yet)")
     lines.append(
-        "When you get, buy or make a specific item, record it with add_item; when you "
-        "use it up, lose or give it away, drop it with remove_item. Use search_inventory "
-        "to check whether you own something suitable for what you are about to do."
+        "This list is only a recent slice, so search_inventory whenever you need to know "
+        "if you own something not shown above. When you get, buy or make a specific item, "
+        "record it with add_item; when you use it up, lose or give it away, drop it with "
+        "remove_item."
     )
     return "\n".join(lines) + "\n\n"
 

@@ -60,3 +60,11 @@ def test_build_inventory_block_when_empty_notes_nothing_special() -> None:
     block = _build_inventory_block([])
 
     assert "nothing special yet" in block
+
+
+def test_build_inventory_block_directs_to_search_for_items_not_shown() -> None:
+    item = InventoryItem(name="biała spódniczka")
+
+    block = _build_inventory_block([item])
+
+    assert "search_inventory" in block
