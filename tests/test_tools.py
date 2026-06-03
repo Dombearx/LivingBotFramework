@@ -2,7 +2,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from livingbot.calendar import Calendar, CalendarStore, PlanEntry
+from livingbot.calendar import Busyness, Calendar, CalendarStore, PlanEntry
 from livingbot.tools import BotDeps, add_plan, remove_plan
 
 
@@ -43,6 +43,22 @@ async def test_add_plan_returns_id_of_new_entry(tmp_path) -> None:
 
     new_id = store.load().entries[0].id
     assert new_id in result
+
+
+async def test_add_plan_stores_busyness(tmp_path) -> None:
+    store = CalendarStore(tmp_path, home_location="home")
+    ctx = make_ctx(store)
+
+    await add_plan(
+        ctx,
+        activity="gym",
+        location="gym",
+        start=datetime(2026, 6, 4, 18, 0),
+        end=datetime(2026, 6, 4, 19, 30),
+        busyness=Busyness.deep,
+    )
+
+    assert store.load().entries[0].busyness == Busyness.deep
 
 
 async def test_remove_plan_deletes_matching_entry(tmp_path) -> None:
