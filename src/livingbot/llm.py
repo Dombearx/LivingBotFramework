@@ -5,8 +5,17 @@ from pydantic import BaseModel
 from pydantic_ai import Agent, AgentRunResult
 
 from livingbot.calendar import Calendar, CalendarStore
+from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.relations import Relation
-from livingbot.tools import BotDeps, add_plan, load_context, remove_plan
+from livingbot.tools import (
+    BotDeps,
+    add_item,
+    add_plan,
+    load_context,
+    remove_item,
+    remove_plan,
+    search_inventory,
+)
 
 
 class LLMConfig(BaseModel):
@@ -20,7 +29,14 @@ class LLMClient:
         self._agent: Agent[BotDeps, str] = Agent(
             config.model,
             system_prompt=config.system_prompt,
-            tools=[load_context, add_plan, remove_plan],
+            tools=[
+                load_context,
+                add_plan,
+                remove_plan,
+                add_item,
+                remove_item,
+                search_inventory,
+            ],
         )
 
     async def complete(
@@ -28,17 +44,23 @@ class LLMClient:
         user_messages: list[str],
         channel: discord.abc.Messageable,
         calendar_store: CalendarStore,
+        inventory_store: InventoryStore,
         now: datetime,
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
     ) -> AgentRunResult[str]:
-        deps = BotDeps(channel=channel, calendar_store=calendar_store)
+        deps = BotDeps(
+            channel=channel,
+            calendar_store=calendar_store,
+            inventory_store=inventory_store,
+        )
         prompt = "\n".join(user_messages)
         if memories:
             memory_block = "\n".join(f"- {m}" for m in memories)
             prompt = f"What I remember:\n{memory_block}\n\n{prompt}"
         if relations:
             prompt = _build_relations_block(relations) + prompt
+        prompt = _build_inventory_block(await inventory_store.recent()) + prompt
         prompt = _build_calendar_block(calendar_store.load(), now) + prompt
         return await self._agent.run(prompt, deps=deps)
 
@@ -64,6 +86,28 @@ def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
             if entry.note:
                 line += f" ({entry.note})"
             lines.append(line)
+    return "\n".join(lines) + "\n\n"
+
+
+def _build_inventory_block(items: list[InventoryItem]) -> str:
+    lines = [
+        "Your most recently used special belongings (you may own more than this; assume "
+        "you always have ordinary basics like everyday clothes, food and toiletries):"
+    ]
+    if items:
+        for item in items:
+            line = f"  [id:{item.id}] {item.name}"
+            if item.description:
+                line += f" — {item.description}"
+            lines.append(line)
+    else:
+        lines.append("  (nothing special yet)")
+    lines.append(
+        "This list is only a recent slice, so search_inventory whenever you need to know "
+        "if you own something not shown above. When you get, buy or make a specific item, "
+        "record it with add_item; when you use it up, lose or give it away, drop it with "
+        "remove_item."
+    )
     return "\n".join(lines) + "\n\n"
 
 

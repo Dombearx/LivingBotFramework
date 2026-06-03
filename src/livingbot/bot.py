@@ -8,6 +8,7 @@ import discord
 
 from livingbot import config
 from livingbot.calendar import CalendarStore, WeekPlanner
+from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient, LLMConfig
 from livingbot.memory import MemoryStore
 from livingbot.queue import MessageQueue
@@ -37,6 +38,7 @@ class LivingBot(discord.Client):
         relation_updater: RelationUpdater,
         calendar_store: CalendarStore,
         week_planner: WeekPlanner,
+        inventory_store: InventoryStore,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -49,6 +51,7 @@ class LivingBot(discord.Client):
         self._relation_updater = relation_updater
         self._calendar_store = calendar_store
         self._week_planner = week_planner
+        self._inventory_store = inventory_store
 
     async def setup_hook(self) -> None:
         self.loop.create_task(self._life_loop())
@@ -110,6 +113,7 @@ class LivingBot(discord.Client):
                     formatted,
                     channel,
                     self._calendar_store,
+                    self._inventory_store,
                     datetime.now(),
                     memories,
                     relations,
@@ -188,6 +192,7 @@ def run() -> None:
     relation_updater = RelationUpdater(config.LLM_MODEL)
     calendar_store = CalendarStore(config.CALENDAR_DATA_PATH, config.HOME_LOCATION)
     week_planner = WeekPlanner(config.LLM_MODEL)
+    inventory_store = InventoryStore.create(config.INVENTORY_DATA_PATH)
     bot = LivingBot(
         llm_client=llm_client,
         memory_store=memory_store,
@@ -195,6 +200,7 @@ def run() -> None:
         relation_updater=relation_updater,
         calendar_store=calendar_store,
         week_planner=week_planner,
+        inventory_store=inventory_store,
         intents=intents,
     )
     bot.run(token, log_handler=None)

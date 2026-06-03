@@ -15,6 +15,7 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import config
 from livingbot.calendar import CalendarStore
+from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient, LLMConfig
 
 pytestmark = pytest.mark.skipif(
@@ -26,6 +27,11 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def calendar_store(tmp_path) -> CalendarStore:
     return CalendarStore(tmp_path, home_location="home")
+
+
+@pytest.fixture
+def inventory_store(tmp_path) -> InventoryStore:
+    return InventoryStore.create(tmp_path / "inventory")
 
 
 def _make_history_message(id: int, author: str, content: str) -> MagicMock:
@@ -65,7 +71,9 @@ def client() -> LLMClient:
 
 
 async def test_load_context_called_when_explicitly_asked(
-    client: LLMClient, calendar_store: CalendarStore
+    client: LLMClient,
+    calendar_store: CalendarStore,
+    inventory_store: InventoryStore,
 ) -> None:
     """Sanity check: bot fetches history when user directly asks for it."""
     channel = _make_channel(
@@ -79,7 +87,7 @@ async def test_load_context_called_when_explicitly_asked(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, datetime.now()
+        user_messages, channel, calendar_store, inventory_store, datetime.now()
     )
 
     assert _load_context_was_called(result), (
@@ -90,6 +98,7 @@ async def test_load_context_called_when_explicitly_asked(
 async def test_load_context_called_for_polish_history_question(
     client: LLMClient,
     calendar_store: CalendarStore,
+    inventory_store: InventoryStore,
 ) -> None:
     """Bot fetches history when asked in Polish what was discussed earlier."""
     channel = _make_channel(
@@ -104,7 +113,7 @@ async def test_load_context_called_for_polish_history_question(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, datetime.now()
+        user_messages, channel, calendar_store, inventory_store, datetime.now()
     )
 
     assert _load_context_was_called(result), (
@@ -115,6 +124,7 @@ async def test_load_context_called_for_polish_history_question(
 async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     client: LLMClient,
     calendar_store: CalendarStore,
+    inventory_store: InventoryStore,
 ) -> None:
     """Bot fetches history when asked to recall what a specific person wrote."""
     channel = _make_channel(
@@ -129,7 +139,7 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, datetime.now()
+        user_messages, channel, calendar_store, inventory_store, datetime.now()
     )
 
     assert _load_context_was_called(result), (
@@ -140,6 +150,7 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
 async def test_load_context_called_to_summarize_channel_discussion(
     client: LLMClient,
     calendar_store: CalendarStore,
+    inventory_store: InventoryStore,
 ) -> None:
     """Bot fetches history when asked to summarize the recent discussion."""
     channel = _make_channel(
@@ -156,7 +167,7 @@ async def test_load_context_called_to_summarize_channel_discussion(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, datetime.now()
+        user_messages, channel, calendar_store, inventory_store, datetime.now()
     )
 
     assert _load_context_was_called(result), (
@@ -167,6 +178,7 @@ async def test_load_context_called_to_summarize_channel_discussion(
 async def test_load_context_called_for_implicit_context_reference(
     client: LLMClient,
     calendar_store: CalendarStore,
+    inventory_store: InventoryStore,
 ) -> None:
     """Bot fetches history when user implicitly refers to something decided earlier."""
     channel = _make_channel(
@@ -183,7 +195,7 @@ async def test_load_context_called_for_implicit_context_reference(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, datetime.now()
+        user_messages, channel, calendar_store, inventory_store, datetime.now()
     )
 
     assert _load_context_was_called(result), (
