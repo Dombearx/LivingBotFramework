@@ -309,11 +309,13 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
 
     await bot._attempt_response()
 
+    from livingbot.relations import Relation
+
     llm_client.complete.assert_called_once_with(
         [_format_message(msg1), _format_message(msg2)],
         channel,
         [],
-        None,
+        [Relation(user_id="123"), Relation(user_id="123")],
     )
 
 

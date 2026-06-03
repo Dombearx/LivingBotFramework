@@ -9,7 +9,7 @@ from livingbot import config
 from livingbot.llm import LLMClient, LLMConfig
 from livingbot.memory import MemoryStore
 from livingbot.queue import MessageQueue
-from livingbot.relations import RelationStore, RelationUpdater
+from livingbot.relations import Relation, RelationStore, RelationUpdater
 
 logger = logging.getLogger(__name__)
 
@@ -72,21 +72,18 @@ class LivingBot(discord.Client):
                 memories = await self._memory_store.retrieve(
                     "\n".join(formatted), user_ids=author_ids
                 )
-                sole_author = author_ids[0] if len(author_ids) == 1 else None
-                relation = (
-                    self._relation_store.load(sole_author) if sole_author else None
-                )
+                relations = [self._relation_store.load(uid) for uid in author_ids]
                 result = await self._llm_client.complete(
-                    formatted, channel, memories, relation
+                    formatted, channel, memories, relations
                 )
                 await _send_chunked(channel, result.output)
+                sole_author = author_ids[0] if len(author_ids) == 1 else None
                 asyncio.create_task(
                     self._store_memories(messages, result.output, sole_author)
                 )
-                if sole_author and relation is not None:
-                    asyncio.create_task(
-                        self._update_relation(relation, messages, result.output)
-                    )
+                asyncio.create_task(
+                    self._update_relations(relations, messages, result.output)
+                )
             return True
         return False
 
@@ -102,9 +99,9 @@ class LivingBot(discord.Client):
         except Exception:
             logger.exception("Failed to store memories for user_id=%s", user_id)
 
-    async def _update_relation(
+    async def _update_relations(
         self,
-        relation,
+        relations: list[Relation],
         messages: list[discord.Message],
         bot_response: str,
     ) -> None:
@@ -112,9 +109,10 @@ class LivingBot(discord.Client):
             {"role": "user", "content": _format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
-        updated = await self._relation_updater.update(relation, conversation)
-        self._relation_store.save(updated)
-        logger.debug("Updated relation for user_id=%s", relation.user_id)
+        for relation in relations:
+            updated = await self._relation_updater.update(relation, conversation)
+            self._relation_store.save(updated)
+            logger.debug("Updated relation for user_id=%s", relation.user_id)
 
     async def _rest_and_respond(self) -> None:
         while True:
