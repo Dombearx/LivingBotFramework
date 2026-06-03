@@ -46,15 +46,18 @@ def make_relation_updater() -> MagicMock:
 
 
 def make_bot(
-    llm_client: MagicMock | None = None, memory_store: MagicMock | None = None
+    llm_client: MagicMock | None = None,
+    memory_store: MagicMock | None = None,
+    relation_store: MagicMock | None = None,
+    relation_updater: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
     return LivingBot(
         llm_client=llm_client or make_llm_client(),
         memory_store=memory_store or make_memory_store(),
-        relation_store=make_relation_store(),
-        relation_updater=make_relation_updater(),
+        relation_store=relation_store or make_relation_store(),
+        relation_updater=relation_updater or make_relation_updater(),
         intents=intents,
     )
 
@@ -495,3 +498,106 @@ async def test_send_chunked_when_response_exceeds_limit_splits_into_chunks() -> 
     assert channel.send.call_count == 2
     channel.send.assert_any_call("x" * 2000)
     channel.send.assert_any_call("x" * 500)
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_loads_relation_for_each_unique_author(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    relation_store = make_relation_store()
+    bot = make_bot(relation_store=relation_store)
+    author_a, author_b = other_user(), other_user()
+    channel = make_channel()
+    msg1 = make_message(author=author_a, mentions=[user], channel=channel)
+    msg2 = make_message(author=author_b, mentions=[user], channel=channel)
+    bot._queue.add(msg1)
+    bot._queue.add(msg2)
+
+    await bot._attempt_response()
+
+    assert relation_store.load.call_count == 2
+    relation_store.load.assert_any_call(str(author_a.id))
+    relation_store.load.assert_any_call(str(author_b.id))
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_does_not_load_duplicate_author_twice(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    relation_store = make_relation_store()
+    bot = make_bot(relation_store=relation_store)
+    author = other_user()
+    channel = make_channel()
+    msg1 = make_message(author=author, mentions=[user], channel=channel)
+    msg2 = make_message(author=author, mentions=[user], channel=channel)
+    bot._queue.add(msg1)
+    bot._queue.add(msg2)
+
+    await bot._attempt_response()
+
+    relation_store.load.assert_called_once_with(str(author.id))
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_update_relations_calls_updater_and_saves_for_each_relation(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    from livingbot.relations import Relation
+
+    user = bot_user()
+    mock_user.return_value = user
+    relation_a = Relation(user_id="aaa", attitude=10)
+    relation_b = Relation(user_id="bbb", attitude=-5)
+    updated_a = Relation(user_id="aaa", attitude=20)
+    updated_b = Relation(user_id="bbb", attitude=-10)
+
+    relation_updater = make_relation_updater()
+    relation_updater.update = AsyncMock(side_effect=[updated_a, updated_b])
+    relation_store = make_relation_store()
+    bot = make_bot(relation_store=relation_store, relation_updater=relation_updater)
+    msg = make_message(author=other_user(), mentions=[user])
+
+    await bot._update_relations([relation_a, relation_b], [msg], "bot reply")
+
+    assert relation_updater.update.call_count == 2
+    relation_store.save.assert_any_call(updated_a)
+    relation_store.save.assert_any_call(updated_b)
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_update_relations_includes_bot_response_in_conversation(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    from livingbot.relations import Relation
+
+    user = bot_user()
+    mock_user.return_value = user
+    relation = Relation(user_id="aaa")
+    relation_updater = make_relation_updater()
+    bot = make_bot(relation_updater=relation_updater)
+    msg = make_message(author=other_user(), mentions=[user])
+    msg.content = "hey bot"
+
+    await bot._update_relations([relation], [msg], "my reply")
+
+    conversation = relation_updater.update.call_args.args[1]
+    roles = [turn["role"] for turn in conversation]
+    contents = [turn["content"] for turn in conversation]
+    assert roles[-1] == "assistant"
+    assert contents[-1] == "my reply"
