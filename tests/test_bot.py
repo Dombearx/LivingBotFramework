@@ -1,8 +1,10 @@
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from datetime import datetime
+from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
 
 from livingbot.bot import LivingBot, _format_message, _send_chunked
+from livingbot.calendar import Calendar, PlanEntry
 from livingbot.relations import Relation
 
 
@@ -42,11 +44,30 @@ def make_relation_updater() -> MagicMock:
     return updater
 
 
+def make_calendar_store(calendar: Calendar | None = None) -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(
+        return_value=calendar
+        if calendar is not None
+        else Calendar(home_location="home")
+    )
+    store.save = MagicMock()
+    return store
+
+
+def make_week_planner(entries: list[PlanEntry] | None = None) -> MagicMock:
+    planner = MagicMock()
+    planner.plan = AsyncMock(return_value=entries or [])
+    return planner
+
+
 def make_bot(
     llm_client: MagicMock | None = None,
     memory_store: MagicMock | None = None,
     relation_store: MagicMock | None = None,
     relation_updater: MagicMock | None = None,
+    calendar_store: MagicMock | None = None,
+    week_planner: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
@@ -55,6 +76,8 @@ def make_bot(
         memory_store=memory_store or make_memory_store(),
         relation_store=relation_store or make_relation_store(),
         relation_updater=relation_updater or make_relation_updater(),
+        calendar_store=calendar_store or make_calendar_store(),
+        week_planner=week_planner or make_week_planner(),
         intents=intents,
     )
 
@@ -312,6 +335,8 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
     llm_client.complete.assert_called_once_with(
         [_format_message(msg1), _format_message(msg2)],
         channel,
+        bot._calendar_store,
+        ANY,
         [],
         [Relation(user_id="123"), Relation(user_id="123")],
     )
@@ -388,7 +413,7 @@ async def test_attempt_response_passes_retrieved_memories_to_llm(
 
     await bot._attempt_response()
 
-    assert llm_client.complete.call_args.args[2] == ["remember this"]
+    assert llm_client.complete.call_args.args[4] == ["remember this"]
 
 
 @patch("random.random", return_value=0.0)
@@ -592,3 +617,70 @@ async def test_update_relations_includes_bot_response_in_conversation(
     contents = [turn["content"] for turn in conversation]
     assert roles[-1] == "assistant"
     assert contents[-1] == "my reply"
+
+
+@patch("livingbot.bot.datetime")
+async def test_ensure_week_planned_when_week_unplanned_plans_and_saves(
+    mock_datetime: MagicMock,
+) -> None:
+    mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
+    entry = PlanEntry(
+        activity="gym",
+        location="gym",
+        start=datetime(2026, 6, 4, 18, 0),
+        end=datetime(2026, 6, 4, 19, 30),
+    )
+    calendar_store = make_calendar_store(Calendar(home_location="home"))
+    week_planner = make_week_planner([entry])
+    bot = make_bot(calendar_store=calendar_store, week_planner=week_planner)
+
+    await bot._ensure_week_planned()
+
+    week_start = datetime(2026, 6, 1).date()
+    week_planner.plan.assert_called_once_with(week_start, ["gym"], "home")
+    saved = calendar_store.save.call_args.args[0]
+    assert saved.entries == [entry]
+    assert saved.planned_week_start == week_start
+
+
+@patch("livingbot.bot.datetime")
+async def test_ensure_week_planned_when_week_already_planned_does_not_replan(
+    mock_datetime: MagicMock,
+) -> None:
+    mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
+    calendar = Calendar(
+        home_location="home", planned_week_start=datetime(2026, 6, 1).date()
+    )
+    week_planner = make_week_planner()
+    bot = make_bot(
+        calendar_store=make_calendar_store(calendar), week_planner=week_planner
+    )
+
+    await bot._ensure_week_planned()
+
+    week_planner.plan.assert_not_called()
+
+
+@patch("livingbot.bot.datetime")
+async def test_ensure_week_planned_prunes_finished_entries(
+    mock_datetime: MagicMock,
+) -> None:
+    mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
+    finished = PlanEntry(
+        activity="gym",
+        location="gym",
+        start=datetime(2026, 6, 1, 18, 0),
+        end=datetime(2026, 6, 1, 19, 30),
+    )
+    calendar = Calendar(
+        home_location="home",
+        planned_week_start=datetime(2026, 6, 1).date(),
+        entries=[finished],
+    )
+    calendar_store = make_calendar_store(calendar)
+    bot = make_bot(calendar_store=calendar_store)
+
+    await bot._ensure_week_planned()
+
+    saved = calendar_store.save.call_args.args[0]
+    assert saved.entries == []
