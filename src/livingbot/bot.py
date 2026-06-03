@@ -96,8 +96,18 @@ class LivingBot(discord.Client):
                 self._resting = True
                 asyncio.create_task(self._rest_and_respond())
 
+    def _busy_factors(self, now: datetime) -> tuple[float, float]:
+        entry = self._calendar_store.load().current_entry(now)
+        if entry is None:
+            return 0.0, 0.0
+        return (
+            config.BUSYNESS_REPLY_WEIGHT[entry.busyness.value],
+            config.BUSYNESS_REST_MINUTES[entry.busyness.value],
+        )
+
     async def _attempt_response(self) -> bool:
-        if random.random() < 1.0 / (self._fatigue + 1.0):
+        reply_weight, _ = self._busy_factors(datetime.now())
+        if random.random() < 1.0 / (self._fatigue + 1.0 + reply_weight):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
                 formatted = [_format_message(m) for m in messages]
@@ -154,8 +164,9 @@ class LivingBot(discord.Client):
 
     async def _rest_and_respond(self) -> None:
         while True:
-            max_delay = max(3.0, 5.0 * self._fatigue)
-            actual_delay = random.uniform(3.0, max_delay)
+            _, busy_minutes = self._busy_factors(datetime.now())
+            max_delay = max(3.0, 5.0 * self._fatigue) + busy_minutes
+            actual_delay = random.uniform(3.0 + busy_minutes, max_delay)
             await asyncio.sleep(actual_delay * 60.0)
 
             self._fatigue = max(0.0, self._fatigue - actual_delay / 5.0)

@@ -6,7 +6,7 @@ import discord
 from pydantic import Field
 from pydantic_ai import RunContext
 
-from livingbot.calendar import CalendarStore, PlanEntry
+from livingbot.calendar import Busyness, CalendarStore, PlanEntry
 
 
 @dataclass
@@ -43,15 +43,24 @@ async def add_plan(
     location: str,
     start: datetime,
     end: datetime,
+    busyness: Busyness = Busyness.moderate,
     note: str = "",
 ) -> str:
     """Add something to your own calendar, e.g. a gym session or a multi-day trip.
     start and end are datetimes; location is where you physically are during it.
+    busyness is how unreachable it makes you: "deep" when you are fully absorbed and
+    your phone is away (gym, cinema), "moderate" when you can glance at it now and
+    then, "light" when you are barely occupied (errands, visiting parents).
     Use this whenever you decide to do something that changes where you are or how
     your time is spent. Returns the new entry's id."""
     calendar = ctx.deps.calendar_store.load()
     entry = PlanEntry(
-        activity=activity, location=location, start=start, end=end, note=note
+        activity=activity,
+        location=location,
+        start=start,
+        end=end,
+        busyness=busyness,
+        note=note,
     )
     calendar.entries.append(entry)
     ctx.deps.calendar_store.save(calendar)

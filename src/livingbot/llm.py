@@ -4,7 +4,7 @@ import discord
 from pydantic import BaseModel
 from pydantic_ai import Agent, AgentRunResult
 
-from livingbot.calendar import Calendar, CalendarStore
+from livingbot.calendar import Busyness, Calendar, CalendarStore
 from livingbot.relations import Relation
 from livingbot.tools import BotDeps, add_plan, load_context, remove_plan
 
@@ -43,13 +43,20 @@ class LLMClient:
         return await self._agent.run(prompt, deps=deps)
 
 
+_BUSYNESS_DESCRIPTION = {
+    Busyness.light: "barely occupied and can reply easily",
+    Busyness.moderate: "occupied but glancing at your phone now and then",
+    Busyness.deep: "fully absorbed and hard to reach",
+}
+
+
 def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
     lines: list[str] = [f"Right now it is {now:%A, %Y-%m-%d %H:%M}."]
     current = calendar.current_entry(now)
     if current is not None:
         lines.append(
-            f"You are at {current.location}, busy with {current.activity} "
-            f"until {current.end:%H:%M}."
+            f"You are at {current.location}, {current.activity} "
+            f"until {current.end:%H:%M} — {_BUSYNESS_DESCRIPTION[current.busyness]}."
         )
     else:
         lines.append(f"You are at {calendar.home_location} with nothing scheduled.")
