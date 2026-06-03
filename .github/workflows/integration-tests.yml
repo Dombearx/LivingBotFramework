@@ -2,6 +2,16 @@ name: Integration Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      test_group:
+        description: "Test group to run"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - context_tool
+          - relation_updater
 
 jobs:
   integration-test:
@@ -20,4 +30,9 @@ jobs:
       - name: Run integration tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: uv run pytest tests/integration/
+        run: |
+          case "${{ inputs.test_group }}" in
+            context_tool)     uv run pytest tests/integration/test_load_context_tool.py ;;
+            relation_updater) uv run pytest tests/integration/test_relation_updater.py ;;
+            *)                uv run pytest tests/integration/ ;;
+          esac
