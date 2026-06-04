@@ -119,20 +119,20 @@ _MOOD_BEHAVIOURS: list[tuple[float, str]] = [
         "You might volunteer things you wouldn't normally share. "
         "Energy is high and it shows in how you write.",
     ),
-    (
-        101,
-        "You're on top of the world right now — bubbly, enthusiastic, hard to bring down. "
-        "Replies are expressive and warm. You joke around freely, you're interested in everything. "
-        "It's a good day and you can't quite hide it.",
-    ),
 ]
+
+_MOOD_TOP = (
+    "You're on top of the world right now — bubbly, enthusiastic, hard to bring down. "
+    "Replies are expressive and warm. You joke around freely, you're interested in everything. "
+    "It's a good day and you can't quite hide it."
+)
 
 
 def _mood_behaviour(value: float) -> str:
     for threshold, description in _MOOD_BEHAVIOURS:
         if value < threshold:
             return description
-    return _MOOD_BEHAVIOURS[-1][1]
+    return _MOOD_TOP
 
 
 def build_mood_block(mood: Mood, now: datetime) -> str:
