@@ -203,7 +203,9 @@ def test_apply_interaction_delta_does_not_go_below_0() -> None:
 
 
 @patch("livingbot.mood.random.uniform", return_value=8.0)
-def test_apply_interaction_delta_large_positive_scales_to_max_boost(mock_uniform) -> None:
+def test_apply_interaction_delta_large_positive_scales_to_max_boost(
+    mock_uniform,
+) -> None:
     mood = Mood(value=50.0)
 
     result = apply_interaction_delta(mood, 100)
@@ -212,7 +214,9 @@ def test_apply_interaction_delta_large_positive_scales_to_max_boost(mock_uniform
 
 
 @patch("livingbot.mood.random.uniform", return_value=10.0)
-def test_apply_interaction_delta_large_negative_scales_to_max_drop(mock_uniform) -> None:
+def test_apply_interaction_delta_large_negative_scales_to_max_drop(
+    mock_uniform,
+) -> None:
     mood = Mood(value=50.0)
 
     result = apply_interaction_delta(mood, -100)
