@@ -8,6 +8,7 @@ from pydantic_ai import RunContext
 
 from livingbot.calendar import CalendarStore, PlanEntry
 from livingbot.inventory import InventoryItem, InventoryStore
+from livingbot.spending import POINT_COST, SpendCategory, SpendingStore
 
 
 @dataclass
@@ -15,6 +16,7 @@ class BotDeps:
     channel: discord.abc.Messageable
     calendar_store: CalendarStore
     inventory_store: InventoryStore
+    spending_store: SpendingStore
 
 
 async def load_context(
@@ -108,3 +110,43 @@ async def search_inventory(
         + (f" — {item.description}" if item.description else "")
         for item in items
     )
+
+
+async def check_budget(ctx: RunContext[BotDeps], category: SpendCategory) -> str:
+    """Check whether your spending budget allows a purchase in this category.
+    Categories and their point costs:
+      trivial (0 pts) — coffee, bus ticket, small snack
+      small   (1 pt)  — book, cosmetics, cheap accessory
+      medium  (2 pts) — dress, shoes, gym pass, day trip
+      large   (4 pts) — weekend trip, coat, several items at once
+      splurge (8 pts) — multi-day vacation, expensive tech or jewellery
+    Returns your current balance and whether you can afford it."""
+    cost = POINT_COST[category]
+    state = ctx.deps.spending_store.load()
+    pts = state.points_available
+    if pts >= cost:
+        return f"You can afford it. {pts} pts available, this costs {cost}."
+    return f"You can't afford it right now. {pts} pts available, this costs {cost}."
+
+
+async def buy_item(
+    ctx: RunContext[BotDeps],
+    name: str,
+    category: SpendCategory,
+    description: str = "",
+) -> str:
+    """Buy a specific non-everyday item, spending from your weekly budget and adding it
+    to your inventory. Only use this for special belongings — not food, transport, basic
+    clothes or other routine expenses. Call check_budget first if you are unsure whether
+    you can afford it; this tool will refuse if you don't have enough points."""
+    if not ctx.deps.spending_store.can_afford(category):
+        state = ctx.deps.spending_store.load()
+        cost = POINT_COST[category]
+        return (
+            f"Can't buy {name}: only {state.points_available} pts left this week "
+            f"but {category.value} costs {cost}."
+        )
+    ctx.deps.spending_store.record(name, category)
+    item = InventoryItem(name=name, description=description)
+    await ctx.deps.inventory_store.add(item)
+    return f"Bought and added [id:{item.id}] {item.name} to your inventory."

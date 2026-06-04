@@ -17,6 +17,7 @@ from livingbot import config
 from livingbot.calendar import CalendarStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient, LLMConfig
+from livingbot.spending import SpendingStore
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENAI_API_KEY"),
@@ -74,6 +75,7 @@ async def test_load_context_called_when_explicitly_asked(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Sanity check: bot fetches history when user directly asks for it."""
     channel = _make_channel(
@@ -87,7 +89,12 @@ async def test_load_context_called_when_explicitly_asked(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, datetime.now()
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        datetime.now(),
     )
 
     assert _load_context_was_called(result), (
@@ -99,6 +106,7 @@ async def test_load_context_called_for_polish_history_question(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Bot fetches history when asked in Polish what was discussed earlier."""
     channel = _make_channel(
@@ -113,7 +121,12 @@ async def test_load_context_called_for_polish_history_question(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, datetime.now()
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        datetime.now(),
     )
 
     assert _load_context_was_called(result), (
@@ -125,6 +138,7 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Bot fetches history when asked to recall what a specific person wrote."""
     channel = _make_channel(
@@ -139,7 +153,12 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, datetime.now()
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        datetime.now(),
     )
 
     assert _load_context_was_called(result), (
@@ -151,6 +170,7 @@ async def test_load_context_called_to_summarize_channel_discussion(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Bot fetches history when asked to summarize the recent discussion."""
     channel = _make_channel(
@@ -167,7 +187,12 @@ async def test_load_context_called_to_summarize_channel_discussion(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, datetime.now()
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        datetime.now(),
     )
 
     assert _load_context_was_called(result), (
@@ -179,6 +204,7 @@ async def test_load_context_called_for_implicit_context_reference(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Bot fetches history when user implicitly refers to something decided earlier."""
     channel = _make_channel(
@@ -195,7 +221,12 @@ async def test_load_context_called_for_implicit_context_reference(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, datetime.now()
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        datetime.now(),
     )
 
     assert _load_context_was_called(result), (

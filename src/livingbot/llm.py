@@ -7,10 +7,13 @@ from pydantic_ai import Agent, AgentRunResult
 from livingbot.calendar import Calendar, CalendarStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.relations import Relation
+from livingbot.spending import SpendingStore
 from livingbot.tools import (
     BotDeps,
     add_item,
     add_plan,
+    buy_item,
+    check_budget,
     load_context,
     remove_item,
     remove_plan,
@@ -36,6 +39,8 @@ class LLMClient:
                 add_item,
                 remove_item,
                 search_inventory,
+                check_budget,
+                buy_item,
             ],
         )
 
@@ -45,6 +50,7 @@ class LLMClient:
         channel: discord.abc.Messageable,
         calendar_store: CalendarStore,
         inventory_store: InventoryStore,
+        spending_store: SpendingStore,
         now: datetime,
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
@@ -53,6 +59,7 @@ class LLMClient:
             channel=channel,
             calendar_store=calendar_store,
             inventory_store=inventory_store,
+            spending_store=spending_store,
         )
         prompt = "\n".join(user_messages)
         if memories:
@@ -61,6 +68,7 @@ class LLMClient:
         if relations:
             prompt = _build_relations_block(relations) + prompt
         prompt = _build_inventory_block(await inventory_store.recent()) + prompt
+        prompt = spending_store.summary() + "\n\n" + prompt
         prompt = _build_calendar_block(calendar_store.load(), now) + prompt
         return await self._agent.run(prompt, deps=deps)
 

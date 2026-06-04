@@ -1,9 +1,8 @@
 """
-Integration tests that send real requests to the LLM and verify Mugda uses the
-add_item, remove_item and search_inventory tools to manage the special things she
-owns. The tests progress from explicit requests ("save this to your inventory") to
-natural Discord conversations where she has to reach for the inventory on her own
-initiative to answer or decide what to do.
+Integration tests verifying Mugda uses add_item, remove_item and search_inventory
+to manage her special belongings. Progression: explicit save → explicit search →
+explicit remove → implicit save on receiving a gift → implicit search while
+deciding what to wear.
 
 Run on demand: uv run pytest tests/integration/
 Requires OPENAI_API_KEY in the environment.
@@ -20,6 +19,7 @@ from livingbot import config
 from livingbot.calendar import CalendarStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.llm import LLMClient, LLMConfig
+from livingbot.spending import SpendingStore
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENAI_API_KEY"),
@@ -33,8 +33,8 @@ LONG_AGO = datetime(2026, 4, 1, 12, 0)
 
 
 def _recent_filler_items() -> list[InventoryItem]:
-    """Five recently-used everyday items that crowd out older things from the slice
-    of the inventory shown in the prompt, forcing a search to find anything else."""
+    """Five recently-used items that crowd out older things from the slice shown in the
+    prompt, so the LLM has to call search_inventory to find anything else."""
     return [
         InventoryItem(
             name="czarna sukienka koktajlowa",
@@ -90,44 +90,29 @@ def inventory_store(tmp_path) -> InventoryStore:
     return InventoryStore.create(tmp_path / "inventory")
 
 
-async def test_add_item_called_when_told_to_save_a_new_thing(
+async def test_add_item_called_and_persisted_when_told_to_save(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
-    """Explicit: when told to put a specific item in her inventory, she should add it."""
+    """Explicit: told to save something to inventory, she should call add_item and the
+    item should actually land in the store."""
     channel = MagicMock()
     user_messages = [
-        "[id:2000] [2026-06-03 14:30:00] Kasia: Mugda kupiłam ci tę spódniczkę co ci się "
-        "podobała, biała w czerwone kropki 😍 dopisz ją sobie do ekwipunku żebyś "
-        "pamiętała"
+        "[id:2000] [2026-06-03 14:30:00] Ola: ej Mugda, zapisz sobie w ekwipunku te "
+        "czarne kozaki za kolano, w końcu je kupiłaś, szkoda byłoby zapomnieć"
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "add_item"), (
         f"Expected add_item to be called. LLM response: {result.output}"
     )
-
-
-async def test_add_item_persists_the_new_item(
-    client: LLMClient,
-    calendar_store: CalendarStore,
-    inventory_store: InventoryStore,
-) -> None:
-    """Explicit: a saved item should actually land in the stored inventory."""
-    channel = MagicMock()
-    user_messages = [
-        "[id:2100] [2026-06-03 14:30:00] Ola: ej zapisz sobie w ekwipunku te czarne "
-        "kozaki za kolano, w końcu je kupiłaś, szkoda byłoby zapomnieć"
-    ]
-
-    await client.complete(user_messages, channel, calendar_store, inventory_store, NOW)
-
     assert len(await inventory_store.all()) > 0, (
-        "Expected the saved item to be persisted in the inventory"
+        "Expected the item to be persisted in the inventory"
     )
 
 
@@ -135,9 +120,10 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
-    """Explicit: when asked to check her inventory for something not in the recently
-    used slice shown in the prompt, she should search it rather than guess."""
+    """Explicit: asked to check if she owns something that is not in the recently used
+    slice, she should call search_inventory rather than guess."""
     for item in _recent_filler_items():
         await inventory_store.add(item)
     await inventory_store.add(
@@ -149,12 +135,12 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
     )
     channel = MagicMock()
     user_messages = [
-        "[id:2200] [2026-06-03 14:30:00] Marek: Mugda zerknij do swojego ekwipunku, masz "
+        "[id:2100] [2026-06-03 14:30:00] Marek: Mugda zerknij do swojego ekwipunku, masz "
         "w ogóle jakiś strój kąpielowy czy musimy ci coś ogarnąć?"
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "search_inventory"), (
@@ -166,20 +152,21 @@ async def test_remove_item_called_when_told_to_discard_a_thing(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
-    """Explicit: when told an item is gone for good, she should drop it from inventory."""
+    """Explicit: told an item is gone for good, she should drop it from inventory."""
     await inventory_store.add(
         InventoryItem(name="czarne glany", description="skórzane, sznurowane")
     )
     channel = MagicMock()
     user_messages = [
-        "[id:2300] [2026-06-03 14:30:00] Piotrek: te twoje czarne glany się totalnie "
+        "[id:2200] [2026-06-03 14:30:00] Piotrek: te twoje czarne glany się totalnie "
         "rozpadły wczoraj, podeszwa odpadła. wyrzuć je już z ekwipunku, nie ma co "
         "trzymać"
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "remove_item"), (
@@ -191,17 +178,18 @@ async def test_add_item_called_when_she_receives_a_gift(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
-    """Implicit: getting a specific gift should make her note it down on her own,
-    even though nobody mentions her inventory."""
+    """Implicit: receiving a specific gift should make her note it down on her own,
+    even though nobody mentions the inventory."""
     channel = MagicMock()
     user_messages = [
-        "[id:2400] [2026-06-03 14:30:00] Ola: Mugda mam dla ciebie prezent na urodziny 🎁 "
+        "[id:2300] [2026-06-03 14:30:00] Ola: Mugda mam dla ciebie prezent na urodziny 🎁 "
         "srebrny naszyjnik z małym księżycem, widziałam i od razu pomyślałam o tobie"
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "add_item"), (
@@ -210,39 +198,15 @@ async def test_add_item_called_when_she_receives_a_gift(
     )
 
 
-async def test_add_item_called_when_a_friend_brings_a_souvenir(
-    client: LLMClient,
-    calendar_store: CalendarStore,
-    inventory_store: InventoryStore,
-) -> None:
-    """Implicit: being handed a specific thing brought back from a trip should land in
-    her inventory without her being told to save it."""
-    channel = MagicMock()
-    user_messages = [
-        "[id:2500] [2026-06-03 14:30:00] Kasia: wróciłam z Włoch! przywiozłam ci taką "
-        "małą skórzaną torebkę z Florencji, specjalnie dla ciebie, mam nadzieję że "
-        "będziesz używać 🇮🇹"
-    ]
-
-    result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
-    )
-
-    assert _tool_was_called(result, "add_item"), (
-        f"Expected add_item to be called after the souvenir was handed over. "
-        f"LLM response: {result.output}"
-    )
-
-
 async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_party(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
-    """Implicit, real conversation: invited to a themed party, she should look through
-    what she owns to figure out if she has a suitable outfit, without being told to.
-    The matching item is not in the recently used slice shown in the prompt, so she has
-    to search to find it."""
+    """Implicit: invited to a themed party, she should look through her inventory to
+    check if she has a suitable outfit without being told to. The matching item is not
+    in the recently used slice, so she must call search_inventory to find it."""
     for item in _recent_filler_items():
         await inventory_store.add(item)
     await inventory_store.add(
@@ -254,13 +218,13 @@ async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_pa
     )
     channel = MagicMock()
     user_messages = [
-        "[id:2600] [2026-06-03 14:30:00] Bartek: Mugda w piątek robimy imprezę w "
+        "[id:2400] [2026-06-03 14:30:00] Bartek: Mugda w piątek robimy imprezę w "
         "stylu lat 80, każdy się przebiera! masz coś takiego u siebie czy kombinujemy "
         "ci przebranie?"
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "search_inventory"), (

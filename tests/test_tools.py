@@ -4,24 +4,39 @@ from unittest.mock import AsyncMock, MagicMock
 
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.inventory import InventoryItem
+from datetime import date
+
+from livingbot.spending import SpendCategory, SpendingState
 from livingbot.tools import (
     BotDeps,
     add_item,
     add_plan,
+    buy_item,
+    check_budget,
     remove_item,
     remove_plan,
     search_inventory,
 )
 
 
+def make_spending_store() -> MagicMock:
+    store = MagicMock()
+    store.can_afford = MagicMock(return_value=True)
+    store.record = MagicMock()
+    store.load = MagicMock()
+    return store
+
+
 def make_ctx(
     calendar_store: CalendarStore | None = None,
     inventory_store: MagicMock | None = None,
+    spending_store: MagicMock | None = None,
 ) -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=calendar_store or MagicMock(),
         inventory_store=inventory_store or make_inventory_store(),
+        spending_store=spending_store or make_spending_store(),
     )
     return SimpleNamespace(deps=deps)
 
@@ -169,3 +184,92 @@ async def test_search_inventory_when_empty_reports_empty_inventory() -> None:
     result = await search_inventory(ctx, query="cokolwiek")
 
     assert result == "Your inventory is empty."
+
+
+# ---------------------------------------------------------------------------
+# check_budget
+# ---------------------------------------------------------------------------
+
+
+async def test_check_budget_when_affordable_returns_can_afford_message() -> None:
+    spending = make_spending_store()
+    spending.load = MagicMock(
+        return_value=SpendingState(week_start=date(2026, 6, 1), points_available=4)
+    )
+    ctx = make_ctx(spending_store=spending)
+
+    result = await check_budget(ctx, SpendCategory.large)
+
+    assert "can afford" in result.lower()
+    assert "4" in result
+
+
+async def test_check_budget_when_unaffordable_returns_cant_afford_message() -> None:
+    spending = make_spending_store()
+    spending.load = MagicMock(
+        return_value=SpendingState(week_start=date(2026, 6, 1), points_available=1)
+    )
+    ctx = make_ctx(spending_store=spending)
+
+    result = await check_budget(ctx, SpendCategory.large)
+
+    assert "can't afford" in result.lower()
+    assert "1" in result
+
+
+# ---------------------------------------------------------------------------
+# buy_item
+# ---------------------------------------------------------------------------
+
+
+async def test_buy_item_when_affordable_records_spend_and_adds_to_inventory() -> None:
+    spending = make_spending_store()
+    spending.can_afford = MagicMock(return_value=True)
+    inventory = make_inventory_store()
+    ctx = make_ctx(spending_store=spending, inventory_store=inventory)
+
+    await buy_item(ctx, name="sukienka letnia", category=SpendCategory.medium)
+
+    spending.record.assert_called_once_with("sukienka letnia", SpendCategory.medium)
+    inventory.add.assert_awaited_once()
+
+
+async def test_buy_item_when_affordable_returns_confirmation_with_item_id() -> None:
+    spending = make_spending_store()
+    spending.can_afford = MagicMock(return_value=True)
+    inventory = make_inventory_store()
+    ctx = make_ctx(spending_store=spending, inventory_store=inventory)
+
+    result = await buy_item(ctx, name="sukienka letnia", category=SpendCategory.medium)
+
+    stored = inventory.add.call_args.args[0]
+    assert stored.id in result
+    assert "sukienka letnia" in result
+
+
+async def test_buy_item_when_unaffordable_returns_refusal() -> None:
+    spending = make_spending_store()
+    spending.can_afford = MagicMock(return_value=False)
+    spending.load = MagicMock(
+        return_value=SpendingState(week_start=date(2026, 6, 1), points_available=1)
+    )
+    ctx = make_ctx(spending_store=spending)
+
+    result = await buy_item(ctx, name="wyjazd górski", category=SpendCategory.large)
+
+    assert "can't buy" in result.lower()
+    assert "wyjazd górski" in result
+
+
+async def test_buy_item_when_unaffordable_does_not_add_to_inventory() -> None:
+    spending = make_spending_store()
+    spending.can_afford = MagicMock(return_value=False)
+    spending.load = MagicMock(
+        return_value=SpendingState(week_start=date(2026, 6, 1), points_available=0)
+    )
+    inventory = make_inventory_store()
+    ctx = make_ctx(spending_store=spending, inventory_store=inventory)
+
+    await buy_item(ctx, name="wyjazd górski", category=SpendCategory.large)
+
+    inventory.add.assert_not_awaited()
