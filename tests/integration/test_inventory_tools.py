@@ -20,6 +20,7 @@ from livingbot import config
 from livingbot.calendar import CalendarStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.llm import LLMClient, LLMConfig
+from livingbot.spending import SpendingStore
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENAI_API_KEY"),
@@ -94,6 +95,7 @@ async def test_add_item_called_when_told_to_save_a_new_thing(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Explicit: when told to put a specific item in her inventory, she should add it."""
     channel = MagicMock()
@@ -104,7 +106,7 @@ async def test_add_item_called_when_told_to_save_a_new_thing(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "add_item"), (
@@ -116,6 +118,7 @@ async def test_add_item_persists_the_new_item(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Explicit: a saved item should actually land in the stored inventory."""
     channel = MagicMock()
@@ -124,7 +127,9 @@ async def test_add_item_persists_the_new_item(
         "kozaki za kolano, w końcu je kupiłaś, szkoda byłoby zapomnieć"
     ]
 
-    await client.complete(user_messages, channel, calendar_store, inventory_store, NOW)
+    await client.complete(
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+    )
 
     assert len(await inventory_store.all()) > 0, (
         "Expected the saved item to be persisted in the inventory"
@@ -135,6 +140,7 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Explicit: when asked to check her inventory for something not in the recently
     used slice shown in the prompt, she should search it rather than guess."""
@@ -154,7 +160,7 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "search_inventory"), (
@@ -166,6 +172,7 @@ async def test_remove_item_called_when_told_to_discard_a_thing(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Explicit: when told an item is gone for good, she should drop it from inventory."""
     await inventory_store.add(
@@ -179,7 +186,7 @@ async def test_remove_item_called_when_told_to_discard_a_thing(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "remove_item"), (
@@ -191,6 +198,7 @@ async def test_add_item_called_when_she_receives_a_gift(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Implicit: getting a specific gift should make her note it down on her own,
     even though nobody mentions her inventory."""
@@ -201,7 +209,7 @@ async def test_add_item_called_when_she_receives_a_gift(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "add_item"), (
@@ -214,6 +222,7 @@ async def test_add_item_called_when_a_friend_brings_a_souvenir(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Implicit: being handed a specific thing brought back from a trip should land in
     her inventory without her being told to save it."""
@@ -225,7 +234,7 @@ async def test_add_item_called_when_a_friend_brings_a_souvenir(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "add_item"), (
@@ -238,6 +247,7 @@ async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_pa
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Implicit, real conversation: invited to a themed party, she should look through
     what she owns to figure out if she has a suitable outfit, without being told to.
@@ -260,7 +270,7 @@ async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_pa
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "search_inventory"), (

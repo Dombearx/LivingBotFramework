@@ -12,6 +12,7 @@ on:
           - all
           - context_tool
           - relation_updater
+          - spending_tools
 
 jobs:
   integration-test:
@@ -34,5 +35,6 @@ jobs:
           case "${{ inputs.test_group }}" in
             context_tool)     uv run pytest tests/integration/test_load_context_tool.py ;;
             relation_updater) uv run pytest tests/integration/test_relation_updater.py ;;
+            spending_tools)   uv run pytest tests/integration/test_spending_tools.py ;;
             *)                uv run pytest tests/integration/ ;;
           esac

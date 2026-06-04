@@ -19,6 +19,7 @@ from livingbot import config
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient, LLMConfig
+from livingbot.spending import SpendingStore
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENAI_API_KEY"),
@@ -58,6 +59,7 @@ async def test_add_plan_called_when_she_commits_to_a_trip(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """She should record a multi-day trip in her calendar once she decides to go."""
     channel = MagicMock()
@@ -68,7 +70,7 @@ async def test_add_plan_called_when_she_commits_to_a_trip(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "add_plan"), (
@@ -80,6 +82,7 @@ async def test_add_plan_persists_the_new_entry(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """A committed plan should actually land in the stored calendar."""
     channel = MagicMock()
@@ -99,6 +102,7 @@ async def test_remove_plan_called_when_she_cancels_an_entry(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """She should drop an existing entry from her calendar when she cancels it."""
     entry = PlanEntry(
@@ -115,7 +119,7 @@ async def test_remove_plan_called_when_she_cancels_an_entry(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "remove_plan"), (
@@ -127,6 +131,7 @@ async def test_add_plan_called_when_she_accepts_an_invitation(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Implicit: accepting a concrete invitation should make her note it down,
     even though nobody mentions her calendar."""
@@ -137,7 +142,7 @@ async def test_add_plan_called_when_she_accepts_an_invitation(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "add_plan"), (
@@ -150,6 +155,7 @@ async def test_add_plan_called_for_implicit_multi_day_trip(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Implicit: agreeing to a several-day trip should put it on her calendar so she
     knows where she'll be, without being told to save anything."""
@@ -160,7 +166,7 @@ async def test_add_plan_called_for_implicit_multi_day_trip(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "add_plan"), (
@@ -172,6 +178,7 @@ async def test_remove_plan_called_when_a_conflict_replaces_a_session(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
+    spending_store: SpendingStore,
 ) -> None:
     """Implicit: when a new plan clearly takes the place of an existing one, she should
     drop the old entry herself rather than being told to delete it."""
@@ -189,7 +196,7 @@ async def test_remove_plan_called_when_a_conflict_replaces_a_session(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, NOW
+        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
     )
 
     assert _tool_was_called(result, "remove_plan"), (
