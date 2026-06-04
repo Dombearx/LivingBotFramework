@@ -1844,6 +1844,7 @@ source = { editable = "." }
 dependencies = [
     { name = "chromadb" },
     { name = "discord-py" },
+    { name = "httpx" },
     { name = "mem0ai" },
     { name = "pydantic-ai" },
 ]
@@ -1859,6 +1860,7 @@ dev = [
 requires-dist = [
     { name = "chromadb", specifier = ">=1.5.9" },
     { name = "discord-py", specifier = ">=2.7.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "mem0ai", specifier = ">=2.0.4" },
     { name = "pydantic-ai", specifier = ">=1.104.0" },
 ]

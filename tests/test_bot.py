@@ -20,6 +20,7 @@ def other_user() -> MagicMock:
 def make_llm_client(response: str = "llm response") -> MagicMock:
     mock_result = MagicMock()
     mock_result.output = response
+    mock_result.photo = None
     client = MagicMock()
     client.complete = AsyncMock(return_value=mock_result)
     return client
@@ -371,6 +372,8 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         [],
         [Relation(user_id="123"), Relation(user_id="123")],
         ANY,
+        photo_hint=ANY,
+        portrait_path=ANY,
     )
 
 
