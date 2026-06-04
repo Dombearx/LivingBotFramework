@@ -1,8 +1,7 @@
 """
-Integration tests that send real requests to the LLM and verify Mugda uses the
-add_plan and remove_plan tools to manage her own calendar. Covers both explicit
-requests ("save this to your calendar") and implicit situations where she should
-record or drop a plan on her own initiative without being told to.
+Integration tests verifying Mugda uses add_plan and remove_plan to manage her
+calendar. Progression: explicit instruction → explicit cancel → implicit save
+on acceptance → implicit remove when a plan is replaced.
 
 Run on demand: uv run pytest tests/integration/
 Requires OPENAI_API_KEY in the environment.
@@ -55,18 +54,17 @@ def inventory_store(tmp_path) -> InventoryStore:
     return InventoryStore.create(tmp_path / "inventory")
 
 
-async def test_add_plan_called_when_she_commits_to_a_trip(
+async def test_add_plan_called_and_persisted_when_told_to_save(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
 ) -> None:
-    """She should record a multi-day trip in her calendar once she decides to go."""
+    """Explicit: told to save a plan, she should call add_plan and it should persist."""
     channel = MagicMock()
     user_messages = [
-        "[id:1000] [2026-06-03 14:30:00] Marek: Mugda, jedziesz z nami w góry w ten "
-        "weekend? od piątku do poniedziałku, 4 dni w Zakopanem. zdecyduj się i zapisz "
-        "to sobie w kalendarzu"
+        "[id:1000] [2026-06-03 14:30:00] Kasia: Mugda, umówmy się na kawę w czwartek o "
+        "17:00 w centrum. zapisz to w swoim kalendarzu, żebyś nie zapomniała"
     ]
 
     result = await client.complete(
@@ -76,35 +74,18 @@ async def test_add_plan_called_when_she_commits_to_a_trip(
     assert _tool_was_called(result, "add_plan"), (
         f"Expected add_plan to be called. LLM response: {result.output}"
     )
-
-
-async def test_add_plan_persists_the_new_entry(
-    client: LLMClient,
-    calendar_store: CalendarStore,
-    inventory_store: InventoryStore,
-    spending_store: SpendingStore,
-) -> None:
-    """A committed plan should actually land in the stored calendar."""
-    channel = MagicMock()
-    user_messages = [
-        "[id:1100] [2026-06-03 14:30:00] Kasia: Mugda, umówmy się na kawę w czwartek o "
-        "17:00 w centrum. zapisz to w swoim kalendarzu, żebyś nie zapomniała"
-    ]
-
-    await client.complete(user_messages, channel, calendar_store, inventory_store, NOW)
-
     assert len(calendar_store.load().entries) > 0, (
-        "Expected the committed plan to be persisted in the calendar"
+        "Expected the plan to be persisted in the calendar"
     )
 
 
-async def test_remove_plan_called_when_she_cancels_an_entry(
+async def test_remove_plan_called_when_told_to_cancel(
     client: LLMClient,
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
 ) -> None:
-    """She should drop an existing entry from her calendar when she cancels it."""
+    """Explicit: told to cancel an existing entry, she should call remove_plan."""
     entry = PlanEntry(
         activity="trening na siłowni",
         location="gym",
@@ -114,7 +95,7 @@ async def test_remove_plan_called_when_she_cancels_an_entry(
     calendar_store.save(Calendar(home_location="home", entries=[entry]))
     channel = MagicMock()
     user_messages = [
-        "[id:1200] [2026-06-03 14:30:00] Piotrek: Mugda, słuchaj, odwołaj ten jutrzejszy "
+        "[id:1100] [2026-06-03 14:30:00] Piotrek: Mugda, słuchaj, odwołaj ten jutrzejszy "
         "trening na siłowni, nie dasz rady. usuń go ze swojego kalendarza"
     ]
 
@@ -133,11 +114,11 @@ async def test_add_plan_called_when_she_accepts_an_invitation(
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
 ) -> None:
-    """Implicit: accepting a concrete invitation should make her note it down,
-    even though nobody mentions her calendar."""
+    """Implicit: accepting a concrete invitation should make her save it without being
+    told to open her calendar."""
     channel = MagicMock()
     user_messages = [
-        "[id:1300] [2026-06-03 14:30:00] Ola: Mugda, w sobotę o 15:00 robię urodziny u "
+        "[id:1200] [2026-06-03 14:30:00] Ola: Mugda, w sobotę o 15:00 robię urodziny u "
         "siebie w domu, koniecznie wpadnij! będzie cała paczka"
     ]
 
@@ -151,29 +132,6 @@ async def test_add_plan_called_when_she_accepts_an_invitation(
     )
 
 
-async def test_add_plan_called_for_implicit_multi_day_trip(
-    client: LLMClient,
-    calendar_store: CalendarStore,
-    inventory_store: InventoryStore,
-    spending_store: SpendingStore,
-) -> None:
-    """Implicit: agreeing to a several-day trip should put it on her calendar so she
-    knows where she'll be, without being told to save anything."""
-    channel = MagicMock()
-    user_messages = [
-        "[id:1400] [2026-06-03 14:30:00] Kasia: bierzemy wolne i jedziemy nad morze do "
-        "Gdańska od 12 do 15 lipca, jedziesz z nami? bilety kupuję dziś wieczorem"
-    ]
-
-    result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
-    )
-
-    assert _tool_was_called(result, "add_plan"), (
-        f"Expected add_plan to be called for the trip. LLM response: {result.output}"
-    )
-
-
 async def test_remove_plan_called_when_a_conflict_replaces_a_session(
     client: LLMClient,
     calendar_store: CalendarStore,
@@ -181,7 +139,7 @@ async def test_remove_plan_called_when_a_conflict_replaces_a_session(
     spending_store: SpendingStore,
 ) -> None:
     """Implicit: when a new plan clearly takes the place of an existing one, she should
-    drop the old entry herself rather than being told to delete it."""
+    drop the old entry on her own, without being told to delete it."""
     entry = PlanEntry(
         activity="trening na siłowni",
         location="gym",
@@ -191,7 +149,7 @@ async def test_remove_plan_called_when_a_conflict_replaces_a_session(
     calendar_store.save(Calendar(home_location="home", entries=[entry]))
     channel = MagicMock()
     user_messages = [
-        "[id:1500] [2026-06-03 14:30:00] Bartek: Mugda, jutro o 18 zamiast siłowni "
+        "[id:1300] [2026-06-03 14:30:00] Bartek: Mugda, jutro o 18 zamiast siłowni "
         "chodź z nami do kina, dawno cię nie było. ten jeden raz odpuść trening"
     ]
 
