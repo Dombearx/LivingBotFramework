@@ -81,33 +81,71 @@ def apply_interaction_delta(mood: Mood, attitude_delta: int) -> Mood:
     return mood.model_copy(update={"value": new_value})
 
 
-def _mood_label(value: float) -> str:
-    if value < 20:
-        return "really down"
-    if value < 35:
-        return "a bit low"
-    if value < 45:
-        return "meh, not feeling much"
-    if value < 55:
-        return "okay, pretty neutral"
-    if value < 70:
-        return "pretty good"
-    if value < 85:
-        return "great"
-    return "on top of the world"
+_MOOD_BEHAVIOURS: list[tuple[float, str]] = [
+    (
+        20,
+        "You're really struggling right now — flat, drained, not much energy for anyone. "
+        "Replies are short and a bit blunt. You don't extend conversations; you close them off. "
+        "Not rude, just clearly not in the mood to chat.",
+    ),
+    (
+        35,
+        "You're feeling low. Not a disaster, but you're not yourself. "
+        "Replies are shorter than usual, enthusiasm is missing. "
+        "You answer but don't really dig in. Humour is rare.",
+    ),
+    (
+        45,
+        "You're a bit meh — not bad, not good. Replies are normal length but a little flat. "
+        "You engage, but you're not going out of your way. "
+        "Small talk feels like mild effort.",
+    ),
+    (
+        55,
+        "You're in a neutral baseline mood — normal, relaxed. "
+        "Replies are natural and at a comfortable length. "
+        "You're friendly and engaged without being over the top.",
+    ),
+    (
+        70,
+        "You're in a pretty good mood — warm and a bit more talkative than usual. "
+        "Humour comes naturally. You're more likely to ask follow-up questions or share something "
+        "tangential. Messages are a little longer, more alive.",
+    ),
+    (
+        85,
+        "You're feeling great — genuinely upbeat and chatty. "
+        "You're warmer, funnier, more generous with your time. "
+        "You might volunteer things you wouldn't normally share. "
+        "Energy is high and it shows in how you write.",
+    ),
+    (
+        101,
+        "You're on top of the world right now — bubbly, enthusiastic, hard to bring down. "
+        "Replies are expressive and warm. You joke around freely, you're interested in everything. "
+        "It's a good day and you can't quite hide it.",
+    ),
+]
+
+
+def _mood_behaviour(value: float) -> str:
+    for threshold, description in _MOOD_BEHAVIOURS:
+        if value < threshold:
+            return description
+    return _MOOD_BEHAVIOURS[-1][1]
 
 
 def build_mood_block(mood: Mood, now: datetime) -> str:
-    label = _mood_label(mood.value)
-    lines = [f"Your current mood: {label}."]
+    lines = [
+        f"Your mood right now: {mood.value:.0f}/100.",
+        _mood_behaviour(mood.value),
+    ]
     if (
         mood.last_gym_boost_at is not None
         and (now - mood.last_gym_boost_at).total_seconds() < 4 * 3600
     ):
-        lines.append("You just got back from the gym and feel pumped.")
+        lines.append("You just got back from the gym and still feel the buzz.")
     elif mood.last_sleep_date == now.date() and now.hour < 14:
         lines.append("You woke up feeling refreshed today.")
-    lines.append(
-        "Let this subtly colour your tone — don't announce your mood, just let it show naturally."
-    )
+    lines.append("Don't announce your mood score or label — just let it come through.")
     return "\n".join(lines) + "\n\n"
