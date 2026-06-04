@@ -18,6 +18,7 @@ SYSTEM_PROMPT = (
     "Your budget is limited, so be realistic about what you can and can't buy in a week."
 )
 MEMORY_DATA_PATH = Path("data/memories")
+MOOD_DATA_PATH = Path("data/mood")
 RELATION_DATA_PATH = Path("data/relations")
 CALENDAR_DATA_PATH = Path("data/calendar")
 INVENTORY_DATA_PATH = Path("data/inventory")

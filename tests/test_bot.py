@@ -5,6 +5,7 @@ import discord
 
 from livingbot.bot import LivingBot, _format_message, _send_chunked
 from livingbot.calendar import Calendar, PlanEntry
+from livingbot.mood import Mood
 from livingbot.relations import Relation
 
 
@@ -76,6 +77,13 @@ def make_spending_store() -> MagicMock:
     return store
 
 
+def make_mood_store(mood: Mood | None = None) -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(return_value=mood if mood is not None else Mood())
+    store.save = MagicMock()
+    return store
+
+
 def make_bot(
     llm_client: MagicMock | None = None,
     memory_store: MagicMock | None = None,
@@ -85,6 +93,7 @@ def make_bot(
     week_planner: MagicMock | None = None,
     inventory_store: MagicMock | None = None,
     spending_store: MagicMock | None = None,
+    mood_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
@@ -97,6 +106,7 @@ def make_bot(
         week_planner=week_planner or make_week_planner(),
         inventory_store=inventory_store or make_inventory_store(),
         spending_store=spending_store or make_spending_store(),
+        mood_store=mood_store or make_mood_store(),
         intents=intents,
     )
 
@@ -360,6 +370,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         ANY,
         [],
         [Relation(user_id="123"), Relation(user_id="123")],
+        ANY,
     )
 
 
