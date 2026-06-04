@@ -14,14 +14,24 @@ from livingbot.tools import (
 )
 
 
+def make_spending_store() -> MagicMock:
+    store = MagicMock()
+    store.can_afford = MagicMock(return_value=True)
+    store.record = MagicMock()
+    store.load = MagicMock()
+    return store
+
+
 def make_ctx(
     calendar_store: CalendarStore | None = None,
     inventory_store: MagicMock | None = None,
+    spending_store: MagicMock | None = None,
 ) -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=calendar_store or MagicMock(),
         inventory_store=inventory_store or make_inventory_store(),
+        spending_store=spending_store or make_spending_store(),
     )
     return SimpleNamespace(deps=deps)
 
