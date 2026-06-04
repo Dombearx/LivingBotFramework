@@ -6,6 +6,7 @@ from pydantic_ai import Agent, AgentRunResult
 
 from livingbot.calendar import Calendar, CalendarStore
 from livingbot.inventory import InventoryItem, InventoryStore
+from livingbot.mood import Mood, build_mood_block
 from livingbot.relations import Relation
 from livingbot.spending import SpendingStore
 from livingbot.tools import (
@@ -54,6 +55,7 @@ class LLMClient:
         now: datetime,
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
+        mood: Mood | None = None,
     ) -> AgentRunResult[str]:
         deps = BotDeps(
             channel=channel,
@@ -69,6 +71,8 @@ class LLMClient:
             prompt = _build_relations_block(relations) + prompt
         prompt = _build_inventory_block(await inventory_store.recent()) + prompt
         prompt = spending_store.summary() + "\n\n" + prompt
+        if mood is not None:
+            prompt = build_mood_block(mood, now) + prompt
         prompt = _build_calendar_block(calendar_store.load(), now) + prompt
         return await self._agent.run(prompt, deps=deps)
 

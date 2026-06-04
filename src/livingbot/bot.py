@@ -11,6 +11,13 @@ from livingbot.calendar import CalendarStore, WeekPlanner
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient, LLMConfig
 from livingbot.memory import MemoryStore
+from livingbot.mood import (
+    SLEEP_WINDOW_END,
+    SLEEP_WINDOW_START,
+    MoodStore,
+    apply_interaction_delta,
+    refresh_mood,
+)
 from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
@@ -41,6 +48,7 @@ class LivingBot(discord.Client):
         week_planner: WeekPlanner,
         inventory_store: InventoryStore,
         spending_store: SpendingStore,
+        mood_store: MoodStore,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -55,6 +63,7 @@ class LivingBot(discord.Client):
         self._week_planner = week_planner
         self._inventory_store = inventory_store
         self._spending_store = spending_store
+        self._mood_store = mood_store
 
     async def setup_hook(self) -> None:
         self.loop.create_task(self._life_loop())
@@ -63,9 +72,22 @@ class LivingBot(discord.Client):
         while True:
             try:
                 await self._ensure_week_planned()
+                self._ensure_morning_mood_refresh()
             except Exception:
                 logger.exception("Life loop iteration failed")
             await asyncio.sleep(config.LIFE_LOOP_INTERVAL_SECONDS)
+
+    def _ensure_morning_mood_refresh(self) -> None:
+        now = datetime.now()
+        if not (SLEEP_WINDOW_START <= now.hour < SLEEP_WINDOW_END):
+            return
+        mood = self._mood_store.load()
+        if mood.last_sleep_date is not None and mood.last_sleep_date >= now.date():
+            return
+        calendar = self._calendar_store.load()
+        mood = refresh_mood(mood, now, calendar)
+        self._mood_store.save(mood)
+        logger.info("Morning mood refresh: %.1f", mood.value)
 
     async def _ensure_week_planned(self) -> None:
         now = datetime.now()
@@ -103,7 +125,13 @@ class LivingBot(discord.Client):
                 asyncio.create_task(self._rest_and_respond())
 
     async def _attempt_response(self) -> bool:
-        if random.random() < 1.0 / (self._fatigue + 1.0):
+        now = datetime.now()
+        mood = self._mood_store.load()
+        mood = refresh_mood(mood, now, self._calendar_store.load())
+        self._mood_store.save(mood)
+
+        mood_factor = 0.5 + (mood.value / 100.0)
+        if random.random() < mood_factor / (self._fatigue + 1.0):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
                 formatted = [_format_message(m) for m in messages]
@@ -118,9 +146,10 @@ class LivingBot(discord.Client):
                     self._calendar_store,
                     self._inventory_store,
                     self._spending_store,
-                    datetime.now(),
+                    now,
                     memories,
                     relations,
+                    mood,
                 )
                 await _send_chunked(channel, result.output)
                 sole_author = author_ids[0] if len(author_ids) == 1 else None
@@ -159,10 +188,20 @@ class LivingBot(discord.Client):
             updated = await self._relation_updater.update(relation, conversation)
             self._relation_store.save(updated)
             logger.debug("Updated relation for user_id=%s", relation.user_id)
+            delta = updated.attitude - relation.attitude
+            if delta != 0:
+                mood = self._mood_store.load()
+                mood = apply_interaction_delta(mood, delta)
+                self._mood_store.save(mood)
+                logger.debug(
+                    "Mood adjusted by interaction delta=%d: %.1f", delta, mood.value
+                )
 
     async def _rest_and_respond(self) -> None:
         while True:
-            max_delay = max(3.0, 5.0 * self._fatigue)
+            mood = self._mood_store.load()
+            mood_rest_factor = 1.5 - (mood.value / 100.0)
+            max_delay = max(3.0, 5.0 * self._fatigue * mood_rest_factor)
             actual_delay = random.uniform(3.0, max_delay)
             await asyncio.sleep(actual_delay * 60.0)
 
@@ -198,6 +237,7 @@ def run() -> None:
     week_planner = WeekPlanner(config.LLM_MODEL)
     inventory_store = InventoryStore.create(config.INVENTORY_DATA_PATH)
     spending_store = SpendingStore(config.SPENDING_DATA_PATH)
+    mood_store = MoodStore(config.MOOD_DATA_PATH)
     bot = LivingBot(
         llm_client=llm_client,
         memory_store=memory_store,
@@ -207,6 +247,7 @@ def run() -> None:
         week_planner=week_planner,
         inventory_store=inventory_store,
         spending_store=spending_store,
+        mood_store=mood_store,
         intents=intents,
     )
     bot.run(token, log_handler=None)
