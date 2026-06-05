@@ -3,19 +3,19 @@ Integration tests that send real requests to the LLM and verify RelationUpdater
 produces sensible relation updates given realistic Discord conversations in Polish.
 
 Run on demand: uv run pytest tests/integration/
-Requires OPENAI_API_KEY in the environment.
+Requires OPENROUTER_API_KEY in the environment.
 """
 
 import os
 
 import pytest
 
-from livingbot import config
+from livingbot import llm_config
 from livingbot.relations import Relation, RelationUpdater
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 
 
@@ -25,7 +25,9 @@ def _convo(*turns: tuple[str, str]) -> list[dict]:
 
 @pytest.fixture
 def updater() -> RelationUpdater:
-    return RelationUpdater(config.LLM_MODEL)
+    return RelationUpdater(
+        llm_config.build_chat_model(llm_config.RELATION_UPDATER_MODEL)
+    )
 
 
 async def test_attitude_increases_after_warm_friendly_exchange(

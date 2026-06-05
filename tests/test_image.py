@@ -87,7 +87,8 @@ def _make_openai_response(content: str) -> MagicMock:
     return response
 
 
-@patch("livingbot.image.AsyncOpenAI")
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
+@patch("livingbot.llm_config.AsyncOpenAI")
 async def test_enhance_prompt_without_mugda_sends_only_description(
     mock_openai_cls: MagicMock,
 ) -> None:
@@ -108,7 +109,8 @@ async def test_enhance_prompt_without_mugda_sends_only_description(
     assert "Mugda" not in user_content
 
 
-@patch("livingbot.image.AsyncOpenAI")
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
+@patch("livingbot.llm_config.AsyncOpenAI")
 async def test_enhance_prompt_with_mugda_includes_mugda_in_message(
     mock_openai_cls: MagicMock,
 ) -> None:
@@ -125,7 +127,8 @@ async def test_enhance_prompt_with_mugda_includes_mugda_in_message(
     assert "Mugda" in user_content
 
 
-@patch("livingbot.image.AsyncOpenAI")
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
+@patch("livingbot.llm_config.AsyncOpenAI")
 async def test_enhance_prompt_with_outfit_includes_outfit_in_message(
     mock_openai_cls: MagicMock,
 ) -> None:
@@ -146,7 +149,8 @@ async def test_enhance_prompt_with_outfit_includes_outfit_in_message(
     assert "black sports bra, grey leggings" in user_content
 
 
-@patch("livingbot.image.AsyncOpenAI")
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
+@patch("livingbot.llm_config.AsyncOpenAI")
 async def test_enhance_prompt_without_mugda_ignores_outfit_description(
     mock_openai_cls: MagicMock,
 ) -> None:
@@ -165,7 +169,8 @@ async def test_enhance_prompt_without_mugda_ignores_outfit_description(
     assert "red dress" not in user_content
 
 
-@patch("livingbot.image.AsyncOpenAI")
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
+@patch("livingbot.llm_config.AsyncOpenAI")
 async def test_enhance_prompt_returns_model_content(mock_openai_cls: MagicMock) -> None:
     client = MagicMock()
     client.chat.completions.create = AsyncMock(
@@ -180,7 +185,8 @@ async def test_enhance_prompt_returns_model_content(mock_openai_cls: MagicMock) 
     assert result == "a vivid scene | photorealistic, 8k"
 
 
-@patch("livingbot.image.AsyncOpenAI")
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
+@patch("livingbot.llm_config.AsyncOpenAI")
 async def test_enhance_prompt_when_model_returns_none_falls_back_to_description(
     mock_openai_cls: MagicMock,
 ) -> None:
@@ -223,9 +229,13 @@ def _make_runpod_responses(
 
 @patch.dict(
     "os.environ",
-    {"RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep", "RUNPOD_API_KEY": "key"},
+    {
+        "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
+        "RUNPOD_API_KEY": "key",
+        "OPENROUTER_API_KEY": "key",
+    },
 )
-@patch("livingbot.image.AsyncOpenAI")
+@patch("livingbot.llm_config.AsyncOpenAI")
 @patch("livingbot.image.httpx.AsyncClient")
 async def test_generate_image_returns_decoded_image_bytes(
     mock_httpx_cls: MagicMock,
@@ -261,9 +271,13 @@ async def test_generate_image_returns_decoded_image_bytes(
 
 @patch.dict(
     "os.environ",
-    {"RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep", "RUNPOD_API_KEY": "key"},
+    {
+        "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
+        "RUNPOD_API_KEY": "key",
+        "OPENROUTER_API_KEY": "key",
+    },
 )
-@patch("livingbot.image.AsyncOpenAI")
+@patch("livingbot.llm_config.AsyncOpenAI")
 @patch("livingbot.image.httpx.AsyncClient")
 async def test_generate_image_submits_workflow_to_runpod(
     mock_httpx_cls: MagicMock,
@@ -299,9 +313,13 @@ async def test_generate_image_submits_workflow_to_runpod(
 
 @patch.dict(
     "os.environ",
-    {"RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep", "RUNPOD_API_KEY": "key"},
+    {
+        "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
+        "RUNPOD_API_KEY": "key",
+        "OPENROUTER_API_KEY": "key",
+    },
 )
-@patch("livingbot.image.AsyncOpenAI")
+@patch("livingbot.llm_config.AsyncOpenAI")
 @patch("livingbot.image.httpx.AsyncClient")
 async def test_generate_image_raises_when_job_fails(
     mock_httpx_cls: MagicMock,

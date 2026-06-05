@@ -7,10 +7,10 @@ from datetime import datetime, timedelta
 
 import discord
 
-from livingbot import config
+from livingbot import config, llm_config
 from livingbot.calendar import CalendarStore, WeekPlanner
 from livingbot.inventory import InventoryStore
-from livingbot.llm import LLMClient, LLMConfig
+from livingbot.llm import LLMClient
 from livingbot.memory import MemoryStore
 from livingbot.mood import (
     SLEEP_WINDOW_END,
@@ -22,6 +22,7 @@ from livingbot.mood import (
 from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
+from livingbot.tools import format_message
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +33,6 @@ _PHOTO_HINT = (
     "for this moment — for example a selfie at the gym or a picture of something "
     "nearby. Only do this if it genuinely fits; most messages need no photo.]"
 )
-
-
-def _format_message(msg: discord.Message) -> str:
-    timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-    return f"[id:{msg.id}] [{timestamp}] {msg.author.display_name}: {msg.content}"
 
 
 async def _send_chunked(
@@ -170,7 +166,7 @@ class LivingBot(discord.Client):
         if random.random() < mood_factor / (self._fatigue + 1.0):
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
-                formatted = [_format_message(m) for m in messages]
+                formatted = [format_message(m) for m in messages]
                 author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
                 memories = await self._memory_store.retrieve(
                     "\n".join(formatted), user_ids=author_ids
@@ -206,7 +202,7 @@ class LivingBot(discord.Client):
         self, messages: list[discord.Message], bot_response: str, user_id: str | None
     ) -> None:
         conversation = [
-            {"role": "user", "content": _format_message(m)} for m in messages
+            {"role": "user", "content": format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
         try:
@@ -221,7 +217,7 @@ class LivingBot(discord.Client):
         bot_response: str,
     ) -> None:
         conversation = [
-            {"role": "user", "content": _format_message(m)} for m in messages
+            {"role": "user", "content": format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
         for relation in relations:
@@ -268,13 +264,17 @@ def run() -> None:
     intents = discord.Intents.default()
     intents.message_content = True
     llm_client = LLMClient(
-        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), config.SYSTEM_PROMPT
     )
     memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
     relation_store = RelationStore(config.RELATION_DATA_PATH)
-    relation_updater = RelationUpdater(config.LLM_MODEL)
+    relation_updater = RelationUpdater(
+        llm_config.build_chat_model(llm_config.RELATION_UPDATER_MODEL)
+    )
     calendar_store = CalendarStore(config.CALENDAR_DATA_PATH, config.HOME_LOCATION)
-    week_planner = WeekPlanner(config.LLM_MODEL)
+    week_planner = WeekPlanner(
+        llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL)
+    )
     inventory_store = InventoryStore.create(config.INVENTORY_DATA_PATH)
     spending_store = SpendingStore(config.SPENDING_DATA_PATH)
     mood_store = MoodStore(config.MOOD_DATA_PATH)

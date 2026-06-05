@@ -9,7 +9,8 @@ from importlib.resources import files
 from pathlib import Path
 
 import httpx
-from openai import AsyncOpenAI
+
+from livingbot import llm_config
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,9 @@ async def _enhance_prompt(
             mugda += f" She is wearing: {outfit_description}."
         parts.append(mugda)
     user_message = " ".join(parts)
-    client = AsyncOpenAI()
+    client = llm_config.build_openai_client()
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=llm_config.PROMPT_ENHANCER_MODEL,
         messages=[
             {"role": "system", "content": _PROMPT_ENHANCER_SYSTEM},
             {"role": "user", "content": user_message},

@@ -3,7 +3,7 @@ Integration tests verifying that Mugda's responses reflect her mood state.
 
 Uses an LLM-as-judge (gpt-5.4-mini) to evaluate response tone against a rubric.
 Run on demand: uv run pytest tests/integration/test_mood_tone.py
-Requires OPENAI_API_KEY in the environment.
+Requires OPENROUTER_API_KEY in the environment.
 """
 
 import os
@@ -14,17 +14,17 @@ import pytest
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from livingbot import config
+from livingbot import config, llm_config
 from livingbot.calendar import Calendar
-from livingbot.llm import LLMClient, LLMConfig
+from livingbot.llm import LLMClient
 from livingbot.mood import Mood
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 
-_JUDGE_MODEL = "openai:gpt-5.4-mini"
+_JUDGE_MODEL = "openai/gpt-5.4-mini"
 
 
 class _ToneVerdict(BaseModel):
@@ -33,7 +33,9 @@ class _ToneVerdict(BaseModel):
 
 
 async def _judge(response: str, rubric: str) -> _ToneVerdict:
-    agent: Agent[None, _ToneVerdict] = Agent(_JUDGE_MODEL, output_type=_ToneVerdict)
+    agent: Agent[None, _ToneVerdict] = Agent(
+        llm_config.build_chat_model(_JUDGE_MODEL), output_type=_ToneVerdict
+    )
     result = await agent.run(
         f"You are evaluating a Discord chat response written in Polish by a young woman named Mugda.\n\n"
         f"Rubric — what the response SHOULD feel like:\n{rubric}\n\n"
@@ -46,7 +48,7 @@ async def _judge(response: str, rubric: str) -> _ToneVerdict:
 
 def _make_client() -> LLMClient:
     return LLMClient(
-        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), config.SYSTEM_PROMPT
     )
 
 
@@ -176,7 +178,9 @@ async def test_same_message_gets_warmer_response_at_high_mood_than_low() -> None
     low_response = await _get_response(message, mood_value=10.0)
     high_response = await _get_response(message, mood_value=85.0)
 
-    agent: Agent[None, _ToneVerdict] = Agent(_JUDGE_MODEL, output_type=_ToneVerdict)
+    agent: Agent[None, _ToneVerdict] = Agent(
+        llm_config.build_chat_model(_JUDGE_MODEL), output_type=_ToneVerdict
+    )
     result = await agent.run(
         "You are comparing two Discord replies written in Polish by the same person at different moods.\n\n"
         f"Reply A (written when feeling very low):\n{low_response}\n\n"
@@ -202,7 +206,9 @@ async def test_question_about_gym_gets_more_enthusiastic_response_at_high_mood()
     low_response = await _get_response(message, mood_value=18.0)
     high_response = await _get_response(message, mood_value=82.0)
 
-    agent: Agent[None, _ToneVerdict] = Agent(_JUDGE_MODEL, output_type=_ToneVerdict)
+    agent: Agent[None, _ToneVerdict] = Agent(
+        llm_config.build_chat_model(_JUDGE_MODEL), output_type=_ToneVerdict
+    )
     result = await agent.run(
         "You are comparing two Discord replies in Polish about gym workouts from the same person at different moods.\n\n"
         f"Reply A (low mood, ~18/100):\n{low_response}\n\n"

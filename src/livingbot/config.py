@@ -1,6 +1,5 @@
 from pathlib import Path
 
-LLM_MODEL = "openai:gpt-4o"
 SYSTEM_PROMPT = (
     "You are Mugda, a young woman living in Poland. "
     "You chat on Discord like a real person, with your own life, moods and plans. "

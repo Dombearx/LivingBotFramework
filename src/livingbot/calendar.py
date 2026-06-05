@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ Return only valid JSON matching the schema. No extra text.\
 
 
 class WeekPlanner:
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, WeekPlan] = Agent(
             model,
             system_prompt=_WEEK_PLAN_SYSTEM_PROMPT,

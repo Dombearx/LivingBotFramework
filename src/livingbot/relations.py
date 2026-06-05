@@ -3,6 +3,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ Return only valid JSON matching the relation schema. No extra text.\
 
 
 class RelationUpdater:
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, Relation] = Agent(
             model,
             system_prompt=_UPDATE_SYSTEM_PROMPT,

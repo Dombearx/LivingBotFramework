@@ -10,7 +10,7 @@ Progression:
   6. Unambiguous "no photo needed" conversation — must NOT call take_photo
 
 Run on demand: uv run pytest tests/integration/test_take_photo_tool.py
-Requires OPENAI_API_KEY in the environment.
+Requires OPENROUTER_API_KEY in the environment.
 """
 
 import os
@@ -20,16 +20,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-from livingbot import config
+from livingbot import config, llm_config
 from livingbot.bot import _PHOTO_HINT
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.inventory import InventoryStore
-from livingbot.llm import LLMClient, LLMConfig
+from livingbot.llm import LLMClient
 from livingbot.spending import SpendingStore
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 
 NOW = datetime(2026, 6, 4, 18, 15)  # Wednesday evening
@@ -58,7 +58,7 @@ def _take_photo_args(result) -> dict:
 @pytest.fixture
 def client() -> LLMClient:
     return LLMClient(
-        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), config.SYSTEM_PROMPT
     )
 
 
