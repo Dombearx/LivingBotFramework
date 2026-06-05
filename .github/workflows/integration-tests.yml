@@ -14,6 +14,7 @@ on:
           - relation_updater
           - spending_tools
           - mood_tone
+          - take_photo_tool
 
 jobs:
   integration-test:
@@ -34,9 +35,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           case "${{ inputs.test_group }}" in
-            context_tool)     uv run pytest tests/integration/test_load_context_tool.py ;;
-            relation_updater) uv run pytest tests/integration/test_relation_updater.py ;;
-            spending_tools)   uv run pytest tests/integration/test_spending_tools.py ;;
-            mood_tone)        uv run pytest tests/integration/test_mood_tone.py ;;
-            *)                uv run pytest tests/integration/ ;;
+            context_tool)      uv run pytest tests/integration/test_load_context_tool.py ;;
+            relation_updater)  uv run pytest tests/integration/test_relation_updater.py ;;
+            spending_tools)    uv run pytest tests/integration/test_spending_tools.py ;;
+            mood_tone)         uv run pytest tests/integration/test_mood_tone.py ;;
+            take_photo_tool)   uv run pytest tests/integration/test_take_photo_tool.py ;;
+            *)                 uv run pytest tests/integration/ ;;
           esac
