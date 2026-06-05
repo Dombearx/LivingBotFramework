@@ -21,6 +21,7 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import config
+from livingbot.bot import _PHOTO_HINT
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient, LLMConfig
@@ -32,12 +33,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 NOW = datetime(2026, 6, 4, 18, 15)  # Wednesday evening
-
-_PHOTO_HINT = (
-    "[You may use take_photo to attach a photo to your reply if it feels natural "
-    "for this moment — for example a selfie at the gym or a picture of something "
-    "nearby. Only do this if it genuinely fits; most messages need no photo.]"
-)
 
 
 def _tool_calls(result, tool_name: str) -> list[ToolCallPart]:
