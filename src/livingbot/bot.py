@@ -155,11 +155,10 @@ class LivingBot(discord.Client):
 
     async def _attempt_response(self) -> bool:
         now = datetime.now()
-        mood = self._mood_store.load()
+        mood = refresh_mood(self._mood_store.load(), now, self._calendar_store.load())
 
         mood_factor = 0.5 + (mood.value / 100.0)
         if random.random() < mood_factor / (self._fatigue + 1.0):
-            mood = refresh_mood(mood, now, self._calendar_store.load())
             self._mood_store.save(mood)
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
