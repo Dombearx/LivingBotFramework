@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
+from livingbot.prompts import WEEK_PLAN_SYSTEM_PROMPT
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,10 +31,6 @@ class Calendar(BaseModel):
         if not ongoing:
             return None
         return max(ongoing, key=lambda e: e.start)
-
-    def current_location(self, now: datetime) -> str:
-        entry = self.current_entry(now)
-        return entry.location if entry else self.home_location
 
     def upcoming(self, now: datetime) -> list[PlanEntry]:
         return sorted((e for e in self.entries if e.end >= now), key=lambda e: e.start)
@@ -68,26 +66,11 @@ class WeekPlan(BaseModel):
     activities: list[PlannedActivity]
 
 
-_WEEK_PLAN_SYSTEM_PROMPT = """\
-You plan the week for a Discord bot that lives like a real young woman somewhere in Poland.
-Given the week's start date and her hobbies, return a rough, realistic weekly plan as JSON.
-
-Rules:
-- Schedule her hobbies at concrete days and times within the week. The gym is her main hobby:
-  give it 3-4 sessions of about 1.5 hours, on varied days, usually in the evening.
-- Add a few ordinary bits of life (errands, seeing friends, a relaxed weekend) so the week feels lived-in.
-- Do not overschedule. Leave most of her time open.
-- Each activity needs a start and end datetime that fall within the planned week.
-- location is where she physically is during the activity (e.g. "gym", "home", "city centre").
-Return only valid JSON matching the schema. No extra text.\
-"""
-
-
 class WeekPlanner:
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, WeekPlan] = Agent(
             model,
-            system_prompt=_WEEK_PLAN_SYSTEM_PROMPT,
+            system_prompt=WEEK_PLAN_SYSTEM_PROMPT,
             output_type=WeekPlan,
         )
 

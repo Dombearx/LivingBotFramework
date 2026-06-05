@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import discord
 
-from livingbot import config, llm_config
+from livingbot import config, llm_config, prompts
 from livingbot.calendar import CalendarStore, WeekPlanner
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
@@ -27,12 +27,6 @@ from livingbot.tools import format_message
 logger = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000
-
-_PHOTO_HINT = (
-    "[You may use take_photo to attach a photo to your reply if it feels natural "
-    "for this moment — for example a selfie at the gym or a picture of something "
-    "nearby. Only do this if it genuinely fits; most messages need no photo.]"
-)
 
 
 async def _send_chunked(
@@ -71,6 +65,7 @@ class LivingBot(discord.Client):
         self._queue = MessageQueue()
         self._fatigue: float = 0.0
         self._resting: bool = False
+        self._response_lock = asyncio.Lock()
         self._llm_client = llm_client
         self._memory_store = memory_store
         self._relation_store = relation_store
@@ -140,14 +135,16 @@ class LivingBot(discord.Client):
         self._messages_since_photo += 1
         self._queue.add(message)
 
-        if not self._resting:
+        async with self._response_lock:
+            if self._resting:
+                return
             if not await self._attempt_response():
                 self._resting = True
                 asyncio.create_task(self._rest_and_respond())
 
     def _photo_hint_for_message(self) -> str:
         if self._messages_since_photo >= self._photo_cooldown:
-            return _PHOTO_HINT
+            return prompts.PHOTO_HINT
         return ""
 
     def _on_photo_taken(self) -> None:
@@ -159,11 +156,11 @@ class LivingBot(discord.Client):
     async def _attempt_response(self) -> bool:
         now = datetime.now()
         mood = self._mood_store.load()
-        mood = refresh_mood(mood, now, self._calendar_store.load())
-        self._mood_store.save(mood)
 
         mood_factor = 0.5 + (mood.value / 100.0)
         if random.random() < mood_factor / (self._fatigue + 1.0):
+            mood = refresh_mood(mood, now, self._calendar_store.load())
+            self._mood_store.save(mood)
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
                 formatted = [format_message(m) for m in messages]
@@ -241,11 +238,11 @@ class LivingBot(discord.Client):
             actual_delay = random.uniform(3.0, max_delay)
             await asyncio.sleep(actual_delay * 60.0)
 
-            self._fatigue = max(0.0, self._fatigue - actual_delay / 5.0)
-
-            if await self._attempt_response():
-                self._resting = False
-                return
+            async with self._response_lock:
+                self._fatigue = max(0.0, self._fatigue - actual_delay / 5.0)
+                if await self._attempt_response():
+                    self._resting = False
+                    return
 
     def _is_directed_at_bot(self, message: discord.Message) -> bool:
         if self.user is not None and self.user in message.mentions:
@@ -264,7 +261,7 @@ def run() -> None:
     intents = discord.Intents.default()
     intents.message_content = True
     llm_client = LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), config.SYSTEM_PROMPT
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
     )
     memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
     relation_store = RelationStore(config.RELATION_DATA_PATH)

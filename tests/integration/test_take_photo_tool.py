@@ -20,8 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-from livingbot import config, llm_config
-from livingbot.bot import _PHOTO_HINT
+from livingbot import config, llm_config, prompts
+from livingbot.prompts import PHOTO_HINT
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
@@ -58,7 +58,7 @@ def _take_photo_args(result) -> dict:
 @pytest.fixture
 def client() -> LLMClient:
     return LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), config.SYSTEM_PROMPT
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
     )
 
 
@@ -171,7 +171,7 @@ async def test_take_photo_called_when_explicitly_instructed(
                 calendar_store,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
@@ -204,7 +204,7 @@ async def test_take_photo_include_mugda_true_when_selfie_requested(
                 calendar_store_at_gym,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
@@ -241,7 +241,7 @@ async def test_take_photo_include_mugda_false_when_scenery_requested(
                 calendar_store_at_park,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
@@ -280,7 +280,7 @@ async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
                 calendar_store_at_gym,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
@@ -315,7 +315,7 @@ async def test_take_photo_include_mugda_false_when_asked_about_place(
                 calendar_store_at_park,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 

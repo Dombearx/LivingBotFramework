@@ -14,7 +14,7 @@ import pytest
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from livingbot import config, llm_config
+from livingbot import llm_config, prompts
 from livingbot.calendar import Calendar
 from livingbot.llm import LLMClient
 from livingbot.mood import Mood
@@ -48,7 +48,7 @@ async def _judge(response: str, rubric: str) -> _ToneVerdict:
 
 def _make_client() -> LLMClient:
     return LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), config.SYSTEM_PROMPT
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
     )
 
 
