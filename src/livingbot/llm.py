@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 import discord
 from pydantic import BaseModel
@@ -19,12 +20,19 @@ from livingbot.tools import (
     remove_item,
     remove_plan,
     search_inventory,
+    take_photo,
 )
 
 
 class LLMConfig(BaseModel):
     model: str
     system_prompt: str
+
+
+class LLMResult:
+    def __init__(self, run_result: AgentRunResult[str], deps: BotDeps) -> None:
+        self.output: str = run_result.output
+        self.photo: bytes | None = deps.photo_result
 
 
 class LLMClient:
@@ -42,6 +50,7 @@ class LLMClient:
                 search_inventory,
                 check_budget,
                 buy_item,
+                take_photo,
             ],
         )
 
@@ -56,12 +65,15 @@ class LLMClient:
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
         mood: Mood | None = None,
-    ) -> AgentRunResult[str]:
+        photo_hint: str = "",
+        portrait_path: Path = Path(),
+    ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
             calendar_store=calendar_store,
             inventory_store=inventory_store,
             spending_store=spending_store,
+            portrait_path=portrait_path,
         )
         prompt = "\n".join(user_messages)
         if memories:
@@ -74,7 +86,10 @@ class LLMClient:
         if mood is not None:
             prompt = build_mood_block(mood, now) + prompt
         prompt = _build_calendar_block(calendar_store.load(), now) + prompt
-        return await self._agent.run(prompt, deps=deps)
+        if photo_hint:
+            prompt = f"{photo_hint}\n\n" + prompt
+        run_result = await self._agent.run(prompt, deps=deps)
+        return LLMResult(run_result, deps)
 
 
 def _build_calendar_block(calendar: Calendar, now: datetime) -> str:

@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
 import discord
@@ -17,6 +18,8 @@ class BotDeps:
     calendar_store: CalendarStore
     inventory_store: InventoryStore
     spending_store: SpendingStore
+    portrait_path: Path = field(default_factory=Path)
+    photo_result: bytes | None = None
 
 
 async def load_context(
@@ -150,3 +153,37 @@ async def buy_item(
     item = InventoryItem(name=name, description=description)
     await ctx.deps.inventory_store.add(item)
     return f"Bought and added [id:{item.id}] {item.name} to your inventory."
+
+
+async def take_photo(
+    ctx: RunContext[BotDeps],
+    description: str,
+    include_mugda: bool,
+    outfit_description: str = "",
+) -> str:
+    """Take a photo. Use this when you want to share a picture of what you're doing
+    or what's around you. Describe the scene or subject in plain language.
+    Set include_mugda=True when you should appear in the photo (selfies, photos of
+    yourself doing something), False for photos of scenery, objects or other subjects.
+    When include_mugda=True, set outfit_description to what you are currently wearing
+    (e.g. 'black sports bra, grey leggings, white sneakers') so the image shows
+    you accurately — leave empty for non-selfie photos.
+    Only one photo can be attached per message; calling this more than once replaces
+    the previous photo."""
+    from livingbot.image import generate_image
+
+    try:
+        image_bytes = await generate_image(
+            description=description,
+            include_mugda=include_mugda,
+            portrait_path=ctx.deps.portrait_path,
+            outfit_description=outfit_description,
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("Image generation failed")
+        return "Photo failed to generate — something went wrong on my end."
+
+    ctx.deps.photo_result = image_bytes
+    return "Photo taken and ready to attach."

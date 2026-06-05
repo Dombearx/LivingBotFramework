@@ -20,6 +20,7 @@ def other_user() -> MagicMock:
 def make_llm_client(response: str = "llm response") -> MagicMock:
     mock_result = MagicMock()
     mock_result.output = response
+    mock_result.photo = None
     client = MagicMock()
     client.complete = AsyncMock(return_value=mock_result)
     return client
@@ -371,6 +372,8 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         [],
         [Relation(user_id="123"), Relation(user_id="123")],
         ANY,
+        photo_hint=ANY,
+        portrait_path=ANY,
     )
 
 
@@ -716,3 +719,226 @@ async def test_ensure_week_planned_prunes_finished_entries(
 
     saved = calendar_store.save.call_args.args[0]
     assert saved.entries == []
+
+
+# ---------------------------------------------------------------------------
+# _send_chunked with photo
+# ---------------------------------------------------------------------------
+
+
+async def test_send_chunked_without_photo_sends_text_only() -> None:
+    channel = make_channel()
+
+    await _send_chunked(channel, "hello")
+
+    channel.send.assert_called_once_with("hello")
+
+
+async def test_send_chunked_with_photo_attaches_file_to_last_chunk() -> None:
+    channel = make_channel()
+
+    await _send_chunked(channel, "here you go", photo=b"\xff\xd8\xff")
+
+    call_kwargs = channel.send.call_args.kwargs
+    assert "file" in call_kwargs
+    assert isinstance(call_kwargs["file"], discord.File)
+
+
+async def test_send_chunked_with_photo_sends_text_in_same_call() -> None:
+    channel = make_channel()
+
+    await _send_chunked(channel, "check this out", photo=b"\xff\xd8\xff")
+
+    text_sent = channel.send.call_args.args[0]
+    assert text_sent == "check this out"
+
+
+async def test_send_chunked_with_long_text_only_attaches_photo_to_last_chunk() -> None:
+    channel = make_channel()
+    long_text = "x" * 4500  # exceeds DISCORD_MAX_LENGTH, produces 3 chunks
+
+    await _send_chunked(channel, long_text, photo=b"\xff\xd8\xff")
+
+    assert channel.send.call_count == 3
+    # first two chunks must not have a file kwarg
+    for call in channel.send.call_args_list[:-1]:
+        assert "file" not in call.kwargs
+    # last chunk must carry the file
+    assert "file" in channel.send.call_args_list[-1].kwargs
+
+
+# ---------------------------------------------------------------------------
+# photo cadence: _photo_hint_for_message and _on_photo_taken
+# ---------------------------------------------------------------------------
+
+
+def test_photo_hint_for_message_when_below_cooldown_returns_empty() -> None:
+    bot = make_bot()
+    bot._messages_since_photo = 0
+    bot._photo_cooldown = 50
+
+    assert bot._photo_hint_for_message() == ""
+
+
+def test_photo_hint_for_message_when_at_cooldown_returns_hint() -> None:
+    bot = make_bot()
+    bot._messages_since_photo = 50
+    bot._photo_cooldown = 50
+
+    assert bot._photo_hint_for_message() != ""
+
+
+def test_photo_hint_for_message_when_above_cooldown_returns_hint() -> None:
+    bot = make_bot()
+    bot._messages_since_photo = 99
+    bot._photo_cooldown = 50
+
+    assert bot._photo_hint_for_message() != ""
+
+
+def test_on_photo_taken_resets_message_counter_to_zero() -> None:
+    bot = make_bot()
+    bot._messages_since_photo = 55
+
+    bot._on_photo_taken()
+
+    assert bot._messages_since_photo == 0
+
+
+@patch("random.randint", return_value=45)
+def test_on_photo_taken_sets_new_cooldown(mock_randint: MagicMock) -> None:
+    bot = make_bot()
+    bot._photo_cooldown = 99
+
+    bot._on_photo_taken()
+
+    assert bot._photo_cooldown == 45
+
+
+# ---------------------------------------------------------------------------
+# _attempt_response photo attachment integration
+# ---------------------------------------------------------------------------
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_when_photo_returned_attaches_it_to_message(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    llm_client.complete.return_value.photo = b"\xff\xd8\xff"
+    bot = make_bot(llm_client=llm_client)
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    await bot._attempt_response()
+
+    last_call = channel.send.call_args
+    assert "file" in last_call.kwargs
+    assert isinstance(last_call.kwargs["file"], discord.File)
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_when_photo_returned_resets_photo_counter(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    llm_client.complete.return_value.photo = b"\xff\xd8\xff"
+    bot = make_bot(llm_client=llm_client)
+    bot._messages_since_photo = 55
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    await bot._attempt_response()
+
+    assert bot._messages_since_photo == 0
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_when_no_photo_does_not_reset_counter(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    bot._messages_since_photo = 10
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    await bot._attempt_response()
+
+    assert bot._messages_since_photo == 10
+
+
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_on_message_increments_message_counter(mock_user: PropertyMock) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    bot = make_bot()
+    bot._resting = True  # prevent attempt_response
+    bot._messages_since_photo = 5
+
+    await bot.on_message(make_message(author=other_user(), mentions=[user]))
+
+    assert bot._messages_since_photo == 6
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_passes_photo_hint_when_cooldown_reached(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client=llm_client)
+    bot._messages_since_photo = 99
+    bot._photo_cooldown = 50
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    await bot._attempt_response()
+
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["photo_hint"] != ""
+
+
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_passes_empty_hint_when_below_cooldown(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client=llm_client)
+    bot._messages_since_photo = 0
+    bot._photo_cooldown = 50
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    await bot._attempt_response()
+
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["photo_hint"] == ""

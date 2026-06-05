@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 import os
 import random
@@ -26,15 +27,34 @@ logger = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000
 
+_PHOTO_HINT = (
+    "[You may use take_photo to attach a photo to your reply if it feels natural "
+    "for this moment — for example a selfie at the gym or a picture of something "
+    "nearby. Only do this if it genuinely fits; most messages need no photo.]"
+)
+
 
 def _format_message(msg: discord.Message) -> str:
     timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
     return f"[id:{msg.id}] [{timestamp}] {msg.author.display_name}: {msg.content}"
 
 
-async def _send_chunked(channel: discord.abc.Messageable, text: str) -> None:
-    for i in range(0, len(text), DISCORD_MAX_LENGTH):
-        await channel.send(text[i : i + DISCORD_MAX_LENGTH])
+async def _send_chunked(
+    channel: discord.abc.Messageable,
+    text: str,
+    photo: bytes | None = None,
+) -> None:
+    chunks = [
+        text[i : i + DISCORD_MAX_LENGTH]
+        for i in range(0, len(text), DISCORD_MAX_LENGTH)
+    ]
+    for i, chunk in enumerate(chunks):
+        is_last = i == len(chunks) - 1
+        if is_last and photo is not None:
+            file = discord.File(io.BytesIO(photo), filename="photo.jpg")
+            await channel.send(chunk, file=file)
+        else:
+            await channel.send(chunk)
 
 
 class LivingBot(discord.Client):
@@ -64,6 +84,10 @@ class LivingBot(discord.Client):
         self._inventory_store = inventory_store
         self._spending_store = spending_store
         self._mood_store = mood_store
+        self._messages_since_photo: int = 0
+        self._photo_cooldown: int = random.randint(
+            config.PHOTO_COOLDOWN_MIN, config.PHOTO_COOLDOWN_MAX
+        )
 
     async def setup_hook(self) -> None:
         self.loop.create_task(self._life_loop())
@@ -117,12 +141,24 @@ class LivingBot(discord.Client):
         if not self._is_directed_at_bot(message):
             return
 
+        self._messages_since_photo += 1
         self._queue.add(message)
 
         if not self._resting:
             if not await self._attempt_response():
                 self._resting = True
                 asyncio.create_task(self._rest_and_respond())
+
+    def _photo_hint_for_message(self) -> str:
+        if self._messages_since_photo >= self._photo_cooldown:
+            return _PHOTO_HINT
+        return ""
+
+    def _on_photo_taken(self) -> None:
+        self._messages_since_photo = 0
+        self._photo_cooldown = random.randint(
+            config.PHOTO_COOLDOWN_MIN, config.PHOTO_COOLDOWN_MAX
+        )
 
     async def _attempt_response(self) -> bool:
         now = datetime.now()
@@ -150,8 +186,12 @@ class LivingBot(discord.Client):
                     memories,
                     relations,
                     mood,
+                    photo_hint=self._photo_hint_for_message(),
+                    portrait_path=config.MUGDA_PORTRAIT_PATH,
                 )
-                await _send_chunked(channel, result.output)
+                if result.photo is not None:
+                    self._on_photo_taken()
+                await _send_chunked(channel, result.output, photo=result.photo)
                 sole_author = author_ids[0] if len(author_ids) == 1 else None
                 asyncio.create_task(
                     self._store_memories(messages, result.output, sole_author)

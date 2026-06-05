@@ -1,6 +1,7 @@
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.inventory import InventoryItem
@@ -16,6 +17,7 @@ from livingbot.tools import (
     remove_item,
     remove_plan,
     search_inventory,
+    take_photo,
 )
 
 
@@ -273,3 +275,131 @@ async def test_buy_item_when_unaffordable_does_not_add_to_inventory() -> None:
     await buy_item(ctx, name="wyjazd górski", category=SpendCategory.large)
 
     inventory.add.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# take_photo
+# ---------------------------------------------------------------------------
+
+
+def make_photo_ctx(portrait_path: Path = Path()) -> SimpleNamespace:
+    deps = BotDeps(
+        channel=MagicMock(),
+        calendar_store=MagicMock(),
+        inventory_store=make_inventory_store(),
+        spending_store=make_spending_store(),
+        portrait_path=portrait_path,
+    )
+    return SimpleNamespace(deps=deps)
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_stores_image_bytes_in_deps(mock_gen: AsyncMock) -> None:
+    ctx = make_photo_ctx()
+
+    await take_photo(ctx, description="at the gym", include_mugda=True)
+
+    assert ctx.deps.photo_result == b"image-bytes"
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_returns_confirmation_message(mock_gen: AsyncMock) -> None:
+    ctx = make_photo_ctx()
+
+    result = await take_photo(ctx, description="sunny park", include_mugda=False)
+
+    assert "ready" in result.lower()
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_passes_description_and_include_mugda_to_generate_image(
+    mock_gen: AsyncMock,
+) -> None:
+    ctx = make_photo_ctx()
+
+    await take_photo(ctx, description="beach at sunset", include_mugda=True)
+
+    mock_gen.assert_awaited_once()
+    call_kwargs = mock_gen.call_args.kwargs
+    assert call_kwargs["description"] == "beach at sunset"
+    assert call_kwargs["include_mugda"] is True
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_passes_outfit_description_to_generate_image(
+    mock_gen: AsyncMock,
+) -> None:
+    ctx = make_photo_ctx()
+
+    await take_photo(
+        ctx,
+        description="at the gym",
+        include_mugda=True,
+        outfit_description="black sports bra, grey leggings",
+    )
+
+    assert (
+        mock_gen.call_args.kwargs["outfit_description"]
+        == "black sports bra, grey leggings"
+    )
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_default_outfit_description_is_empty(
+    mock_gen: AsyncMock,
+) -> None:
+    ctx = make_photo_ctx()
+
+    await take_photo(ctx, description="a park", include_mugda=False)
+
+    assert mock_gen.call_args.kwargs["outfit_description"] == ""
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    side_effect=RuntimeError("endpoint down"),
+)
+async def test_take_photo_when_generation_fails_returns_error_message(
+    mock_gen: AsyncMock,
+) -> None:
+    ctx = make_photo_ctx()
+
+    result = await take_photo(ctx, description="a park", include_mugda=False)
+
+    assert "failed" in result.lower()
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    side_effect=RuntimeError("endpoint down"),
+)
+async def test_take_photo_when_generation_fails_photo_result_stays_none(
+    mock_gen: AsyncMock,
+) -> None:
+    ctx = make_photo_ctx()
+
+    await take_photo(ctx, description="a park", include_mugda=False)
+
+    assert ctx.deps.photo_result is None
