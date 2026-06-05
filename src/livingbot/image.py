@@ -14,25 +14,34 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 _PROMPT_ENHANCER_SYSTEM = (
-    "You are a ComfyUI prompt engineer. "
-    "Convert the user's plain description into a concise, comma-separated list of "
-    "positive prompt tags suitable for a photorealistic image generator. "
-    "Include style, lighting, and quality tags (e.g. 'photorealistic, 8k, cinematic "
-    "lighting, sharp focus'). "
-    "Output only the tag list — no explanation, no punctuation other than commas."
+    "You are a prompt engineer for a photorealistic image generation model. "
+    "Given a scene description, write an image generation prompt in two parts separated by ' | ':\n"
+    "1. A vivid, detailed paragraph describing the scene — the setting, atmosphere, lighting, "
+    "mood, actions, and any people present including their exact appearance and clothing. "
+    "Write it as a direct scene description, not as instructions.\n"
+    "2. A comma-separated list of quality and style tags "
+    "(e.g. 'photorealistic, 8k, cinematic lighting, sharp focus, Canon EOS R5').\n"
+    "Output only these two parts joined by ' | ' — nothing else."
 )
 
 _POLL_INTERVAL_SECONDS = 3.0
 _POLL_TIMEOUT_SECONDS = 120.0
 
 
-async def _enhance_prompt(description: str, include_mugda: bool) -> str:
-    subject = (
-        "Mugda, a young Polish woman, is present and clearly visible in the scene. "
-        if include_mugda
-        else ""
-    )
-    user_message = f"{subject}{description}"
+async def _enhance_prompt(
+    description: str,
+    include_mugda: bool,
+    outfit_description: str,
+) -> str:
+    parts: list[str] = [description]
+    if include_mugda:
+        mugda = (
+            "Mugda, a young Polish woman, is present and clearly visible in the scene."
+        )
+        if outfit_description:
+            mugda += f" She is wearing: {outfit_description}."
+        parts.append(mugda)
+    user_message = " ".join(parts)
     client = AsyncOpenAI()
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
@@ -40,7 +49,7 @@ async def _enhance_prompt(description: str, include_mugda: bool) -> str:
             {"role": "system", "content": _PROMPT_ENHANCER_SYSTEM},
             {"role": "user", "content": user_message},
         ],
-        max_tokens=200,
+        max_tokens=400,
         temperature=0.7,
     )
     return response.choices[0].message.content or description
@@ -106,12 +115,15 @@ async def generate_image(
     description: str,
     include_mugda: bool,
     portrait_path: Path,
+    outfit_description: str = "",
 ) -> bytes:
     endpoint_url = os.environ["RUNPOD_ENDPOINT_URL"]
     api_key = os.environ["RUNPOD_API_KEY"]
 
     logger.info("Enhancing prompt (include_mugda=%s)", include_mugda)
-    positive_prompt = await _enhance_prompt(description, include_mugda)
+    positive_prompt = await _enhance_prompt(
+        description, include_mugda, outfit_description
+    )
     logger.info("Enhanced prompt: %s", positive_prompt)
 
     workflow = _load_workflow(include_mugda)

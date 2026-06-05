@@ -159,12 +159,15 @@ async def take_photo(
     ctx: RunContext[BotDeps],
     description: str,
     include_mugda: bool,
+    outfit_description: str = "",
 ) -> str:
     """Take a photo. Use this when you want to share a picture of what you're doing
-    or what's around you. describe the scene or subject in plain language — the
-    description will be turned into a proper image automatically.
+    or what's around you. Describe the scene or subject in plain language.
     Set include_mugda=True when you should appear in the photo (selfies, photos of
     yourself doing something), False for photos of scenery, objects or other subjects.
+    When include_mugda=True, set outfit_description to what you are currently wearing
+    (e.g. 'black sports bra, grey leggings, white sneakers') so the image shows
+    you accurately — leave empty for non-selfie photos.
     Only one photo can be attached per message; calling this more than once replaces
     the previous photo."""
     from livingbot.image import generate_image
@@ -174,6 +177,7 @@ async def take_photo(
             description=description,
             include_mugda=include_mugda,
             portrait_path=ctx.deps.portrait_path,
+            outfit_description=outfit_description,
         )
     except Exception:
         import logging
