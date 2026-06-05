@@ -129,7 +129,7 @@ def _make_complete_kwargs(
         spending_store=spending_store,
         now=NOW,
         photo_hint=photo_hint,
-        portrait_path=config.MUGDA_PORTRAIT_PATH,
+        portrait_path=config.PORTRAIT_PATH,
     )
 
 

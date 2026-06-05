@@ -77,7 +77,7 @@ async def test_load_context_called_when_explicitly_asked(
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
 ) -> None:
-    """Sanity check: bot fetches history when user directly asks for it."""
+    """Explicit Polish request to scroll back and read what was written before."""
     channel = _make_channel(
         [
             _make_history_message(900, "Marek", "hej, co u was?"),
@@ -85,7 +85,8 @@ async def test_load_context_called_when_explicitly_asked(
         ]
     )
     user_messages = [
-        "[id:1000] [2026-05-31 12:00:00] TestUser: Can you check what messages were sent before this one? Use the load_context tool with id 1000."
+        "[id:1000] [2026-05-31 12:00:00] TestUser: Mugda, sprawdź co pisano na tym kanale "
+        "przed tą wiadomością (id: 1000) i streść mi to"
     ]
 
     result = await client.complete(

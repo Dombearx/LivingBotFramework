@@ -180,7 +180,7 @@ class LivingBot(discord.Client):
                     relations,
                     mood,
                     photo_hint=self._photo_hint_for_message(),
-                    portrait_path=config.MUGDA_PORTRAIT_PATH,
+                    portrait_path=config.PORTRAIT_PATH,
                 )
                 if result.photo is not None:
                     self._on_photo_taken()

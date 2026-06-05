@@ -45,6 +45,16 @@ async def test_plan_includes_a_gym_session(planner: WeekPlanner) -> None:
     )
 
 
+async def test_plan_entries_end_after_they_start(planner: WeekPlanner) -> None:
+    """Each activity should have a positive duration."""
+    entries = await planner.plan(WEEK_START, ["gym"], "home")
+
+    for entry in entries:
+        assert entry.end > entry.start, (
+            f"Entry '{entry.activity}' ends before it starts: {entry.start}–{entry.end}"
+        )
+
+
 async def test_plan_entries_fall_within_the_planned_week(
     planner: WeekPlanner,
 ) -> None:
@@ -54,14 +64,4 @@ async def test_plan_entries_fall_within_the_planned_week(
     for entry in entries:
         assert datetime(2026, 6, 1) <= entry.start <= WEEK_END, (
             f"Entry '{entry.activity}' starts outside the week at {entry.start}"
-        )
-
-
-async def test_plan_entries_end_after_they_start(planner: WeekPlanner) -> None:
-    """Each activity should have a positive duration."""
-    entries = await planner.plan(WEEK_START, ["gym"], "home")
-
-    for entry in entries:
-        assert entry.end > entry.start, (
-            f"Entry '{entry.activity}' ends before it starts: {entry.start}–{entry.end}"
         )
