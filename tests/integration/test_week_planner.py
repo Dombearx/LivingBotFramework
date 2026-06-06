@@ -3,7 +3,7 @@ Integration tests that send real requests to the LLM and verify WeekPlanner
 produces a sensible weekly plan with the bot's hobbies (gym as the main one).
 
 Run on demand: uv run pytest tests/integration/
-Requires OPENAI_API_KEY in the environment.
+Requires OPENROUTER_API_KEY in the environment.
 """
 
 import os
@@ -11,12 +11,12 @@ from datetime import date, datetime
 
 import pytest
 
-from livingbot import config
+from livingbot import llm_config
 from livingbot.calendar import WeekPlanner
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 
 WEEK_START = date(2026, 6, 1)
@@ -25,7 +25,7 @@ WEEK_END = datetime(2026, 6, 7, 23, 59)
 
 @pytest.fixture
 def planner() -> WeekPlanner:
-    return WeekPlanner(config.LLM_MODEL)
+    return WeekPlanner(llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL))
 
 
 async def test_plan_produces_entries(planner: WeekPlanner) -> None:
@@ -45,6 +45,16 @@ async def test_plan_includes_a_gym_session(planner: WeekPlanner) -> None:
     )
 
 
+async def test_plan_entries_end_after_they_start(planner: WeekPlanner) -> None:
+    """Each activity should have a positive duration."""
+    entries = await planner.plan(WEEK_START, ["gym"], "home")
+
+    for entry in entries:
+        assert entry.end > entry.start, (
+            f"Entry '{entry.activity}' ends before it starts: {entry.start}–{entry.end}"
+        )
+
+
 async def test_plan_entries_fall_within_the_planned_week(
     planner: WeekPlanner,
 ) -> None:
@@ -54,14 +64,4 @@ async def test_plan_entries_fall_within_the_planned_week(
     for entry in entries:
         assert datetime(2026, 6, 1) <= entry.start <= WEEK_END, (
             f"Entry '{entry.activity}' starts outside the week at {entry.start}"
-        )
-
-
-async def test_plan_entries_end_after_they_start(planner: WeekPlanner) -> None:
-    """Each activity should have a positive duration."""
-    entries = await planner.plan(WEEK_START, ["gym"], "home")
-
-    for entry in entries:
-        assert entry.end > entry.start, (
-            f"Entry '{entry.activity}' ends before it starts: {entry.start}–{entry.end}"
         )

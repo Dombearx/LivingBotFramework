@@ -1846,6 +1846,7 @@ dependencies = [
     { name = "discord-py" },
     { name = "httpx" },
     { name = "mem0ai" },
+    { name = "openai" },
     { name = "pydantic-ai" },
 ]
 
@@ -1862,6 +1863,7 @@ requires-dist = [
     { name = "discord-py", specifier = ">=2.7.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mem0ai", specifier = ">=2.0.4" },
+    { name = "openai", specifier = ">=2.38.0" },
     { name = "pydantic-ai", specifier = ">=1.104.0" },
 ]
 

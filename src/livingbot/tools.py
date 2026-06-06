@@ -22,6 +22,14 @@ class BotDeps:
     photo_result: bytes | None = None
 
 
+def format_message(message: discord.Message) -> str:
+    timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
+    return (
+        f"[id:{message.id}] [{timestamp}] "
+        f"{message.author.display_name}: {message.content}"
+    )
+
+
 async def load_context(
     ctx: RunContext[BotDeps],
     n: Annotated[int, Field(ge=1, le=100)],
@@ -38,10 +46,7 @@ async def load_context(
     ]
     if not messages:
         return "No earlier messages available."
-    return "\n".join(
-        f"[id:{msg.id}] [{msg.created_at.strftime('%Y-%m-%d %H:%M:%S')}] {msg.author.display_name}: {msg.content}"
-        for msg in reversed(messages)
-    )
+    return "\n".join(format_message(msg) for msg in reversed(messages))
 
 
 async def add_plan(

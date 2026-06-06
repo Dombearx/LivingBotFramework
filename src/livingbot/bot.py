@@ -7,10 +7,10 @@ from datetime import datetime, timedelta
 
 import discord
 
-from livingbot import config
+from livingbot import config, llm_config, prompts
 from livingbot.calendar import CalendarStore, WeekPlanner
 from livingbot.inventory import InventoryStore
-from livingbot.llm import LLMClient, LLMConfig
+from livingbot.llm import LLMClient
 from livingbot.memory import MemoryStore
 from livingbot.mood import (
     SLEEP_WINDOW_END,
@@ -22,21 +22,11 @@ from livingbot.mood import (
 from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
+from livingbot.tools import format_message
 
 logger = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000
-
-_PHOTO_HINT = (
-    "[You may use take_photo to attach a photo to your reply if it feels natural "
-    "for this moment — for example a selfie at the gym or a picture of something "
-    "nearby. Only do this if it genuinely fits; most messages need no photo.]"
-)
-
-
-def _format_message(msg: discord.Message) -> str:
-    timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-    return f"[id:{msg.id}] [{timestamp}] {msg.author.display_name}: {msg.content}"
 
 
 async def _send_chunked(
@@ -75,6 +65,7 @@ class LivingBot(discord.Client):
         self._queue = MessageQueue()
         self._fatigue: float = 0.0
         self._resting: bool = False
+        self._response_lock = asyncio.Lock()
         self._llm_client = llm_client
         self._memory_store = memory_store
         self._relation_store = relation_store
@@ -144,14 +135,16 @@ class LivingBot(discord.Client):
         self._messages_since_photo += 1
         self._queue.add(message)
 
-        if not self._resting:
+        async with self._response_lock:
+            if self._resting:
+                return
             if not await self._attempt_response():
                 self._resting = True
                 asyncio.create_task(self._rest_and_respond())
 
     def _photo_hint_for_message(self) -> str:
         if self._messages_since_photo >= self._photo_cooldown:
-            return _PHOTO_HINT
+            return prompts.PHOTO_HINT
         return ""
 
     def _on_photo_taken(self) -> None:
@@ -162,15 +155,14 @@ class LivingBot(discord.Client):
 
     async def _attempt_response(self) -> bool:
         now = datetime.now()
-        mood = self._mood_store.load()
-        mood = refresh_mood(mood, now, self._calendar_store.load())
-        self._mood_store.save(mood)
+        mood = refresh_mood(self._mood_store.load(), now, self._calendar_store.load())
 
         mood_factor = 0.5 + (mood.value / 100.0)
         if random.random() < mood_factor / (self._fatigue + 1.0):
+            self._mood_store.save(mood)
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
-                formatted = [_format_message(m) for m in messages]
+                formatted = [format_message(m) for m in messages]
                 author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
                 memories = await self._memory_store.retrieve(
                     "\n".join(formatted), user_ids=author_ids
@@ -187,7 +179,7 @@ class LivingBot(discord.Client):
                     relations,
                     mood,
                     photo_hint=self._photo_hint_for_message(),
-                    portrait_path=config.MUGDA_PORTRAIT_PATH,
+                    portrait_path=config.PORTRAIT_PATH,
                 )
                 if result.photo is not None:
                     self._on_photo_taken()
@@ -206,7 +198,7 @@ class LivingBot(discord.Client):
         self, messages: list[discord.Message], bot_response: str, user_id: str | None
     ) -> None:
         conversation = [
-            {"role": "user", "content": _format_message(m)} for m in messages
+            {"role": "user", "content": format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
         try:
@@ -221,7 +213,7 @@ class LivingBot(discord.Client):
         bot_response: str,
     ) -> None:
         conversation = [
-            {"role": "user", "content": _format_message(m)} for m in messages
+            {"role": "user", "content": format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
         for relation in relations:
@@ -245,11 +237,11 @@ class LivingBot(discord.Client):
             actual_delay = random.uniform(3.0, max_delay)
             await asyncio.sleep(actual_delay * 60.0)
 
-            self._fatigue = max(0.0, self._fatigue - actual_delay / 5.0)
-
-            if await self._attempt_response():
-                self._resting = False
-                return
+            async with self._response_lock:
+                self._fatigue = max(0.0, self._fatigue - actual_delay / 5.0)
+                if await self._attempt_response():
+                    self._resting = False
+                    return
 
     def _is_directed_at_bot(self, message: discord.Message) -> bool:
         if self.user is not None and self.user in message.mentions:
@@ -268,13 +260,17 @@ def run() -> None:
     intents = discord.Intents.default()
     intents.message_content = True
     llm_client = LLMClient(
-        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
     )
     memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
     relation_store = RelationStore(config.RELATION_DATA_PATH)
-    relation_updater = RelationUpdater(config.LLM_MODEL)
+    relation_updater = RelationUpdater(
+        llm_config.build_chat_model(llm_config.RELATION_UPDATER_MODEL)
+    )
     calendar_store = CalendarStore(config.CALENDAR_DATA_PATH, config.HOME_LOCATION)
-    week_planner = WeekPlanner(config.LLM_MODEL)
+    week_planner = WeekPlanner(
+        llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL)
+    )
     inventory_store = InventoryStore.create(config.INVENTORY_DATA_PATH)
     spending_store = SpendingStore(config.SPENDING_DATA_PATH)
     mood_store = MoodStore(config.MOOD_DATA_PATH)

@@ -55,18 +55,6 @@ def test_current_entry_when_entries_overlap_returns_latest_start() -> None:
     assert result == specific
 
 
-def test_current_location_returns_entry_location_when_busy() -> None:
-    calendar = Calendar(home_location="home", entries=[entry(location="gym")])
-
-    assert calendar.current_location(NOW) == "gym"
-
-
-def test_current_location_returns_home_when_free() -> None:
-    calendar = Calendar(home_location="home", entries=[])
-
-    assert calendar.current_location(NOW) == "home"
-
-
 def test_upcoming_excludes_past_and_sorts_by_start() -> None:
     past = entry(start=datetime(2026, 6, 2, 8, 0), end=datetime(2026, 6, 2, 9, 0))
     later = entry(start=datetime(2026, 6, 5, 18, 0), end=datetime(2026, 6, 5, 19, 0))

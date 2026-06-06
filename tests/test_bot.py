@@ -3,7 +3,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
 
-from livingbot.bot import LivingBot, _format_message, _send_chunked
+from livingbot.bot import LivingBot, format_message, _send_chunked
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.mood import Mood
 from livingbot.relations import Relation
@@ -337,7 +337,7 @@ def test_format_message_includes_id_timestamp_author_and_content() -> None:
     msg.author.display_name = "Alice"
     msg.content = "hello world"
 
-    result = _format_message(msg)
+    result = format_message(msg)
 
     assert result == "[id:987654321] [2024-06-01 10:00:00] Alice: hello world"
 
@@ -363,7 +363,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
     await bot._attempt_response()
 
     llm_client.complete.assert_called_once_with(
-        [_format_message(msg1), _format_message(msg2)],
+        [format_message(msg1), format_message(msg2)],
         channel,
         bot._calendar_store,
         bot._inventory_store,
@@ -397,7 +397,7 @@ async def test_attempt_response_retrieves_memories_with_single_author_id(
     await bot._attempt_response()
 
     memory_store.retrieve.assert_called_once_with(
-        _format_message(msg), user_ids=[str(author.id)]
+        format_message(msg), user_ids=[str(author.id)]
     )
 
 
@@ -423,7 +423,7 @@ async def test_attempt_response_retrieves_memories_for_all_unique_authors(
     await bot._attempt_response()
 
     memory_store.retrieve.assert_called_once_with(
-        f"{_format_message(msg1)}\n{_format_message(msg2)}",
+        f"{format_message(msg1)}\n{format_message(msg2)}",
         user_ids=[str(author_a.id), str(author_b.id)],
     )
 

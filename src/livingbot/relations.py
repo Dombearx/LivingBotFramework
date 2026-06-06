@@ -3,6 +3,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
+
+from livingbot.prompts import RELATION_UPDATE_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -34,25 +37,11 @@ class RelationStore:
         path.write_text(relation.model_dump_json(indent=2))
 
 
-_UPDATE_SYSTEM_PROMPT = """\
-You maintain a relationship record for a Discord bot that behaves like a real person.
-Given the current relation state and a conversation excerpt, return an updated relation as JSON.
-
-Rules:
-- attitude: integer from -100 (hostile) to 100 (very close). Adjust based on tone and content.
-- inside_jokes: references that are funny or meaningful specifically between these two. Max 5 items. Drop old ones if needed.
-- most_important_memory: the single most defining moment or fact about this person. Max 200 characters.
-- topics_of_interest: subjects this user genuinely cares about. Max 5 items. Only add something if clearly evidenced.
-- user_id must not change.
-Return only valid JSON matching the relation schema. No extra text.\
-"""
-
-
 class RelationUpdater:
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, Relation] = Agent(
             model,
-            system_prompt=_UPDATE_SYSTEM_PROMPT,
+            system_prompt=RELATION_UPDATE_SYSTEM_PROMPT,
             output_type=Relation,
         )
 

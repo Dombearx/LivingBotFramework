@@ -9,20 +9,11 @@ from importlib.resources import files
 from pathlib import Path
 
 import httpx
-from openai import AsyncOpenAI
+
+from livingbot import llm_config
+from livingbot.prompts import IMAGE_ENHANCER_SYSTEM_PROMPT, SELFIE_PERSONA
 
 logger = logging.getLogger(__name__)
-
-_PROMPT_ENHANCER_SYSTEM = (
-    "You are a prompt engineer for a photorealistic image generation model. "
-    "Given a scene description, write an image generation prompt in two parts separated by ' | ':\n"
-    "1. A vivid, detailed paragraph describing the scene — the setting, atmosphere, lighting, "
-    "mood, actions, and any people present including their exact appearance and clothing. "
-    "Write it as a direct scene description, not as instructions.\n"
-    "2. A comma-separated list of quality and style tags "
-    "(e.g. 'photorealistic, 8k, cinematic lighting, sharp focus, Canon EOS R5').\n"
-    "Output only these two parts joined by ' | ' — nothing else."
-)
 
 _POLL_INTERVAL_SECONDS = 3.0
 _POLL_TIMEOUT_SECONDS = 120.0
@@ -35,18 +26,16 @@ async def _enhance_prompt(
 ) -> str:
     parts: list[str] = [description]
     if include_mugda:
-        mugda = (
-            "Mugda, a young Polish woman, is present and clearly visible in the scene."
-        )
+        persona = SELFIE_PERSONA
         if outfit_description:
-            mugda += f" She is wearing: {outfit_description}."
-        parts.append(mugda)
+            persona += f" She is wearing: {outfit_description}."
+        parts.append(persona)
     user_message = " ".join(parts)
-    client = AsyncOpenAI()
+    client = llm_config.build_openai_client()
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=llm_config.PROMPT_ENHANCER_MODEL,
         messages=[
-            {"role": "system", "content": _PROMPT_ENHANCER_SYSTEM},
+            {"role": "system", "content": IMAGE_ENHANCER_SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
         max_tokens=400,

@@ -5,7 +5,7 @@ explicit remove → implicit save on receiving a gift → implicit search while
 deciding what to wear.
 
 Run on demand: uv run pytest tests/integration/
-Requires OPENAI_API_KEY in the environment.
+Requires OPENROUTER_API_KEY in the environment.
 """
 
 import os
@@ -15,15 +15,15 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-from livingbot import config
+from livingbot import llm_config, prompts
 from livingbot.calendar import CalendarStore
 from livingbot.inventory import InventoryItem, InventoryStore
-from livingbot.llm import LLMClient, LLMConfig
+from livingbot.llm import LLMClient
 from livingbot.spending import SpendingStore
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 
 NOW = datetime(2026, 6, 3, 14, 30)
@@ -76,7 +76,7 @@ def _tool_was_called(result, tool_name: str) -> bool:
 @pytest.fixture
 def client() -> LLMClient:
     return LLMClient(
-        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
     )
 
 

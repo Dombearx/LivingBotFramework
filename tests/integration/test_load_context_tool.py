@@ -3,7 +3,7 @@ Integration tests that send real requests to the LLM and verify it calls load_co
 when the conversation warrants fetching message history.
 
 Run on demand: uv run pytest tests/integration/
-Requires OPENAI_API_KEY in the environment.
+Requires OPENROUTER_API_KEY in the environment.
 """
 
 import os
@@ -13,15 +13,15 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-from livingbot import config
+from livingbot import llm_config, prompts
 from livingbot.calendar import CalendarStore
 from livingbot.inventory import InventoryStore
-from livingbot.llm import LLMClient, LLMConfig
+from livingbot.llm import LLMClient
 from livingbot.spending import SpendingStore
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 
 
@@ -67,7 +67,7 @@ def _load_context_was_called(result) -> bool:
 @pytest.fixture
 def client() -> LLMClient:
     return LLMClient(
-        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
     )
 
 
@@ -77,7 +77,7 @@ async def test_load_context_called_when_explicitly_asked(
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
 ) -> None:
-    """Sanity check: bot fetches history when user directly asks for it."""
+    """Explicit Polish request to scroll back and read what was written before."""
     channel = _make_channel(
         [
             _make_history_message(900, "Marek", "hej, co u was?"),
@@ -85,7 +85,8 @@ async def test_load_context_called_when_explicitly_asked(
         ]
     )
     user_messages = [
-        "[id:1000] [2026-05-31 12:00:00] TestUser: Can you check what messages were sent before this one? Use the load_context tool with id 1000."
+        "[id:1000] [2026-05-31 12:00:00] TestUser: Mugda, sprawdź co pisano na tym kanale "
+        "przed tą wiadomością (id: 1000) i streść mi to"
     ]
 
     result = await client.complete(

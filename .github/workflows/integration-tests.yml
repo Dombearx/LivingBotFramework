@@ -32,7 +32,7 @@ jobs:
 
       - name: Run integration tests
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           case "${{ inputs.test_group }}" in
             context_tool)      uv run pytest tests/integration/test_load_context_tool.py ;;

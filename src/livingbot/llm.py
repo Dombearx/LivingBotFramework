@@ -2,8 +2,8 @@ from datetime import datetime
 from pathlib import Path
 
 import discord
-from pydantic import BaseModel
 from pydantic_ai import Agent, AgentRunResult
+from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot.calendar import Calendar, CalendarStore
 from livingbot.inventory import InventoryItem, InventoryStore
@@ -24,11 +24,6 @@ from livingbot.tools import (
 )
 
 
-class LLMConfig(BaseModel):
-    model: str
-    system_prompt: str
-
-
 class LLMResult:
     def __init__(self, run_result: AgentRunResult[str], deps: BotDeps) -> None:
         self.output: str = run_result.output
@@ -36,11 +31,10 @@ class LLMResult:
 
 
 class LLMClient:
-    def __init__(self, config: LLMConfig) -> None:
-        self._config = config
+    def __init__(self, model: OpenAIChatModel, system_prompt: str) -> None:
         self._agent: Agent[BotDeps, str] = Agent(
-            config.model,
-            system_prompt=config.system_prompt,
+            model,
+            system_prompt=system_prompt,
             tools=[
                 load_context,
                 add_plan,
@@ -75,19 +69,21 @@ class LLMClient:
             spending_store=spending_store,
             portrait_path=portrait_path,
         )
-        prompt = "\n".join(user_messages)
+        parts: list[str] = []
+        if photo_hint:
+            parts.append(f"{photo_hint}\n\n")
+        parts.append(_build_calendar_block(calendar_store.load(), now))
+        if mood is not None:
+            parts.append(build_mood_block(mood, now))
+        parts.append(spending_store.summary() + "\n\n")
+        parts.append(_build_inventory_block(await inventory_store.recent()))
+        if relations:
+            parts.append(_build_relations_block(relations))
         if memories:
             memory_block = "\n".join(f"- {m}" for m in memories)
-            prompt = f"What I remember:\n{memory_block}\n\n{prompt}"
-        if relations:
-            prompt = _build_relations_block(relations) + prompt
-        prompt = _build_inventory_block(await inventory_store.recent()) + prompt
-        prompt = spending_store.summary() + "\n\n" + prompt
-        if mood is not None:
-            prompt = build_mood_block(mood, now) + prompt
-        prompt = _build_calendar_block(calendar_store.load(), now) + prompt
-        if photo_hint:
-            prompt = f"{photo_hint}\n\n" + prompt
+            parts.append(f"What I remember:\n{memory_block}\n\n")
+        parts.append("\n".join(user_messages))
+        prompt = "".join(parts)
         run_result = await self._agent.run(prompt, deps=deps)
         return LLMResult(run_result, deps)
 

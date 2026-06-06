@@ -10,7 +10,7 @@ Progression:
   6. Unambiguous "no photo needed" conversation — must NOT call take_photo
 
 Run on demand: uv run pytest tests/integration/test_take_photo_tool.py
-Requires OPENAI_API_KEY in the environment.
+Requires OPENROUTER_API_KEY in the environment.
 """
 
 import os
@@ -20,16 +20,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-from livingbot import config
-from livingbot.bot import _PHOTO_HINT
+from livingbot import config, llm_config, prompts
+from livingbot.prompts import PHOTO_HINT
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.inventory import InventoryStore
-from livingbot.llm import LLMClient, LLMConfig
+from livingbot.llm import LLMClient
 from livingbot.spending import SpendingStore
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 
 NOW = datetime(2026, 6, 4, 18, 15)  # Wednesday evening
@@ -58,7 +58,7 @@ def _take_photo_args(result) -> dict:
 @pytest.fixture
 def client() -> LLMClient:
     return LLMClient(
-        LLMConfig(model=config.LLM_MODEL, system_prompt=config.SYSTEM_PROMPT)
+        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
     )
 
 
@@ -129,7 +129,7 @@ def _make_complete_kwargs(
         spending_store=spending_store,
         now=NOW,
         photo_hint=photo_hint,
-        portrait_path=config.MUGDA_PORTRAIT_PATH,
+        portrait_path=config.PORTRAIT_PATH,
     )
 
 
@@ -171,7 +171,7 @@ async def test_take_photo_called_when_explicitly_instructed(
                 calendar_store,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
@@ -204,7 +204,7 @@ async def test_take_photo_include_mugda_true_when_selfie_requested(
                 calendar_store_at_gym,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
@@ -241,7 +241,7 @@ async def test_take_photo_include_mugda_false_when_scenery_requested(
                 calendar_store_at_park,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
@@ -280,7 +280,7 @@ async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
                 calendar_store_at_gym,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
@@ -315,7 +315,7 @@ async def test_take_photo_include_mugda_false_when_asked_about_place(
                 calendar_store_at_park,
                 inventory_store,
                 spending_store,
-                photo_hint=_PHOTO_HINT,
+                photo_hint=PHOTO_HINT,
             )
         )
 
