@@ -15,6 +15,7 @@ on:
           - spending_tools
           - mood_tone
           - take_photo_tool
+          - discord_behavior
 
 jobs:
   integration-test:
@@ -40,5 +41,6 @@ jobs:
             spending_tools)    uv run pytest tests/integration/test_spending_tools.py ;;
             mood_tone)         uv run pytest tests/integration/test_mood_tone.py ;;
             take_photo_tool)   uv run pytest tests/integration/test_take_photo_tool.py ;;
+            discord_behavior)  uv run pytest tests/integration/test_discord_behavior.py ;;
             *)                 uv run pytest tests/integration/ ;;
           esac
