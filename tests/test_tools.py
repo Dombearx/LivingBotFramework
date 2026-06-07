@@ -1,5 +1,4 @@
 from datetime import datetime
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -282,13 +281,12 @@ async def test_buy_item_when_unaffordable_does_not_add_to_inventory() -> None:
 # ---------------------------------------------------------------------------
 
 
-def make_photo_ctx(portrait_path: Path = Path()) -> SimpleNamespace:
+def make_photo_ctx() -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=MagicMock(),
         inventory_store=make_inventory_store(),
         spending_store=make_spending_store(),
-        portrait_path=portrait_path,
     )
     return SimpleNamespace(deps=deps)
 

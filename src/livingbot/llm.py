@@ -1,5 +1,4 @@
 from datetime import datetime
-from pathlib import Path
 
 import discord
 from pydantic_ai import Agent, AgentRunResult
@@ -60,14 +59,12 @@ class LLMClient:
         relations: list[Relation] | None = None,
         mood: Mood | None = None,
         photo_hint: str = "",
-        portrait_path: Path = Path(),
     ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
             calendar_store=calendar_store,
             inventory_store=inventory_store,
             spending_store=spending_store,
-            portrait_path=portrait_path,
         )
         parts: list[str] = []
         if photo_hint:

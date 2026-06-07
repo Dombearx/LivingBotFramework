@@ -1,6 +1,5 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Annotated
 
 import discord
@@ -18,7 +17,6 @@ class BotDeps:
     calendar_store: CalendarStore
     inventory_store: InventoryStore
     spending_store: SpendingStore
-    portrait_path: Path = field(default_factory=Path)
     photo_result: bytes | None = None
 
 
@@ -181,7 +179,6 @@ async def take_photo(
         image_bytes = await generate_image(
             description=description,
             include_mugda=include_mugda,
-            portrait_path=ctx.deps.portrait_path,
             outfit_description=outfit_description,
         )
     except Exception:
