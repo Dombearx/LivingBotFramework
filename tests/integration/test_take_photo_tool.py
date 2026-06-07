@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-from livingbot import config, llm_config, prompts
+from livingbot import llm_config, prompts
 from livingbot.prompts import PHOTO_HINT
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.inventory import InventoryStore
@@ -129,7 +129,6 @@ def _make_complete_kwargs(
         spending_store=spending_store,
         now=NOW,
         photo_hint=photo_hint,
-        portrait_path=config.PORTRAIT_PATH,
     )
 
 

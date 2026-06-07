@@ -1,11 +1,21 @@
 {
+  "2": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "model": ["4", 0],
+      "clip": ["4", 1],
+      "lora_name": "mugda.safetensors",
+      "strength_model": "__MUGDA_LORA_STRENGTH__",
+      "strength_clip": "__MUGDA_LORA_STRENGTH__"
+    }
+  },
   "3": {
     "class_type": "KSampler",
     "inputs": {
       "cfg": 7.0,
       "denoise": 1.0,
       "latent_image": ["5", 0],
-      "model": ["4", 0],
+      "model": ["2", 0],
       "negative": ["7", 0],
       "positive": ["6", 0],
       "sampler_name": "euler",
@@ -31,35 +41,15 @@
   "6": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "clip": ["4", 1],
+      "clip": ["2", 1],
       "text": "__POSITIVE_PROMPT__"
     }
   },
   "7": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "clip": ["4", 1],
+      "clip": ["2", 1],
       "text": "ugly, blurry, low quality, watermark, text"
-    }
-  },
-  "10": {
-    "class_type": "LoadImage",
-    "inputs": {
-      "image": "__PORTRAIT_B64__",
-      "upload": "image"
-    }
-  },
-  "11": {
-    "class_type": "IPAdapter",
-    "inputs": {
-      "model": ["4", 0],
-      "image": ["10", 0],
-      "weight": 0.8,
-      "weight_type": "original",
-      "combine_embeds": "concat",
-      "start_at": 0.0,
-      "end_at": 1.0,
-      "embeds_scaling": "V only"
     }
   },
   "8": {
@@ -72,7 +62,7 @@
   "9": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "selfie",
+      "filename_prefix": "photo",
       "images": ["8", 0]
     }
   }

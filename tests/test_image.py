@@ -1,5 +1,4 @@
 import base64
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,29 +13,25 @@ from livingbot.image import _enhance_prompt, _inject_prompt, generate_image
 
 def make_workflow() -> dict:
     return {
+        "2": {
+            "class_type": "LoraLoader",
+            "inputs": {
+                "strength_model": "__MUGDA_LORA_STRENGTH__",
+                "strength_clip": "__MUGDA_LORA_STRENGTH__",
+            },
+        },
         "6": {
             "class_type": "CLIPTextEncode",
-            "inputs": {"text": "__POSITIVE_PROMPT__", "clip": ["4", 1]},
+            "inputs": {"text": "__POSITIVE_PROMPT__", "clip": ["2", 1]},
         },
         "3": {"class_type": "KSampler", "inputs": {"seed": 0, "steps": 20}},
-    }
-
-
-def make_selfie_workflow(portrait_sentinel: str = "__PORTRAIT_B64__") -> dict:
-    return {
-        "6": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {"text": "__POSITIVE_PROMPT__"},
-        },
-        "10": {"class_type": "LoadImage", "inputs": {"image": portrait_sentinel}},
-        "3": {"class_type": "KSampler", "inputs": {"seed": 0}},
     }
 
 
 def test_inject_prompt_replaces_positive_prompt_placeholder() -> None:
     workflow = make_workflow()
 
-    result = _inject_prompt(workflow, "a sunny park", Path())
+    result = _inject_prompt(workflow, "a sunny park", include_mugda=True)
 
     assert result["6"]["inputs"]["text"] == "a sunny park"
 
@@ -44,7 +39,7 @@ def test_inject_prompt_replaces_positive_prompt_placeholder() -> None:
 def test_inject_prompt_does_not_mutate_original_workflow() -> None:
     workflow = make_workflow()
 
-    _inject_prompt(workflow, "a sunny park", Path())
+    _inject_prompt(workflow, "a sunny park", include_mugda=True)
 
     assert workflow["6"]["inputs"]["text"] == "__POSITIVE_PROMPT__"
 
@@ -52,8 +47,8 @@ def test_inject_prompt_does_not_mutate_original_workflow() -> None:
 def test_inject_prompt_randomises_seed() -> None:
     workflow = make_workflow()
 
-    result_a = _inject_prompt(workflow, "prompt", Path())
-    result_b = _inject_prompt(workflow, "prompt", Path())
+    result_a = _inject_prompt(workflow, "prompt", include_mugda=True)
+    result_b = _inject_prompt(workflow, "prompt", include_mugda=True)
 
     # Two independent runs should (overwhelmingly) produce different seeds
     assert result_a["3"]["inputs"]["seed"] != result_b["3"]["inputs"]["seed"] or True
@@ -61,17 +56,22 @@ def test_inject_prompt_randomises_seed() -> None:
     assert isinstance(result_a["3"]["inputs"]["seed"], int)
 
 
-def test_inject_prompt_replaces_portrait_placeholder_with_base64(
-    tmp_path: Path,
-) -> None:
-    portrait = tmp_path / "portrait.jpg"
-    portrait.write_bytes(b"\xff\xd8\xff")  # minimal JPEG magic bytes
-    workflow = make_selfie_workflow()
+def test_inject_prompt_sets_lora_strength_to_one_when_mugda_included() -> None:
+    workflow = make_workflow()
 
-    result = _inject_prompt(workflow, "prompt", portrait)
+    result = _inject_prompt(workflow, "prompt", include_mugda=True)
 
-    expected_b64 = base64.b64encode(b"\xff\xd8\xff").decode()
-    assert result["10"]["inputs"]["image"] == expected_b64
+    assert result["2"]["inputs"]["strength_model"] == 1.0
+    assert result["2"]["inputs"]["strength_clip"] == 1.0
+
+
+def test_inject_prompt_sets_lora_strength_to_zero_when_mugda_excluded() -> None:
+    workflow = make_workflow()
+
+    result = _inject_prompt(workflow, "prompt", include_mugda=False)
+
+    assert result["2"]["inputs"]["strength_model"] == 0.0
+    assert result["2"]["inputs"]["strength_clip"] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -240,11 +240,7 @@ def _make_runpod_responses(
 async def test_generate_image_returns_decoded_image_bytes(
     mock_httpx_cls: MagicMock,
     mock_openai_cls: MagicMock,
-    tmp_path: Path,
 ) -> None:
-    portrait = tmp_path / "portrait.jpg"
-    portrait.write_bytes(b"\xff\xd8\xff")
-
     raw_bytes = b"fake-image-data"
     image_b64 = base64.b64encode(raw_bytes).decode()
     submit_resp, poll_resp = _make_runpod_responses(image_b64=image_b64)
@@ -262,9 +258,7 @@ async def test_generate_image_returns_decoded_image_bytes(
     )
     mock_openai_cls.return_value = openai_client
 
-    result = await generate_image(
-        "gym selfie", include_mugda=True, portrait_path=portrait
-    )
+    result = await generate_image("gym selfie", include_mugda=True)
 
     assert result == raw_bytes
 
@@ -282,11 +276,7 @@ async def test_generate_image_returns_decoded_image_bytes(
 async def test_generate_image_submits_workflow_to_runpod(
     mock_httpx_cls: MagicMock,
     mock_openai_cls: MagicMock,
-    tmp_path: Path,
 ) -> None:
-    portrait = tmp_path / "portrait.jpg"
-    portrait.write_bytes(b"\xff\xd8\xff")
-
     submit_resp, poll_resp = _make_runpod_responses(
         image_b64=base64.b64encode(b"img").decode()
     )
@@ -304,7 +294,7 @@ async def test_generate_image_submits_workflow_to_runpod(
     )
     mock_openai_cls.return_value = openai_client
 
-    await generate_image("rainy park", include_mugda=False, portrait_path=portrait)
+    await generate_image("rainy park", include_mugda=False)
 
     post_kwargs = http_client.post.call_args.kwargs
     payload = post_kwargs["json"]
@@ -324,11 +314,7 @@ async def test_generate_image_submits_workflow_to_runpod(
 async def test_generate_image_raises_when_job_fails(
     mock_httpx_cls: MagicMock,
     mock_openai_cls: MagicMock,
-    tmp_path: Path,
 ) -> None:
-    portrait = tmp_path / "portrait.jpg"
-    portrait.write_bytes(b"\xff\xd8\xff")
-
     submit_resp = MagicMock()
     submit_resp.raise_for_status = MagicMock()
     submit_resp.json.return_value = {"id": "job-99"}
@@ -351,4 +337,4 @@ async def test_generate_image_raises_when_job_fails(
     mock_openai_cls.return_value = openai_client
 
     with pytest.raises(RuntimeError, match="FAILED"):
-        await generate_image("beach", include_mugda=False, portrait_path=portrait)
+        await generate_image("beach", include_mugda=False)

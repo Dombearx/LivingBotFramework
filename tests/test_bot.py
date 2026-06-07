@@ -373,7 +373,6 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         [Relation(user_id="123"), Relation(user_id="123")],
         ANY,
         photo_hint=ANY,
-        portrait_path=ANY,
     )
 
 

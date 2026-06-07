@@ -6,7 +6,6 @@ import logging
 import os
 import random
 from importlib.resources import files
-from pathlib import Path
 
 import httpx
 
@@ -44,22 +43,21 @@ async def _enhance_prompt(
     return response.choices[0].message.content or description
 
 
-def _load_workflow(include_mugda: bool) -> dict:
-    name = "selfie.json" if include_mugda else "photo.json"
-    workflow_text = files("livingbot.workflows").joinpath(name).read_text()
+def _load_workflow() -> dict:
+    workflow_text = files("livingbot.workflows").joinpath("workflow.json").read_text()
     return json.loads(workflow_text)
 
 
-def _inject_prompt(workflow: dict, positive_prompt: str, portrait_path: Path) -> dict:
+def _inject_prompt(workflow: dict, positive_prompt: str, include_mugda: bool) -> dict:
     workflow = copy.deepcopy(workflow)
+    lora_strength = 1.0 if include_mugda else 0.0
     for node in workflow.values():
         inputs = node.get("inputs", {})
         for key, value in inputs.items():
             if value == "__POSITIVE_PROMPT__":
                 inputs[key] = positive_prompt
-            elif value == "__PORTRAIT_B64__":
-                portrait_b64 = base64.b64encode(portrait_path.read_bytes()).decode()
-                inputs[key] = portrait_b64
+            elif value == "__MUGDA_LORA_STRENGTH__":
+                inputs[key] = lora_strength
         # randomise seed so each run produces a different image
         if "seed" in inputs:
             inputs["seed"] = random.randint(0, 2**32 - 1)
@@ -103,7 +101,6 @@ async def _poll_for_result(endpoint_url: str, api_key: str, job_id: str) -> byte
 async def generate_image(
     description: str,
     include_mugda: bool,
-    portrait_path: Path,
     outfit_description: str = "",
 ) -> bytes:
     endpoint_url = os.environ["RUNPOD_ENDPOINT_URL"]
@@ -115,8 +112,8 @@ async def generate_image(
     )
     logger.info("Enhanced prompt: %s", positive_prompt)
 
-    workflow = _load_workflow(include_mugda)
-    workflow = _inject_prompt(workflow, positive_prompt, portrait_path)
+    workflow = _load_workflow()
+    workflow = _inject_prompt(workflow, positive_prompt, include_mugda)
 
     job_id = await _submit_job(endpoint_url, api_key, workflow)
     logger.info("RunPod job submitted: %s", job_id)
