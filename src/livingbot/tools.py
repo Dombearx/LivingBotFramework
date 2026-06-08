@@ -7,8 +7,10 @@ from pydantic import Field
 from pydantic_ai import RunContext
 
 from livingbot.calendar import CalendarStore, PlanEntry
+from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.spending import POINT_COST, SpendCategory, SpendingStore
+from livingbot.stories import StoryStore
 
 
 @dataclass
@@ -17,6 +19,8 @@ class BotDeps:
     calendar_store: CalendarStore
     inventory_store: InventoryStore
     spending_store: SpendingStore
+    hobby_store: HobbyStore
+    story_store: StoryStore
     photo_result: bytes | None = None
 
 
@@ -116,6 +120,50 @@ async def search_inventory(
         + (f" — {item.description}" if item.description else "")
         for item in items
     )
+
+
+async def add_hobby(ctx: RunContext[BotDeps], name: str) -> str:
+    """Add a new hobby to your life, e.g. when you genuinely take up something like
+    pottery or running. This becomes part of who you are and shapes your week."""
+    hobbies = ctx.deps.hobby_store.load()
+    if name in hobbies.names:
+        return f"{name} is already one of your hobbies."
+    hobbies.names.append(name)
+    ctx.deps.hobby_store.save(hobbies)
+    return f"Added {name} to your hobbies."
+
+
+async def recall_story(
+    ctx: RunContext[BotDeps],
+    query: Annotated[str, Field(min_length=1)],
+    n: Annotated[int, Field(ge=1, le=10)] = 3,
+) -> str:
+    """Search the stories from your life for ones that fit a topic, mood or situation,
+    described in natural language, e.g. "an embarrassing moment" or "something about
+    travel". Returns up to n best-matching stories with their full content and whether
+    you've already told them — useful both for sharing something new and for casually
+    referring back to something you've told before."""
+    stories = await ctx.deps.story_store.search(query, limit=n)
+    if not stories:
+        return "Nothing from your life comes to mind for that."
+    lines = []
+    for story in stories:
+        status = (
+            "already told — you may refer back to it, but don't retell it in full"
+            if story.told_at
+            else "not told yet"
+        )
+        lines.append(f"[id:{story.id}] ({status})\n{story.content}")
+    return "\n\n".join(lines)
+
+
+async def mark_story_told(ctx: RunContext[BotDeps], story_id: str) -> str:
+    """Record that you just shared this story with the group, by its id. Call this
+    right after telling it in your reply, so you remember not to tell it again —
+    you can still casually refer back to it later."""
+    if await ctx.deps.story_store.mark_told(story_id):
+        return f"Marked story {story_id} as told."
+    return f"No story with id {story_id}."
 
 
 async def check_budget(ctx: RunContext[BotDeps], category: SpendCategory) -> str:

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
+from livingbot.hobbies import Hobbies
 from livingbot.inventory import InventoryItem
 from datetime import date
 
@@ -32,12 +33,16 @@ def make_ctx(
     calendar_store: CalendarStore | None = None,
     inventory_store: MagicMock | None = None,
     spending_store: MagicMock | None = None,
+    hobby_store: MagicMock | None = None,
+    story_store: MagicMock | None = None,
 ) -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=calendar_store or MagicMock(),
         inventory_store=inventory_store or make_inventory_store(),
         spending_store=spending_store or make_spending_store(),
+        hobby_store=hobby_store or make_hobby_store(),
+        story_store=story_store or make_story_store(),
     )
     return SimpleNamespace(deps=deps)
 
@@ -47,6 +52,20 @@ def make_inventory_store() -> MagicMock:
     store.add = AsyncMock()
     store.remove = AsyncMock(return_value=True)
     store.search = AsyncMock(return_value=[])
+    return store
+
+
+def make_hobby_store() -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(return_value=Hobbies())
+    store.save = MagicMock()
+    return store
+
+
+def make_story_store() -> MagicMock:
+    store = MagicMock()
+    store.search = AsyncMock(return_value=[])
+    store.mark_told = AsyncMock(return_value=True)
     return store
 
 
@@ -287,6 +306,8 @@ def make_photo_ctx() -> SimpleNamespace:
         calendar_store=MagicMock(),
         inventory_store=make_inventory_store(),
         spending_store=make_spending_store(),
+        hobby_store=make_hobby_store(),
+        story_store=make_story_store(),
     )
     return SimpleNamespace(deps=deps)
 

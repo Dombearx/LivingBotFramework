@@ -5,17 +5,22 @@ from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot.calendar import Calendar, CalendarStore
+from livingbot.hobbies import Hobbies, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block
 from livingbot.relations import Relation
 from livingbot.spending import SpendingStore
+from livingbot.stories import Story, StoryStore
 from livingbot.tools import (
     BotDeps,
+    add_hobby,
     add_item,
     add_plan,
     buy_item,
     check_budget,
     load_context,
+    mark_story_told,
+    recall_story,
     remove_item,
     remove_plan,
     search_inventory,
@@ -41,6 +46,9 @@ class LLMClient:
                 add_item,
                 remove_item,
                 search_inventory,
+                add_hobby,
+                recall_story,
+                mark_story_told,
                 check_budget,
                 buy_item,
                 take_photo,
@@ -54,6 +62,8 @@ class LLMClient:
         calendar_store: CalendarStore,
         inventory_store: InventoryStore,
         spending_store: SpendingStore,
+        hobby_store: HobbyStore,
+        story_store: StoryStore,
         now: datetime,
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
@@ -65,17 +75,21 @@ class LLMClient:
             calendar_store=calendar_store,
             inventory_store=inventory_store,
             spending_store=spending_store,
+            hobby_store=hobby_store,
+            story_store=story_store,
         )
         parts: list[str] = []
         if photo_hint:
             parts.append(f"{photo_hint}\n\n")
         parts.append(_build_calendar_block(calendar_store.load(), now))
+        parts.append(_build_hobbies_block(hobby_store.load()))
         if mood is not None:
             parts.append(build_mood_block(mood, now))
         parts.append(spending_store.summary() + "\n\n")
         parts.append(_build_inventory_block(await inventory_store.recent()))
         if relations:
             parts.append(_build_relations_block(relations))
+        parts.append(_build_stories_block(await story_store.untold()))
         if memories:
             memory_block = "\n".join(f"- {m}" for m in memories)
             parts.append(f"What I remember:\n{memory_block}\n\n")
@@ -106,6 +120,28 @@ def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
             if entry.note:
                 line += f" ({entry.note})"
             lines.append(line)
+    return "\n".join(lines) + "\n\n"
+
+
+def _build_hobbies_block(hobbies: Hobbies) -> str:
+    if not hobbies.names:
+        return "You don't have any particular hobbies right now.\n\n"
+    return f"Your hobbies: {', '.join(hobbies.names)}.\n\n"
+
+
+def _build_stories_block(stories: list[Story]) -> str:
+    lines = ["Stories from your life you haven't shared with this group yet:"]
+    if stories:
+        for story in stories:
+            lines.append(f"  [id:{story.id}] {story.summary}")
+    else:
+        lines.append("  (nothing new to tell right now)")
+    lines.append(
+        "Share one naturally if it genuinely fits the moment — don't force it in. "
+        "After telling one, call mark_story_told so you don't repeat it later. Use "
+        "recall_story to find one that matches the conversation, including stories "
+        "you've already told, so you can casually refer back to them."
+    )
     return "\n".join(lines) + "\n\n"
 
 
