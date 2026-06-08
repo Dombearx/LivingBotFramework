@@ -9,7 +9,7 @@ import discord
 
 from livingbot import config, llm_config, prompts
 from livingbot.calendar import CalendarStore, WeekPlanner
-from livingbot.hobbies import HobbyStore
+from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
 from livingbot.memory import MemoryStore
@@ -119,10 +119,17 @@ class LivingBot(discord.Client):
         if calendar.planned_week_start != week_start:
             hobbies = self._hobby_store.load()
             entries = await self._week_planner.plan(
-                week_start, hobbies.names, calendar.home_location
+                week_start,
+                [hobby.name for hobby in hobbies.entries],
+                calendar.home_location,
             )
             calendar.entries.extend(entries)
             calendar.planned_week_start = week_start
+            for entry in entries:
+                if entry.hobby:
+                    self._hobby_store.gain_experience(
+                        entry.hobby, EXPERIENCE_PER_SESSION
+                    )
             logger.info(
                 "Planned week starting %s with %d entries", week_start, len(entries)
             )

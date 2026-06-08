@@ -19,6 +19,7 @@ class PlanEntry(BaseModel):
     start: datetime
     end: datetime
     note: str = ""
+    hobby: str = ""
 
 
 class Calendar(BaseModel):
@@ -60,6 +61,7 @@ class PlannedActivity(BaseModel):
     start: datetime
     end: datetime
     note: str = ""
+    hobby: str = ""
 
 
 class WeekPlan(BaseModel):

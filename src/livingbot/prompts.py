@@ -40,6 +40,9 @@ Rules:
 - Do not overschedule. Leave most of her time open.
 - Each activity needs a start and end datetime that fall within the planned week.
 - location is where she physically is during the activity (e.g. "gym", "home", "city centre").
+- hobby: set this to the exact name of one of her hobbies when the activity is her
+  actually practising it (e.g. "gym" for a gym session). Leave it empty for everything
+  else, including activities that merely relate to a hobby without being practice time.
 Return only valid JSON matching the schema. No extra text.\
 """
 

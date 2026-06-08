@@ -7,7 +7,7 @@ from pydantic import Field
 from pydantic_ai import RunContext
 
 from livingbot.calendar import CalendarStore, PlanEntry
-from livingbot.hobbies import HobbyStore
+from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.spending import POINT_COST, SpendCategory, SpendingStore
 from livingbot.stories import StoryStore
@@ -58,17 +58,28 @@ async def add_plan(
     start: datetime,
     end: datetime,
     note: str = "",
+    hobby: str = "",
 ) -> str:
     """Add something to your own calendar, e.g. a gym session or a multi-day trip.
     start and end are datetimes; location is where you physically are during it.
     Use this whenever you decide to do something that changes where you are or how
-    your time is spent. Returns the new entry's id."""
+    your time is spent. Set hobby to the exact name of one of your hobbies when this
+    plan is you actually practising it (e.g. "gym" for a gym session) — that's how
+    you grow more skilled at it over time; leave it empty otherwise. Returns the new
+    entry's id."""
     calendar = ctx.deps.calendar_store.load()
     entry = PlanEntry(
-        activity=activity, location=location, start=start, end=end, note=note
+        activity=activity,
+        location=location,
+        start=start,
+        end=end,
+        note=note,
+        hobby=hobby,
     )
     calendar.entries.append(entry)
     ctx.deps.calendar_store.save(calendar)
+    if hobby:
+        ctx.deps.hobby_store.gain_experience(hobby, EXPERIENCE_PER_SESSION)
     return f"Added [id:{entry.id}] {activity} @ {location} from {start} to {end}."
 
 
@@ -124,11 +135,12 @@ async def search_inventory(
 
 async def add_hobby(ctx: RunContext[BotDeps], name: str) -> str:
     """Add a new hobby to your life, e.g. when you genuinely take up something like
-    pottery or running. This becomes part of who you are and shapes your week."""
+    pottery or running. You start out as a novice and grow more skilled at it over
+    time as you spend time on it — see add_plan."""
     hobbies = ctx.deps.hobby_store.load()
-    if name in hobbies.names:
+    if any(hobby.name == name for hobby in hobbies.entries):
         return f"{name} is already one of your hobbies."
-    hobbies.names.append(name)
+    hobbies.entries.append(Hobby(name=name))
     ctx.deps.hobby_store.save(hobbies)
     return f"Added {name} to your hobbies."
 

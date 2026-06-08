@@ -5,7 +5,7 @@ import discord
 
 from livingbot.bot import LivingBot, format_message, _send_chunked
 from livingbot.calendar import Calendar, PlanEntry
-from livingbot.hobbies import Hobbies
+from livingbot.hobbies import Hobbies, Hobby
 from livingbot.mood import Mood
 from livingbot.relations import Relation
 
@@ -687,7 +687,7 @@ async def test_ensure_week_planned_when_week_unplanned_plans_and_saves(
     )
     calendar_store = make_calendar_store(Calendar(home_location="home"))
     week_planner = make_week_planner([entry])
-    hobby_store = make_hobby_store(Hobbies(names=["gym"]))
+    hobby_store = make_hobby_store(Hobbies(entries=[Hobby(name="gym")]))
     bot = make_bot(
         calendar_store=calendar_store,
         week_planner=week_planner,

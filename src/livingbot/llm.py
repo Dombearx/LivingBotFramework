@@ -5,7 +5,7 @@ from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot.calendar import Calendar, CalendarStore
-from livingbot.hobbies import Hobbies, HobbyStore
+from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block
 from livingbot.relations import Relation
@@ -123,10 +123,39 @@ def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
     return "\n".join(lines) + "\n\n"
 
 
+_HOBBY_LEVEL_TONE: dict[HobbyLevel, str] = {
+    HobbyLevel.novice: (
+        "you're still new to it — curious, a little unsure of yourself, "
+        "easily impressed by people who are better at it"
+    ),
+    HobbyLevel.beginner: (
+        "you've got the basics down — more confident, but still learning "
+        "and happy to ask questions"
+    ),
+    HobbyLevel.intermediate: (
+        "you're comfortable with it — you know your way around and have "
+        "your own preferences and little routines"
+    ),
+    HobbyLevel.advanced: (
+        "you're quite skilled — you can speak with real authority and "
+        "notice details that beginners wouldn't"
+    ),
+    HobbyLevel.expert: (
+        "you're an expert — you talk about it with deep, casual knowledge "
+        "and don't hold back your opinions"
+    ),
+}
+
+
 def _build_hobbies_block(hobbies: Hobbies) -> str:
-    if not hobbies.names:
+    if not hobbies.entries:
         return "You don't have any particular hobbies right now.\n\n"
-    return f"Your hobbies: {', '.join(hobbies.names)}.\n\n"
+    lines = ["Your hobbies, and how skilled you are at each:"]
+    for hobby in hobbies.entries:
+        lines.append(
+            f"  {hobby.name} — {hobby.level.value}: {_HOBBY_LEVEL_TONE[hobby.level]}"
+        )
+    return "\n".join(lines) + "\n\n"
 
 
 def _build_stories_block(stories: list[Story]) -> str:
