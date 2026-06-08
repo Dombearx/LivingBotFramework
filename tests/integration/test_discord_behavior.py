@@ -17,6 +17,7 @@ from pydantic_ai import Agent
 
 from livingbot import llm_config, prompts
 from livingbot.calendar import Calendar
+from livingbot.hobbies import Hobby, Hobbies
 from livingbot.llm import LLMClient
 
 pytestmark = pytest.mark.skipif(
@@ -67,18 +68,42 @@ def _make_stores() -> tuple:
     spending_store = MagicMock()
     spending_store.summary = MagicMock(return_value="Budget: 4 pts left this week.")
 
-    return channel, calendar_store, inventory_store, spending_store
+    hobby_store = MagicMock()
+    hobby_store.load = MagicMock(return_value=Hobbies(entries=[Hobby(name="gym")]))
+
+    story_store = MagicMock()
+    story_store.untold = AsyncMock(return_value=[])
+    story_store.search = AsyncMock(return_value=[])
+    story_store.mark_told = AsyncMock(return_value=True)
+
+    return (
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+    )
 
 
 async def _get_response(messages: list[str]) -> str:
     client = _make_client()
-    channel, calendar_store, inventory_store, spending_store = _make_stores()
+    (
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+    ) = _make_stores()
     result = await client.complete(
         messages,
         channel,
         calendar_store,
         inventory_store,
         spending_store,
+        hobby_store,
+        story_store,
         NOW,
     )
     return result.output

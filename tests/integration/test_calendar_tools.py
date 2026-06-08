@@ -16,9 +16,11 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
+from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
 from livingbot.spending import SpendingStore
+from livingbot.stories import StoryStore
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -59,6 +61,8 @@ async def test_add_plan_called_and_persisted_when_told_to_save(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Explicit: told to save a plan, she should call add_plan and it should persist."""
     channel = MagicMock()
@@ -68,7 +72,14 @@ async def test_add_plan_called_and_persisted_when_told_to_save(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "add_plan"), (
@@ -84,6 +95,8 @@ async def test_remove_plan_called_when_told_to_cancel(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Explicit: told to cancel an existing entry, she should call remove_plan."""
     entry = PlanEntry(
@@ -100,7 +113,14 @@ async def test_remove_plan_called_when_told_to_cancel(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "remove_plan"), (
@@ -113,6 +133,8 @@ async def test_add_plan_called_when_she_accepts_an_invitation(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Implicit: accepting a concrete invitation should make her save it without being
     told to open her calendar."""
@@ -123,7 +145,14 @@ async def test_add_plan_called_when_she_accepts_an_invitation(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "add_plan"), (
@@ -137,6 +166,8 @@ async def test_remove_plan_called_when_a_conflict_replaces_a_session(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Implicit: when a new plan clearly takes the place of an existing one, she should
     drop the old entry on her own, without being told to delete it."""
@@ -154,7 +185,14 @@ async def test_remove_plan_called_when_a_conflict_replaces_a_session(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "remove_plan"), (

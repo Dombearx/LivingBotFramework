@@ -16,6 +16,8 @@ on:
           - mood_tone
           - take_photo_tool
           - discord_behavior
+          - hobby_tone
+          - hobby_pickup
 
 jobs:
   integration-test:
@@ -42,5 +44,7 @@ jobs:
             mood_tone)         uv run pytest tests/integration/test_mood_tone.py ;;
             take_photo_tool)   uv run pytest tests/integration/test_take_photo_tool.py ;;
             discord_behavior)  uv run pytest tests/integration/test_discord_behavior.py ;;
+            hobby_tone)        uv run pytest tests/integration/test_hobby_tone.py ;;
+            hobby_pickup)      uv run pytest tests/integration/test_hobby_pickup.py ;;
             *)                 uv run pytest tests/integration/ ;;
           esac
