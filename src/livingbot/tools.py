@@ -5,7 +5,7 @@ from typing import Annotated
 
 import discord
 from pydantic import Field
-from pydantic_ai import RunContext
+from pydantic_ai import BinaryContent, RunContext
 
 from livingbot.calendar import CalendarStore, PlanEntry
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
@@ -31,6 +31,16 @@ def format_message(message: discord.Message) -> str:
         f"[id:{message.id}] [{timestamp}] "
         f"{message.author.display_name}: {message.content}"
     )
+
+
+async def extract_images(message: discord.Message) -> list[BinaryContent]:
+    """Download any image attachments on a message for the VLM to look at."""
+    images: list[BinaryContent] = []
+    for attachment in message.attachments:
+        if attachment.content_type and attachment.content_type.startswith("image/"):
+            data = await attachment.read()
+            images.append(BinaryContent(data=data, media_type=attachment.content_type))
+    return images
 
 
 async def load_context(

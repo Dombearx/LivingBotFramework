@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta
 
 import discord
 import logfire
+from pydantic_ai import BinaryContent
 
 from livingbot import config, llm_config, prompts
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
@@ -27,7 +28,7 @@ from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
 from livingbot.image import generate_image
 from livingbot.stories import Story, StoryGenerator, StoryStore
-from livingbot.tools import format_message
+from livingbot.tools import extract_images, format_message
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +269,9 @@ class LivingBot(discord.Client):
                     message_count=len(messages),
                 ):
                     formatted = [format_message(m) for m in messages]
+                    images: list[BinaryContent] = []
+                    for m in messages:
+                        images.extend(await extract_images(m))
                     author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
                     memories = await self._memory_store.retrieve(
                         "\n".join(formatted), user_ids=author_ids
@@ -286,6 +290,7 @@ class LivingBot(discord.Client):
                         relations,
                         mood,
                         photo_hint=self._photo_hint_for_message(),
+                        images=images,
                     )
                     if result.photo is not None:
                         self._on_photo_taken()
