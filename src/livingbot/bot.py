@@ -6,6 +6,7 @@ import random
 from datetime import date, datetime, time, timedelta
 
 import discord
+import logfire
 
 from livingbot import config, llm_config, prompts
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
@@ -20,6 +21,7 @@ from livingbot.mood import (
     apply_interaction_delta,
     refresh_mood,
 )
+from livingbot.observability import configure_logfire
 from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
@@ -248,42 +250,54 @@ class LivingBot(discord.Client):
         mood = refresh_mood(self._mood_store.load(), now, self._calendar_store.load())
 
         mood_factor = 0.5 + (mood.value / 100.0)
-        if random.random() < mood_factor / (self._fatigue + 1.0):
+        should_respond = random.random() < mood_factor / (self._fatigue + 1.0)
+        with logfire.span(
+            "attempt_response",
+            mood=mood.value,
+            fatigue=self._fatigue,
+            should_respond=should_respond,
+        ):
+            if not should_respond:
+                return False
             self._mood_store.save(mood)
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
-                formatted = [format_message(m) for m in messages]
-                author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
-                memories = await self._memory_store.retrieve(
-                    "\n".join(formatted), user_ids=author_ids
-                )
-                relations = [self._relation_store.load(uid) for uid in author_ids]
-                result = await self._llm_client.complete(
-                    formatted,
-                    channel,
-                    self._calendar_store,
-                    self._inventory_store,
-                    self._spending_store,
-                    self._hobby_store,
-                    self._story_store,
-                    now,
-                    memories,
-                    relations,
-                    mood,
-                    photo_hint=self._photo_hint_for_message(),
-                )
-                if result.photo is not None:
-                    self._on_photo_taken()
-                await _send_chunked(channel, result.output, photo=result.photo)
-                sole_author = author_ids[0] if len(author_ids) == 1 else None
-                asyncio.create_task(
-                    self._store_memories(messages, result.output, sole_author)
-                )
-                asyncio.create_task(
-                    self._update_relations(relations, messages, result.output)
-                )
+                with logfire.span(
+                    "respond_to_channel",
+                    channel_id=channel.id,
+                    message_count=len(messages),
+                ):
+                    formatted = [format_message(m) for m in messages]
+                    author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
+                    memories = await self._memory_store.retrieve(
+                        "\n".join(formatted), user_ids=author_ids
+                    )
+                    relations = [self._relation_store.load(uid) for uid in author_ids]
+                    result = await self._llm_client.complete(
+                        formatted,
+                        channel,
+                        self._calendar_store,
+                        self._inventory_store,
+                        self._spending_store,
+                        self._hobby_store,
+                        self._story_store,
+                        now,
+                        memories,
+                        relations,
+                        mood,
+                        photo_hint=self._photo_hint_for_message(),
+                    )
+                    if result.photo is not None:
+                        self._on_photo_taken()
+                    await _send_chunked(channel, result.output, photo=result.photo)
+                    sole_author = author_ids[0] if len(author_ids) == 1 else None
+                    asyncio.create_task(
+                        self._store_memories(messages, result.output, sole_author)
+                    )
+                    asyncio.create_task(
+                        self._update_relations(relations, messages, result.output)
+                    )
             return True
-        return False
 
     async def _store_memories(
         self, messages: list[discord.Message], bot_response: str, user_id: str | None
@@ -347,6 +361,7 @@ class LivingBot(discord.Client):
 
 
 def run() -> None:
+    configure_logfire()
     token = os.environ["DISCORD_BOT_TOKEN"]
     intents = discord.Intents.default()
     intents.message_content = True
