@@ -8,6 +8,7 @@ dependencies = [
     "chromadb>=1.5.9",
     "discord-py>=2.7.1",
     "httpx>=0.28.1",
+    "logfire>=4.34.0",
     "mem0ai>=2.0.4",
     "openai>=2.38.0",
     "pydantic-ai>=1.104.0",
@@ -30,3 +31,6 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "--ignore=tests/integration"
+
+[tool.logfire]
+ignore_no_config = true
