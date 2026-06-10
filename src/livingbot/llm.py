@@ -1,7 +1,8 @@
 from datetime import datetime
 
 import discord
-from pydantic_ai import Agent, AgentRunResult
+from pydantic_ai import Agent, AgentRunResult, BinaryContent
+from pydantic_ai.messages import UserContent
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot.calendar import Calendar, CalendarStore
@@ -71,6 +72,7 @@ class LLMClient:
         relations: list[Relation] | None = None,
         mood: Mood | None = None,
         photo_hint: str = "",
+        images: list[BinaryContent] | None = None,
     ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
@@ -96,7 +98,7 @@ class LLMClient:
             memory_block = "\n".join(f"- {m}" for m in memories)
             parts.append(f"What I remember:\n{memory_block}\n\n")
         parts.append("\n".join(user_messages))
-        prompt = "".join(parts)
+        prompt: list[UserContent] = ["".join(parts), *(images or [])]
         run_result = await self._agent.run(prompt, deps=deps)
         return LLMResult(run_result, deps)
 
