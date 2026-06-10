@@ -93,6 +93,12 @@ def make_hobby_store(hobbies: Hobbies | None = None) -> MagicMock:
     return store
 
 
+def make_story_generator() -> MagicMock:
+    generator = MagicMock()
+    generator.generate = AsyncMock(return_value=None)
+    return generator
+
+
 def make_story_store() -> MagicMock:
     store = MagicMock()
     store.untold = AsyncMock(return_value=[])
@@ -111,6 +117,7 @@ def make_bot(
     spending_store: MagicMock | None = None,
     hobby_store: MagicMock | None = None,
     story_store: MagicMock | None = None,
+    story_generator: MagicMock | None = None,
     mood_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
@@ -126,6 +133,7 @@ def make_bot(
         spending_store=spending_store or make_spending_store(),
         hobby_store=hobby_store or make_hobby_store(),
         story_store=story_store or make_story_store(),
+        story_generator=story_generator or make_story_generator(),
         mood_store=mood_store or make_mood_store(),
         intents=intents,
     )

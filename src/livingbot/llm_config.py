@@ -8,6 +8,7 @@ DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
 CHAT_MODEL = "openai/gpt-4o"
 WEEK_PLANNER_MODEL = "openai/gpt-4o"
+STORY_GENERATOR_MODEL = "openai/gpt-4o"
 RELATION_UPDATER_MODEL = "openai/gpt-4o"
 PROMPT_ENHANCER_MODEL = "openai/gpt-4o-mini"
 
