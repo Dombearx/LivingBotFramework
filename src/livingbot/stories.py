@@ -65,6 +65,10 @@ class StoryStore:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._recent_summaries, limit)
 
+    async def get(self, story_id: str) -> "Story | None":
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._get, story_id)
+
     async def mark_told(self, story_id: str) -> bool:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._mark_told, story_id)
@@ -116,6 +120,12 @@ class StoryStore:
     def _recent_summaries(self, limit: int) -> list[str]:
         stories = sorted(self._all(), key=lambda story: story.created_at, reverse=True)
         return [story.summary for story in stories[:limit]]
+
+    def _get(self, story_id: str) -> Story | None:
+        existing = self._collection.get(ids=[story_id], include=["metadatas"])
+        if not existing["ids"]:
+            return None
+        return _to_story(existing["ids"][0], existing["metadatas"][0])
 
     def _mark_told(self, story_id: str) -> bool:
         existing = self._collection.get(ids=[story_id], include=["metadatas"])

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
 import discord
@@ -165,6 +166,8 @@ async def recall_story(
             if story.told_at
             else "not told yet"
         )
+        if story.image_path:
+            status += "; has a photo you can attach with show_story_image"
         lines.append(f"[id:{story.id}] ({status})\n{story.content}")
     return "\n\n".join(lines)
 
@@ -176,6 +179,23 @@ async def mark_story_told(ctx: RunContext[BotDeps], story_id: str) -> str:
     if await ctx.deps.story_store.mark_told(story_id):
         return f"Marked story {story_id} as told."
     return f"No story with id {story_id}."
+
+
+async def show_story_image(ctx: RunContext[BotDeps], story_id: str) -> str:
+    """Attach the photo that goes with one of your life stories, by its id. Use this
+    while telling or referring back to a story that has a photo, so the group can see
+    it. Only one photo can be attached per message; calling this replaces any photo
+    already attached."""
+    story = await ctx.deps.story_store.get(story_id)
+    if story is None:
+        return f"No story with id {story_id}."
+    if not story.image_path:
+        return "That story has no photo to show."
+    path = Path(story.image_path)
+    if not path.exists():
+        return "That story's photo is missing."
+    ctx.deps.photo_result = path.read_bytes()
+    return "Photo attached."
 
 
 async def check_budget(ctx: RunContext[BotDeps], category: SpendCategory) -> str:

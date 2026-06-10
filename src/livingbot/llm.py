@@ -24,6 +24,7 @@ from livingbot.tools import (
     remove_item,
     remove_plan,
     search_inventory,
+    show_story_image,
     take_photo,
 )
 
@@ -49,6 +50,7 @@ class LLMClient:
                 add_hobby,
                 recall_story,
                 mark_story_told,
+                show_story_image,
                 check_budget,
                 buy_item,
                 take_photo,
@@ -162,14 +164,18 @@ def _build_stories_block(stories: list[Story]) -> str:
     lines = ["Stories from your life you haven't shared with this group yet:"]
     if stories:
         for story in stories:
-            lines.append(f"  [id:{story.id}] {story.summary}")
+            line = f"  [id:{story.id}] {story.summary}"
+            if story.image_path:
+                line += " (has a photo)"
+            lines.append(line)
     else:
         lines.append("  (nothing new to tell right now)")
     lines.append(
         "Share one naturally if it genuinely fits the moment — don't force it in. "
         "After telling one, call mark_story_told so you don't repeat it later. Use "
         "recall_story to find one that matches the conversation, including stories "
-        "you've already told, so you can casually refer back to them."
+        "you've already told, so you can casually refer back to them. When a story has "
+        "a photo, attach it with show_story_image as you tell it."
     )
     return "\n".join(lines) + "\n\n"
 
