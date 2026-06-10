@@ -3,12 +3,12 @@ import io
 import logging
 import os
 import random
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 import discord
 
 from livingbot import config, llm_config, prompts
-from livingbot.calendar import CalendarStore, WeekPlanner
+from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
@@ -23,7 +23,8 @@ from livingbot.mood import (
 from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
-from livingbot.stories import StoryStore
+from livingbot.image import generate_image
+from livingbot.stories import Story, StoryGenerator, StoryStore
 from livingbot.tools import format_message
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,42 @@ async def _send_chunked(
             await channel.send(chunk)
 
 
+def _random_datetime_between(start: datetime, end: datetime) -> datetime:
+    span = max((end - start).total_seconds(), 0.0)
+    return start + timedelta(seconds=random.uniform(0, span))
+
+
+def _pick_story_slot(
+    calendar: Calendar, week_start: date, now: datetime
+) -> tuple[datetime, str | None]:
+    week_end = datetime.combine(week_start, time()) + timedelta(days=7)
+    upcoming = [entry for entry in calendar.entries if entry.end > now]
+    if upcoming and random.random() < config.STORY_TIED_TO_PLAN_PROBABILITY:
+        entry = random.choice(upcoming)
+        occurs_at = _random_datetime_between(max(entry.start, now), entry.end)
+        return occurs_at, f"{entry.activity} at {entry.location}"
+    earliest = max(now, datetime.combine(week_start, time()))
+    return _random_free_moment(earliest, week_end, calendar), None
+
+
+def _random_free_moment(
+    earliest: datetime, week_end: datetime, calendar: Calendar
+) -> datetime:
+    for _ in range(10):
+        day = _random_datetime_between(earliest, week_end)
+        moment = day.replace(
+            hour=random.randint(
+                config.STORY_ACTIVE_HOUR_START, config.STORY_ACTIVE_HOUR_END - 1
+            ),
+            minute=random.randint(0, 59),
+            second=0,
+            microsecond=0,
+        )
+        if earliest <= moment <= week_end and calendar.current_entry(moment) is None:
+            return moment
+    return _random_datetime_between(earliest, week_end)
+
+
 class LivingBot(discord.Client):
     def __init__(
         self,
@@ -62,6 +99,7 @@ class LivingBot(discord.Client):
         spending_store: SpendingStore,
         hobby_store: HobbyStore,
         story_store: StoryStore,
+        story_generator: StoryGenerator,
         mood_store: MoodStore,
         **kwargs: object,
     ) -> None:
@@ -80,6 +118,7 @@ class LivingBot(discord.Client):
         self._spending_store = spending_store
         self._hobby_store = hobby_store
         self._story_store = story_store
+        self._story_generator = story_generator
         self._mood_store = mood_store
         self._messages_since_photo: int = 0
         self._photo_cooldown: int = random.randint(
@@ -133,7 +172,43 @@ class LivingBot(discord.Client):
             logger.info(
                 "Planned week starting %s with %d entries", week_start, len(entries)
             )
+            self._calendar_store.save(calendar)
+            asyncio.create_task(
+                self._generate_week_story(
+                    calendar, [hobby.name for hobby in hobbies.entries], week_start, now
+                )
+            )
+            return
         self._calendar_store.save(calendar)
+
+    async def _generate_week_story(
+        self, calendar: Calendar, hobbies: list[str], week_start: date, now: datetime
+    ) -> None:
+        occurs_at, anchor = _pick_story_slot(calendar, week_start, now)
+        avoid = await self._story_store.recent_summaries(
+            config.STORY_AVOID_RECENT_LIMIT
+        )
+        story = await self._story_generator.generate(
+            week_start, hobbies, calendar.home_location, occurs_at, anchor, avoid
+        )
+        if story is None:
+            return
+        story.image_path = await self._render_story_image(story)
+        await self._story_store.add(story)
+        logger.info("Story for week %s happens %s", week_start, occurs_at)
+
+    async def _render_story_image(self, story: Story) -> str | None:
+        try:
+            image_bytes = await generate_image(
+                description=story.content, include_mugda=True
+            )
+        except Exception:
+            logger.exception("Failed to render image for story %s", story.id)
+            return None
+        config.STORY_IMAGE_PATH.mkdir(parents=True, exist_ok=True)
+        path = config.STORY_IMAGE_PATH / f"{story.id}.jpg"
+        path.write_bytes(image_bytes)
+        return str(path)
 
     async def on_ready(self) -> None:
         logger.info(
@@ -291,6 +366,9 @@ def run() -> None:
     spending_store = SpendingStore(config.SPENDING_DATA_PATH)
     hobby_store = HobbyStore(config.HOBBY_DATA_PATH, config.DEFAULT_HOBBIES)
     story_store = StoryStore.create(config.STORY_DATA_PATH)
+    story_generator = StoryGenerator(
+        llm_config.build_chat_model(llm_config.STORY_GENERATOR_MODEL)
+    )
     mood_store = MoodStore(config.MOOD_DATA_PATH)
     bot = LivingBot(
         llm_client=llm_client,
@@ -303,6 +381,7 @@ def run() -> None:
         spending_store=spending_store,
         hobby_store=hobby_store,
         story_store=story_store,
+        story_generator=story_generator,
         mood_store=mood_store,
         intents=intents,
     )

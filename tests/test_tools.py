@@ -17,8 +17,10 @@ from livingbot.tools import (
     remove_item,
     remove_plan,
     search_inventory,
+    show_story_image,
     take_photo,
 )
+from livingbot.stories import Story
 
 
 def make_spending_store() -> MagicMock:
@@ -421,4 +423,63 @@ async def test_take_photo_when_generation_fails_photo_result_stays_none(
 
     await take_photo(ctx, description="a park", include_mugda=False)
 
+    assert ctx.deps.photo_result is None
+
+
+# ---------------------------------------------------------------------------
+# show_story_image
+# ---------------------------------------------------------------------------
+
+
+def make_story_image_ctx(story: Story | None) -> SimpleNamespace:
+    story_store = MagicMock()
+    story_store.get = AsyncMock(return_value=story)
+    deps = BotDeps(
+        channel=MagicMock(),
+        calendar_store=MagicMock(),
+        inventory_store=make_inventory_store(),
+        spending_store=make_spending_store(),
+        hobby_store=make_hobby_store(),
+        story_store=story_store,
+    )
+    return SimpleNamespace(deps=deps)
+
+
+async def test_show_story_image_attaches_image_bytes(tmp_path) -> None:
+    image_file = tmp_path / "story.jpg"
+    image_file.write_bytes(b"story-image")
+    story = Story(summary="s", content="c", image_path=str(image_file))
+    ctx = make_story_image_ctx(story)
+
+    await show_story_image(ctx, story.id)
+
+    assert ctx.deps.photo_result == b"story-image"
+
+
+async def test_show_story_image_when_story_unknown_returns_message(tmp_path) -> None:
+    ctx = make_story_image_ctx(None)
+
+    result = await show_story_image(ctx, "nope")
+
+    assert "no story" in result.lower()
+    assert ctx.deps.photo_result is None
+
+
+async def test_show_story_image_when_story_has_no_image_returns_message() -> None:
+    story = Story(summary="s", content="c", image_path=None)
+    ctx = make_story_image_ctx(story)
+
+    result = await show_story_image(ctx, story.id)
+
+    assert "no photo" in result.lower()
+    assert ctx.deps.photo_result is None
+
+
+async def test_show_story_image_when_file_missing_returns_message(tmp_path) -> None:
+    story = Story(summary="s", content="c", image_path=str(tmp_path / "gone.jpg"))
+    ctx = make_story_image_ctx(story)
+
+    result = await show_story_image(ctx, story.id)
+
+    assert "missing" in result.lower()
     assert ctx.deps.photo_result is None

@@ -1,13 +1,22 @@
-from datetime import datetime
+from datetime import date, datetime
+from pathlib import Path
 from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
 
-from livingbot.bot import LivingBot, format_message, _send_chunked
+from livingbot import config
+from livingbot.bot import (
+    LivingBot,
+    _pick_story_slot,
+    _random_free_moment,
+    _send_chunked,
+    format_message,
+)
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.hobbies import Hobbies, Hobby
 from livingbot.mood import Mood
 from livingbot.relations import Relation
+from livingbot.stories import Story
 
 
 def bot_user() -> MagicMock:
@@ -93,10 +102,18 @@ def make_hobby_store(hobbies: Hobbies | None = None) -> MagicMock:
     return store
 
 
+def make_story_generator() -> MagicMock:
+    generator = MagicMock()
+    generator.generate = AsyncMock(return_value=None)
+    return generator
+
+
 def make_story_store() -> MagicMock:
     store = MagicMock()
     store.untold = AsyncMock(return_value=[])
     store.prune_stale = AsyncMock()
+    store.recent_summaries = AsyncMock(return_value=[])
+    store.add = AsyncMock()
     return store
 
 
@@ -111,6 +128,7 @@ def make_bot(
     spending_store: MagicMock | None = None,
     hobby_store: MagicMock | None = None,
     story_store: MagicMock | None = None,
+    story_generator: MagicMock | None = None,
     mood_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
@@ -126,6 +144,7 @@ def make_bot(
         spending_store=spending_store or make_spending_store(),
         hobby_store=hobby_store or make_hobby_store(),
         story_store=story_store or make_story_store(),
+        story_generator=story_generator or make_story_generator(),
         mood_store=mood_store or make_mood_store(),
         intents=intents,
     )
@@ -967,3 +986,166 @@ async def test_attempt_response_passes_empty_hint_when_below_cooldown(
 
     call_kwargs = llm_client.complete.call_args.kwargs
     assert call_kwargs["photo_hint"] == ""
+
+
+# ---------------------------------------------------------------------------
+# story slot selection
+# ---------------------------------------------------------------------------
+
+
+@patch("livingbot.bot.random")
+def test_pick_story_slot_when_roll_favors_plan_anchors_to_entry(
+    mock_random: MagicMock,
+) -> None:
+    entry = PlanEntry(
+        activity="gym",
+        location="gym",
+        start=datetime(2026, 6, 4, 18, 0),
+        end=datetime(2026, 6, 4, 19, 30),
+    )
+    calendar = Calendar(home_location="home", entries=[entry])
+    mock_random.random.return_value = 0.0
+    mock_random.choice.return_value = entry
+    mock_random.uniform.return_value = 0.0
+
+    occurs_at, anchor = _pick_story_slot(
+        calendar, date(2026, 6, 1), datetime(2026, 6, 1, 0, 0)
+    )
+
+    assert anchor == "gym at gym"
+    assert occurs_at == datetime(2026, 6, 4, 18, 0)
+
+
+@patch("livingbot.bot.random")
+def test_pick_story_slot_when_no_plans_returns_free_moment_without_anchor(
+    mock_random: MagicMock,
+) -> None:
+    calendar = Calendar(home_location="home", entries=[])
+    mock_random.uniform.return_value = 0.0
+    mock_random.randint.return_value = 10
+
+    occurs_at, anchor = _pick_story_slot(
+        calendar, date(2026, 6, 1), datetime(2026, 6, 1, 0, 0)
+    )
+
+    assert anchor is None
+    assert occurs_at.hour == 10
+
+
+@patch("livingbot.bot.random")
+def test_random_free_moment_skips_a_busy_slot(mock_random: MagicMock) -> None:
+    busy = PlanEntry(
+        activity="gym",
+        location="gym",
+        start=datetime(2026, 6, 1, 10, 0),
+        end=datetime(2026, 6, 1, 11, 0),
+    )
+    calendar = Calendar(home_location="home", entries=[busy])
+    mock_random.uniform.return_value = 0.0
+    mock_random.randint.side_effect = [10, 30, 14, 0]
+
+    moment = _random_free_moment(
+        datetime(2026, 6, 1, 0, 0), datetime(2026, 6, 8, 0, 0), calendar
+    )
+
+    assert moment == datetime(2026, 6, 1, 14, 0)
+
+
+# ---------------------------------------------------------------------------
+# _generate_week_story and _render_story_image
+# ---------------------------------------------------------------------------
+
+
+@patch.object(
+    LivingBot,
+    "_render_story_image",
+    new_callable=AsyncMock,
+    return_value="data/story_images/abc.jpg",
+)
+async def test_generate_week_story_adds_story_with_rendered_image_path(
+    mock_render: AsyncMock,
+) -> None:
+    generator = make_story_generator()
+    generator.generate = AsyncMock(return_value=Story(summary="s", content="c"))
+    story_store = make_story_store()
+    bot = make_bot(story_generator=generator, story_store=story_store)
+
+    await bot._generate_week_story(
+        Calendar(home_location="home"), ["gym"], date(2026, 6, 1), datetime(2026, 6, 1)
+    )
+
+    story_store.add.assert_awaited_once()
+    assert story_store.add.await_args.args[0].image_path == "data/story_images/abc.jpg"
+
+
+async def test_generate_week_story_when_generation_returns_none_adds_nothing() -> None:
+    generator = make_story_generator()
+    story_store = make_story_store()
+    bot = make_bot(story_generator=generator, story_store=story_store)
+
+    await bot._generate_week_story(
+        Calendar(home_location="home"), ["gym"], date(2026, 6, 1), datetime(2026, 6, 1)
+    )
+
+    story_store.add.assert_not_awaited()
+
+
+@patch(
+    "livingbot.bot.generate_image", new_callable=AsyncMock, return_value=b"img-bytes"
+)
+async def test_render_story_image_writes_file_and_returns_path(
+    mock_gen: AsyncMock, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "STORY_IMAGE_PATH", tmp_path / "imgs")
+    bot = make_bot()
+    story = Story(summary="s", content="c")
+
+    path = await bot._render_story_image(story)
+
+    assert Path(path).read_bytes() == b"img-bytes"
+    assert path.endswith(f"{story.id}.jpg")
+
+
+@patch("livingbot.bot.generate_image", new_callable=AsyncMock, return_value=b"img")
+async def test_render_story_image_sends_story_content_to_image_service(
+    mock_gen: AsyncMock, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "STORY_IMAGE_PATH", tmp_path / "imgs")
+    bot = make_bot()
+
+    await bot._render_story_image(Story(summary="s", content="A wild tale"))
+
+    assert mock_gen.call_args.kwargs["description"] == "A wild tale"
+    assert mock_gen.call_args.kwargs["include_mugda"] is True
+
+
+@patch(
+    "livingbot.bot.generate_image",
+    new_callable=AsyncMock,
+    side_effect=RuntimeError("endpoint down"),
+)
+async def test_render_story_image_returns_none_when_generation_fails(
+    mock_gen: AsyncMock,
+) -> None:
+    bot = make_bot()
+
+    result = await bot._render_story_image(Story(summary="s", content="c"))
+
+    assert result is None
+
+
+@patch("livingbot.bot.asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("livingbot.bot.datetime")
+async def test_ensure_week_planned_schedules_story_generation_for_new_week(
+    mock_datetime: MagicMock, mock_create_task: MagicMock
+) -> None:
+    mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
+    bot = make_bot(
+        calendar_store=make_calendar_store(Calendar(home_location="home")),
+        week_planner=make_week_planner([]),
+        hobby_store=make_hobby_store(Hobbies(entries=[Hobby(name="gym")])),
+    )
+
+    await bot._ensure_week_planned()
+
+    mock_create_task.assert_called_once()
