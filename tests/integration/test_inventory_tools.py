@@ -17,9 +17,11 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
 from livingbot.calendar import CalendarStore
+from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.llm import LLMClient
 from livingbot.spending import SpendingStore
+from livingbot.stories import StoryStore
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -95,6 +97,8 @@ async def test_add_item_called_and_persisted_when_told_to_save(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Explicit: told to save something to inventory, she should call add_item and the
     item should actually land in the store."""
@@ -105,7 +109,14 @@ async def test_add_item_called_and_persisted_when_told_to_save(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "add_item"), (
@@ -121,6 +132,8 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Explicit: asked to check if she owns something that is not in the recently used
     slice, she should call search_inventory rather than guess."""
@@ -140,7 +153,14 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "search_inventory"), (
@@ -153,6 +173,8 @@ async def test_remove_item_called_when_told_to_discard_a_thing(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Explicit: told an item is gone for good, she should drop it from inventory."""
     await inventory_store.add(
@@ -166,7 +188,14 @@ async def test_remove_item_called_when_told_to_discard_a_thing(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "remove_item"), (
@@ -179,6 +208,8 @@ async def test_add_item_called_when_she_receives_a_gift(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Implicit: receiving a specific gift should make her note it down on her own,
     even though nobody mentions the inventory."""
@@ -189,7 +220,14 @@ async def test_add_item_called_when_she_receives_a_gift(
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "add_item"), (
@@ -203,6 +241,8 @@ async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_pa
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Implicit: invited to a themed party, she should look through her inventory to
     check if she has a suitable outfit without being told to. The matching item is not
@@ -224,7 +264,14 @@ async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_pa
     ]
 
     result = await client.complete(
-        user_messages, channel, calendar_store, inventory_store, spending_store, NOW
+        user_messages,
+        channel,
+        calendar_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        NOW,
     )
 
     assert _tool_was_called(result, "search_inventory"), (

@@ -7,8 +7,10 @@ from pydantic import Field
 from pydantic_ai import RunContext
 
 from livingbot.calendar import CalendarStore, PlanEntry
+from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.spending import POINT_COST, SpendCategory, SpendingStore
+from livingbot.stories import StoryStore
 
 
 @dataclass
@@ -17,6 +19,8 @@ class BotDeps:
     calendar_store: CalendarStore
     inventory_store: InventoryStore
     spending_store: SpendingStore
+    hobby_store: HobbyStore
+    story_store: StoryStore
     photo_result: bytes | None = None
 
 
@@ -54,17 +58,28 @@ async def add_plan(
     start: datetime,
     end: datetime,
     note: str = "",
+    hobby: str = "",
 ) -> str:
     """Add something to your own calendar, e.g. a gym session or a multi-day trip.
     start and end are datetimes; location is where you physically are during it.
     Use this whenever you decide to do something that changes where you are or how
-    your time is spent. Returns the new entry's id."""
+    your time is spent. Set hobby to the exact name of one of your hobbies when this
+    plan is you actually practising it (e.g. "gym" for a gym session) — that's how
+    you grow more skilled at it over time; leave it empty otherwise. Returns the new
+    entry's id."""
     calendar = ctx.deps.calendar_store.load()
     entry = PlanEntry(
-        activity=activity, location=location, start=start, end=end, note=note
+        activity=activity,
+        location=location,
+        start=start,
+        end=end,
+        note=note,
+        hobby=hobby,
     )
     calendar.entries.append(entry)
     ctx.deps.calendar_store.save(calendar)
+    if hobby:
+        ctx.deps.hobby_store.gain_experience(hobby, EXPERIENCE_PER_SESSION)
     return f"Added [id:{entry.id}] {activity} @ {location} from {start} to {end}."
 
 
@@ -116,6 +131,51 @@ async def search_inventory(
         + (f" — {item.description}" if item.description else "")
         for item in items
     )
+
+
+async def add_hobby(ctx: RunContext[BotDeps], name: str) -> str:
+    """Add a new hobby to your life, e.g. when you genuinely take up something like
+    pottery or running. You start out as a novice and grow more skilled at it over
+    time as you spend time on it — see add_plan."""
+    hobbies = ctx.deps.hobby_store.load()
+    if any(hobby.name == name for hobby in hobbies.entries):
+        return f"{name} is already one of your hobbies."
+    hobbies.entries.append(Hobby(name=name))
+    ctx.deps.hobby_store.save(hobbies)
+    return f"Added {name} to your hobbies."
+
+
+async def recall_story(
+    ctx: RunContext[BotDeps],
+    query: Annotated[str, Field(min_length=1)],
+    n: Annotated[int, Field(ge=1, le=10)] = 3,
+) -> str:
+    """Search the stories from your life for ones that fit a topic, mood or situation,
+    described in natural language, e.g. "an embarrassing moment" or "something about
+    travel". Returns up to n best-matching stories with their full content and whether
+    you've already told them — useful both for sharing something new and for casually
+    referring back to something you've told before."""
+    stories = await ctx.deps.story_store.search(query, limit=n)
+    if not stories:
+        return "Nothing from your life comes to mind for that."
+    lines = []
+    for story in stories:
+        status = (
+            "already told — you may refer back to it, but don't retell it in full"
+            if story.told_at
+            else "not told yet"
+        )
+        lines.append(f"[id:{story.id}] ({status})\n{story.content}")
+    return "\n\n".join(lines)
+
+
+async def mark_story_told(ctx: RunContext[BotDeps], story_id: str) -> str:
+    """Record that you just shared this story with the group, by its id. Call this
+    right after telling it in your reply, so you remember not to tell it again —
+    you can still casually refer back to it later."""
+    if await ctx.deps.story_store.mark_told(story_id):
+        return f"Marked story {story_id} as told."
+    return f"No story with id {story_id}."
 
 
 async def check_budget(ctx: RunContext[BotDeps], category: SpendCategory) -> str:

@@ -5,6 +5,7 @@ import discord
 
 from livingbot.bot import LivingBot, format_message, _send_chunked
 from livingbot.calendar import Calendar, PlanEntry
+from livingbot.hobbies import Hobbies, Hobby
 from livingbot.mood import Mood
 from livingbot.relations import Relation
 
@@ -85,6 +86,20 @@ def make_mood_store(mood: Mood | None = None) -> MagicMock:
     return store
 
 
+def make_hobby_store(hobbies: Hobbies | None = None) -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(return_value=hobbies if hobbies is not None else Hobbies())
+    store.save = MagicMock()
+    return store
+
+
+def make_story_store() -> MagicMock:
+    store = MagicMock()
+    store.untold = AsyncMock(return_value=[])
+    store.prune_stale = AsyncMock()
+    return store
+
+
 def make_bot(
     llm_client: MagicMock | None = None,
     memory_store: MagicMock | None = None,
@@ -94,6 +109,8 @@ def make_bot(
     week_planner: MagicMock | None = None,
     inventory_store: MagicMock | None = None,
     spending_store: MagicMock | None = None,
+    hobby_store: MagicMock | None = None,
+    story_store: MagicMock | None = None,
     mood_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
@@ -107,6 +124,8 @@ def make_bot(
         week_planner=week_planner or make_week_planner(),
         inventory_store=inventory_store or make_inventory_store(),
         spending_store=spending_store or make_spending_store(),
+        hobby_store=hobby_store or make_hobby_store(),
+        story_store=story_store or make_story_store(),
         mood_store=mood_store or make_mood_store(),
         intents=intents,
     )
@@ -368,6 +387,8 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         bot._calendar_store,
         bot._inventory_store,
         bot._spending_store,
+        bot._hobby_store,
+        bot._story_store,
         ANY,
         [],
         [Relation(user_id="123"), Relation(user_id="123")],
@@ -447,7 +468,7 @@ async def test_attempt_response_passes_retrieved_memories_to_llm(
 
     await bot._attempt_response()
 
-    assert llm_client.complete.call_args.args[6] == ["remember this"]
+    assert llm_client.complete.call_args.args[8] == ["remember this"]
 
 
 @patch("random.random", return_value=0.0)
@@ -666,7 +687,12 @@ async def test_ensure_week_planned_when_week_unplanned_plans_and_saves(
     )
     calendar_store = make_calendar_store(Calendar(home_location="home"))
     week_planner = make_week_planner([entry])
-    bot = make_bot(calendar_store=calendar_store, week_planner=week_planner)
+    hobby_store = make_hobby_store(Hobbies(entries=[Hobby(name="gym")]))
+    bot = make_bot(
+        calendar_store=calendar_store,
+        week_planner=week_planner,
+        hobby_store=hobby_store,
+    )
 
     await bot._ensure_week_planned()
 

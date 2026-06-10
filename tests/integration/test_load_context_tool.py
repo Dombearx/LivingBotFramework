@@ -15,9 +15,11 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
 from livingbot.calendar import CalendarStore
+from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
 from livingbot.spending import SpendingStore
+from livingbot.stories import StoryStore
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -76,6 +78,8 @@ async def test_load_context_called_when_explicitly_asked(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Explicit Polish request to scroll back and read what was written before."""
     channel = _make_channel(
@@ -95,6 +99,8 @@ async def test_load_context_called_when_explicitly_asked(
         calendar_store,
         inventory_store,
         spending_store,
+        hobby_store,
+        story_store,
         datetime.now(),
     )
 
@@ -108,6 +114,8 @@ async def test_load_context_called_for_polish_history_question(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Bot fetches history when asked in Polish what was discussed earlier."""
     channel = _make_channel(
@@ -127,6 +135,8 @@ async def test_load_context_called_for_polish_history_question(
         calendar_store,
         inventory_store,
         spending_store,
+        hobby_store,
+        story_store,
         datetime.now(),
     )
 
@@ -140,6 +150,8 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Bot fetches history when asked to recall what a specific person wrote."""
     channel = _make_channel(
@@ -159,6 +171,8 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
         calendar_store,
         inventory_store,
         spending_store,
+        hobby_store,
+        story_store,
         datetime.now(),
     )
 
@@ -172,6 +186,8 @@ async def test_load_context_called_to_summarize_channel_discussion(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Bot fetches history when asked to summarize the recent discussion."""
     channel = _make_channel(
@@ -193,6 +209,8 @@ async def test_load_context_called_to_summarize_channel_discussion(
         calendar_store,
         inventory_store,
         spending_store,
+        hobby_store,
+        story_store,
         datetime.now(),
     )
 
@@ -206,6 +224,8 @@ async def test_load_context_called_for_implicit_context_reference(
     calendar_store: CalendarStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
+    hobby_store: HobbyStore,
+    story_store: StoryStore,
 ) -> None:
     """Bot fetches history when user implicitly refers to something decided earlier."""
     channel = _make_channel(
@@ -227,6 +247,8 @@ async def test_load_context_called_for_implicit_context_reference(
         calendar_store,
         inventory_store,
         spending_store,
+        hobby_store,
+        story_store,
         datetime.now(),
     )
 

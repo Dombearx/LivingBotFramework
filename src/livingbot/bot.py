@@ -9,6 +9,7 @@ import discord
 
 from livingbot import config, llm_config, prompts
 from livingbot.calendar import CalendarStore, WeekPlanner
+from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
 from livingbot.memory import MemoryStore
@@ -22,6 +23,7 @@ from livingbot.mood import (
 from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
+from livingbot.stories import StoryStore
 from livingbot.tools import format_message
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,8 @@ class LivingBot(discord.Client):
         week_planner: WeekPlanner,
         inventory_store: InventoryStore,
         spending_store: SpendingStore,
+        hobby_store: HobbyStore,
+        story_store: StoryStore,
         mood_store: MoodStore,
         **kwargs: object,
     ) -> None:
@@ -74,6 +78,8 @@ class LivingBot(discord.Client):
         self._week_planner = week_planner
         self._inventory_store = inventory_store
         self._spending_store = spending_store
+        self._hobby_store = hobby_store
+        self._story_store = story_store
         self._mood_store = mood_store
         self._messages_since_photo: int = 0
         self._photo_cooldown: int = random.randint(
@@ -88,6 +94,7 @@ class LivingBot(discord.Client):
             try:
                 await self._ensure_week_planned()
                 self._ensure_morning_mood_refresh()
+                await self._story_store.prune_stale(datetime.now())
             except Exception:
                 logger.exception("Life loop iteration failed")
             await asyncio.sleep(config.LIFE_LOOP_INTERVAL_SECONDS)
@@ -110,11 +117,19 @@ class LivingBot(discord.Client):
         calendar = self._calendar_store.load()
         calendar.prune_past(now)
         if calendar.planned_week_start != week_start:
+            hobbies = self._hobby_store.load()
             entries = await self._week_planner.plan(
-                week_start, config.HOBBIES, calendar.home_location
+                week_start,
+                [hobby.name for hobby in hobbies.entries],
+                calendar.home_location,
             )
             calendar.entries.extend(entries)
             calendar.planned_week_start = week_start
+            for entry in entries:
+                if entry.hobby:
+                    self._hobby_store.gain_experience(
+                        entry.hobby, EXPERIENCE_PER_SESSION
+                    )
             logger.info(
                 "Planned week starting %s with %d entries", week_start, len(entries)
             )
@@ -174,6 +189,8 @@ class LivingBot(discord.Client):
                     self._calendar_store,
                     self._inventory_store,
                     self._spending_store,
+                    self._hobby_store,
+                    self._story_store,
                     now,
                     memories,
                     relations,
@@ -272,6 +289,8 @@ def run() -> None:
     )
     inventory_store = InventoryStore.create(config.INVENTORY_DATA_PATH)
     spending_store = SpendingStore(config.SPENDING_DATA_PATH)
+    hobby_store = HobbyStore(config.HOBBY_DATA_PATH, config.DEFAULT_HOBBIES)
+    story_store = StoryStore.create(config.STORY_DATA_PATH)
     mood_store = MoodStore(config.MOOD_DATA_PATH)
     bot = LivingBot(
         llm_client=llm_client,
@@ -282,6 +301,8 @@ def run() -> None:
         week_planner=week_planner,
         inventory_store=inventory_store,
         spending_store=spending_store,
+        hobby_store=hobby_store,
+        story_store=story_store,
         mood_store=mood_store,
         intents=intents,
     )
