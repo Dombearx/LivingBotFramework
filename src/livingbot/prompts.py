@@ -59,6 +59,9 @@ Rules:
 - summary: one short line capturing the gist, used later to find the story by topic.
 - Stay inside the requested plausibility level — do not make a "normal" episode wild,
   and tell even an absurd one deadpan, as if it really happened.
+- Any examples in the plausibility level only show how far-fetched the episode should
+  be. Never reuse them; always invent a fresh, specific episode of your own.
+- If recent episodes are listed, make this one clearly different in subject and outcome.
 Return only valid JSON matching the schema. No extra text.\
 """
 

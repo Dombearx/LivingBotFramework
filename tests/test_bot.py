@@ -103,6 +103,8 @@ def make_story_store() -> MagicMock:
     store = MagicMock()
     store.untold = AsyncMock(return_value=[])
     store.prune_stale = AsyncMock()
+    store.recent_summaries = AsyncMock(return_value=[])
+    store.add = AsyncMock()
     return store
 
 

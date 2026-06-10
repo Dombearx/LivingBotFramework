@@ -30,6 +30,7 @@ class Story(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     occurs_at: datetime | None = None
     told_at: datetime | None = None
+    image_path: str | None = None
 
     def document(self) -> str:
         return self.summary
@@ -59,6 +60,10 @@ class StoryStore:
     async def search(self, query: str, limit: int = 3) -> list[Story]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._search, query, limit)
+
+    async def recent_summaries(self, limit: int) -> list[str]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._recent_summaries, limit)
 
     async def mark_told(self, story_id: str) -> bool:
         loop = asyncio.get_event_loop()
@@ -107,6 +112,10 @@ class StoryStore:
             for story_id, metadata in zip(result["ids"][0], result["metadatas"][0])
         ]
         return [story for story in stories if story.has_happened(now)][:limit]
+
+    def _recent_summaries(self, limit: int) -> list[str]:
+        stories = sorted(self._all(), key=lambda story: story.created_at, reverse=True)
+        return [story.summary for story in stories[:limit]]
 
     def _mark_told(self, story_id: str) -> bool:
         existing = self._collection.get(ids=[story_id], include=["metadatas"])
@@ -162,6 +171,7 @@ class StoryGenerator:
         home_location: str,
         occurs_at: datetime,
         anchor: str | None,
+        avoid: list[str],
     ) -> Story | None:
         tier = _choose_tier()
         context = (
@@ -169,6 +179,10 @@ class StoryGenerator:
             if anchor
             else "She has no plans then — it happens in a free moment of her week."
         )
+        avoid_block = ""
+        if avoid:
+            listed = "\n".join(f"- {summary}" for summary in avoid)
+            avoid_block = f"\nRecent episodes to stay clearly away from:\n{listed}"
         prompt = (
             f"The episode happens on {occurs_at:%A %d %B at %H:%M}, during the week "
             f"starting Monday {week_start}.\n"
@@ -176,6 +190,7 @@ class StoryGenerator:
             f"Her home base: {home_location}.\n"
             f"{context}\n"
             f"Plausibility level — {tier.guidance}"
+            f"{avoid_block}"
         )
         try:
             result = await self._agent.run(prompt)
@@ -200,6 +215,7 @@ def _metadata(story: Story) -> dict:
         "created_at": story.created_at.isoformat(),
         "occurs_at": story.occurs_at.isoformat() if story.occurs_at else "",
         "told_at": story.told_at.isoformat() if story.told_at else "",
+        "image_path": story.image_path or "",
     }
 
 
@@ -213,4 +229,5 @@ def _to_story(story_id: str, metadata: dict) -> Story:
         created_at=metadata["created_at"],
         occurs_at=occurs_at or None,
         told_at=told_at or None,
+        image_path=metadata.get("image_path", "") or None,
     )

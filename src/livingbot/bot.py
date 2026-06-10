@@ -23,7 +23,8 @@ from livingbot.mood import (
 from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
-from livingbot.stories import StoryGenerator, StoryStore
+from livingbot.image import generate_image
+from livingbot.stories import Story, StoryGenerator, StoryStore
 from livingbot.tools import format_message
 
 logger = logging.getLogger(__name__)
@@ -171,21 +172,43 @@ class LivingBot(discord.Client):
             logger.info(
                 "Planned week starting %s with %d entries", week_start, len(entries)
             )
-            await self._generate_week_story(
-                calendar, [hobby.name for hobby in hobbies.entries], week_start, now
+            self._calendar_store.save(calendar)
+            asyncio.create_task(
+                self._generate_week_story(
+                    calendar, [hobby.name for hobby in hobbies.entries], week_start, now
+                )
             )
+            return
         self._calendar_store.save(calendar)
 
     async def _generate_week_story(
         self, calendar: Calendar, hobbies: list[str], week_start: date, now: datetime
     ) -> None:
         occurs_at, anchor = _pick_story_slot(calendar, week_start, now)
-        story = await self._story_generator.generate(
-            week_start, hobbies, calendar.home_location, occurs_at, anchor
+        avoid = await self._story_store.recent_summaries(
+            config.STORY_AVOID_RECENT_LIMIT
         )
-        if story is not None:
-            await self._story_store.add(story)
-            logger.info("Story for week %s happens %s", week_start, occurs_at)
+        story = await self._story_generator.generate(
+            week_start, hobbies, calendar.home_location, occurs_at, anchor, avoid
+        )
+        if story is None:
+            return
+        story.image_path = await self._render_story_image(story)
+        await self._story_store.add(story)
+        logger.info("Story for week %s happens %s", week_start, occurs_at)
+
+    async def _render_story_image(self, story: Story) -> str | None:
+        try:
+            image_bytes = await generate_image(
+                description=story.content, include_mugda=True
+            )
+        except Exception:
+            logger.exception("Failed to render image for story %s", story.id)
+            return None
+        config.STORY_IMAGE_PATH.mkdir(parents=True, exist_ok=True)
+        path = config.STORY_IMAGE_PATH / f"{story.id}.jpg"
+        path.write_bytes(image_bytes)
+        return str(path)
 
     async def on_ready(self) -> None:
         logger.info(
