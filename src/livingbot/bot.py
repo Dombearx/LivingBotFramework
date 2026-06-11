@@ -322,7 +322,10 @@ class LivingBot(discord.Client):
                         images.extend(await extract_images(m))
                     author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
                     memories = await self._memory_store.retrieve(
-                        "\n".join(formatted), user_ids=author_ids
+                        [
+                            (text, str(m.author.id))
+                            for text, m in zip(formatted, messages)
+                        ]
                     )
                     relations = [self._relation_store.load(uid) for uid in author_ids]
                     result = await self._llm_client.complete(
