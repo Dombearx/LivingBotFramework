@@ -36,6 +36,12 @@ class RelationStore:
         path = self._path_for(relation.user_id)
         path.write_text(relation.model_dump_json(indent=2))
 
+    def all(self) -> list[Relation]:
+        return [
+            Relation.model_validate_json(path.read_text())
+            for path in sorted(self._data_path.glob("*.json"))
+        ]
+
 
 class RelationUpdater:
     def __init__(self, model: OpenAIChatModel) -> None:
