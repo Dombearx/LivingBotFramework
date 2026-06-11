@@ -102,6 +102,23 @@ def test_load_when_rollover_exceeds_cap_clamps_to_cap(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# SpendingStore.save()
+# ---------------------------------------------------------------------------
+
+
+def test_save_persists_points_and_purchases(tmp_path) -> None:
+    purchase = Purchase(name="sukienka", category=SpendCategory.medium)
+    state = SpendingState(week_start=MONDAY, points_available=7, purchases=[purchase])
+
+    make_store(tmp_path).save(state)
+
+    with with_week(MONDAY):
+        loaded = make_store(tmp_path).load()
+    assert loaded.points_available == 7
+    assert [p.name for p in loaded.purchases] == ["sukienka"]
+
+
+# ---------------------------------------------------------------------------
 # SpendingStore.can_afford()
 # ---------------------------------------------------------------------------
 

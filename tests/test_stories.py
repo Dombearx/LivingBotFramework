@@ -156,6 +156,52 @@ async def test_story_store_prune_stale_keeps_recently_told_stories(
     assert any(s.id == recent.id for s in results)
 
 
+async def test_story_store_all_returns_every_story(story_store: StoryStore) -> None:
+    first = Story(summary="First", content="c")
+    second = Story(summary="Second", content="c")
+    await story_store.add(first)
+    await story_store.add(second)
+
+    result = await story_store.all()
+
+    assert {s.id for s in result} == {first.id, second.id}
+
+
+async def test_story_store_all_includes_told_and_future_stories(
+    story_store: StoryStore,
+) -> None:
+    told = Story(summary="Told", content="c", told_at=datetime.now())
+    future = Story(
+        summary="Future", content="c", occurs_at=datetime.now() + timedelta(days=1)
+    )
+    await story_store.add(told)
+    await story_store.add(future)
+
+    result = await story_store.all()
+
+    assert {s.id for s in result} == {told.id, future.id}
+
+
+async def test_story_store_remove_returns_true_and_deletes_story(
+    story_store: StoryStore,
+) -> None:
+    story = Story(summary="Doomed", content="c")
+    await story_store.add(story)
+
+    removed = await story_store.remove(story.id)
+
+    assert removed is True
+    assert await story_store.get(story.id) is None
+
+
+async def test_story_store_remove_returns_false_when_story_not_found(
+    story_store: StoryStore,
+) -> None:
+    removed = await story_store.remove("nonexistent_id")
+
+    assert removed is False
+
+
 def test_story_has_happened_when_occurs_at_is_none_returns_true() -> None:
     story = Story(summary="s", content="c", occurs_at=None)
 
