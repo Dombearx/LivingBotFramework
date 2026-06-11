@@ -90,7 +90,10 @@ class LLMClient:
         parts.append(_build_calendar_block(calendar_store.load(), now))
         hobbies = hobby_store.load()
         parts.append(_build_hobbies_block(hobbies))
-        recent_block = _build_recent_block(hobbies, now)
+        recent_items = await inventory_store.recently_acquired(
+            now - config.RECENT_PURCHASE_WINDOW
+        )
+        recent_block = _build_recent_block(hobbies, recent_items, now)
         if recent_block:
             parts.append(recent_block)
         if mood is not None:
@@ -168,15 +171,29 @@ def _build_hobbies_block(hobbies: Hobbies) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def _build_recent_block(hobbies: Hobbies, now: datetime) -> str:
-    recent = recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW)
-    if not recent:
-        return ""
-    lines = ["Recently in your life:"]
-    for hobby in recent:
-        lines.append(
-            f"  You took up {hobby.name} {humanize_ago(hobby.acquired_at, now)}."
+def _build_recent_block(
+    hobbies: Hobbies, recent_items: list[InventoryItem], now: datetime
+) -> str:
+    highlights: list[tuple[datetime, str]] = []
+    for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW):
+        highlights.append(
+            (
+                hobby.acquired_at,
+                f"You took up {hobby.name} {humanize_ago(hobby.acquired_at, now)}.",
+            )
         )
+    for item in recent_items:
+        highlights.append(
+            (
+                item.acquired_at,
+                f"You got {item.name} {humanize_ago(item.acquired_at, now)}.",
+            )
+        )
+    if not highlights:
+        return ""
+    highlights.sort(key=lambda highlight: highlight[0], reverse=True)
+    lines = ["Recently in your life:"]
+    lines.extend(f"  {text}" for _, text in highlights)
     return "\n".join(lines) + "\n\n"
 
 
