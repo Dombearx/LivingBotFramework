@@ -53,6 +53,14 @@ class StoryStore:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self._add, story)
 
+    async def all(self) -> list[Story]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._all)
+
+    async def remove(self, story_id: str) -> bool:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._remove, story_id)
+
     async def untold(self, limit: int = 3) -> list[Story]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._untold, limit)
@@ -90,6 +98,12 @@ class StoryStore:
             _to_story(story_id, metadata)
             for story_id, metadata in zip(result["ids"], result["metadatas"])
         ]
+
+    def _remove(self, story_id: str) -> bool:
+        if not self._collection.get(ids=[story_id])["ids"]:
+            return False
+        self._collection.delete(ids=[story_id])
+        return True
 
     def _untold(self, limit: int) -> list[Story]:
         now = datetime.now()

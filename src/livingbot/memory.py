@@ -54,6 +54,17 @@ class MemoryStore:
                     memories.append(text)
         return memories[:limit]
 
+    async def all(self, user_id: str) -> list[dict]:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, lambda: self._memory.get_all(user_id=user_id)
+        )
+        return result.get("results", result) if isinstance(result, dict) else result
+
+    async def delete(self, memory_id: str) -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: self._memory.delete(memory_id))
+
     async def store(self, conversation: list[dict], user_id: str | None = None) -> None:
         loop = asyncio.get_event_loop()
         targets = [GLOBAL_USER_ID] if user_id is None else [user_id, GLOBAL_USER_ID]

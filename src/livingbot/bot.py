@@ -128,6 +128,54 @@ class LivingBot(discord.Client):
             config.PHOTO_COOLDOWN_MIN, config.PHOTO_COOLDOWN_MAX
         )
 
+    @property
+    def memory_store(self) -> MemoryStore:
+        return self._memory_store
+
+    @property
+    def relation_store(self) -> RelationStore:
+        return self._relation_store
+
+    @property
+    def calendar_store(self) -> CalendarStore:
+        return self._calendar_store
+
+    @property
+    def inventory_store(self) -> InventoryStore:
+        return self._inventory_store
+
+    @property
+    def spending_store(self) -> SpendingStore:
+        return self._spending_store
+
+    @property
+    def hobby_store(self) -> HobbyStore:
+        return self._hobby_store
+
+    @property
+    def story_store(self) -> StoryStore:
+        return self._story_store
+
+    @property
+    def mood_store(self) -> MoodStore:
+        return self._mood_store
+
+    @property
+    def fatigue(self) -> float:
+        return self._fatigue
+
+    @property
+    def resting(self) -> bool:
+        return self._resting
+
+    @property
+    def messages_since_photo(self) -> int:
+        return self._messages_since_photo
+
+    @property
+    def photo_cooldown(self) -> int:
+        return self._photo_cooldown
+
     async def setup_hook(self) -> None:
         self.loop.create_task(self._life_loop())
 
@@ -365,9 +413,7 @@ class LivingBot(discord.Client):
         return isinstance(ref, discord.Message) and ref.author == self.user
 
 
-def run() -> None:
-    configure_logfire()
-    token = os.environ["DISCORD_BOT_TOKEN"]
+def build() -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
     llm_client = LLMClient(
@@ -390,7 +436,7 @@ def run() -> None:
         llm_config.build_chat_model(llm_config.STORY_GENERATOR_MODEL)
     )
     mood_store = MoodStore(config.MOOD_DATA_PATH)
-    bot = LivingBot(
+    return LivingBot(
         llm_client=llm_client,
         memory_store=memory_store,
         relation_store=relation_store,
@@ -405,4 +451,10 @@ def run() -> None:
         mood_store=mood_store,
         intents=intents,
     )
+
+
+def run() -> None:
+    configure_logfire()
+    token = os.environ["DISCORD_BOT_TOKEN"]
+    bot = build()
     bot.run(token, log_handler=None)

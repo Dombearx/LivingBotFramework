@@ -69,6 +69,9 @@ class SpendingStore:
 
         return state
 
+    def save(self, state: SpendingState) -> None:
+        self._write(state)
+
     def can_afford(self, category: SpendCategory) -> bool:
         return self.load().points_available >= POINT_COST[category]
 
