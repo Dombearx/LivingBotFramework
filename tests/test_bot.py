@@ -437,7 +437,7 @@ async def test_attempt_response_retrieves_memories_with_single_author_id(
     await bot._attempt_response()
 
     memory_store.retrieve.assert_called_once_with(
-        format_message(msg), user_ids=[str(author.id)]
+        [(format_message(msg), str(author.id))]
     )
 
 
@@ -463,8 +463,10 @@ async def test_attempt_response_retrieves_memories_for_all_unique_authors(
     await bot._attempt_response()
 
     memory_store.retrieve.assert_called_once_with(
-        f"{format_message(msg1)}\n{format_message(msg2)}",
-        user_ids=[str(author_a.id), str(author_b.id)],
+        [
+            (format_message(msg1), str(author_a.id)),
+            (format_message(msg2), str(author_b.id)),
+        ]
     )
 
 

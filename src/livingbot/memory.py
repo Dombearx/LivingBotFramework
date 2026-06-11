@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import logging
 from pathlib import Path
 
@@ -28,10 +29,32 @@ class MemoryStore:
         return cls(Memory.from_config(config))
 
     async def retrieve(
-        self, query: str, user_ids: list[str], limit: int = 5
+        self,
+        queries: list[tuple[str, str]],
+        per_message_limit: int = 3,
+        limit: int = 8,
+    ) -> list[str]:
+        per_message = await asyncio.gather(
+            *[
+                self._retrieve_for_message(text, user_id, per_message_limit)
+                for text, user_id in queries
+            ]
+        )
+
+        seen: set[str] = set()
+        memories: list[str] = []
+        for column in itertools.zip_longest(*per_message):
+            for text in column:
+                if text is not None and text not in seen:
+                    seen.add(text)
+                    memories.append(text)
+        return memories[:limit]
+
+    async def _retrieve_for_message(
+        self, query: str, user_id: str, limit: int
     ) -> list[str]:
         loop = asyncio.get_event_loop()
-        all_user_ids = list(dict.fromkeys(user_ids + [GLOBAL_USER_ID]))
+        banks = list(dict.fromkeys([user_id, GLOBAL_USER_ID]))
         result_lists = await asyncio.gather(
             *[
                 loop.run_in_executor(
@@ -40,7 +63,7 @@ class MemoryStore:
                         query, user_id=uid, limit=limit
                     ),
                 )
-                for uid in all_user_ids
+                for uid in banks
             ]
         )
 
@@ -52,7 +75,7 @@ class MemoryStore:
                 if text not in seen:
                     seen.add(text)
                     memories.append(text)
-        return memories[:limit]
+        return memories
 
     async def all(self, user_id: str) -> list[dict]:
         loop = asyncio.get_event_loop()
