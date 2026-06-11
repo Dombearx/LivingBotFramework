@@ -294,16 +294,30 @@ class LivingBot(discord.Client):
             config.PHOTO_COOLDOWN_MIN, config.PHOTO_COOLDOWN_MAX
         )
 
+    def _onboarding_active(self) -> bool:
+        join_times = [
+            guild.me.joined_at
+            for guild in self.guilds
+            if guild.me is not None and guild.me.joined_at is not None
+        ]
+        if not join_times:
+            return False
+        return discord.utils.utcnow() - min(join_times) < config.ONBOARDING_PERIOD
+
     async def _attempt_response(self) -> bool:
         now = datetime.now()
         mood = refresh_mood(self._mood_store.load(), now, self._calendar_store.load())
 
+        onboarding_active = self._onboarding_active()
         mood_factor = 0.5 + (mood.value / 100.0)
+        if onboarding_active:
+            mood_factor *= config.ONBOARDING_RESPONSE_BOOST
         should_respond = random.random() < mood_factor / (self._fatigue + 1.0)
         with logfire.span(
             "attempt_response",
             mood=mood.value,
             fatigue=self._fatigue,
+            onboarding_active=onboarding_active,
             should_respond=should_respond,
         ):
             if not should_respond:
@@ -395,7 +409,14 @@ class LivingBot(discord.Client):
             mood = self._mood_store.load()
             mood_rest_factor = 1.5 - (mood.value / 100.0)
             max_delay = max(3.0, 5.0 * self._fatigue * mood_rest_factor)
-            actual_delay = random.uniform(3.0, max_delay)
+            delay_divisor = (
+                config.ONBOARDING_REST_DELAY_DIVISOR
+                if self._onboarding_active()
+                else 1.0
+            )
+            actual_delay = random.uniform(
+                3.0 / delay_divisor, max_delay / delay_divisor
+            )
             await asyncio.sleep(actual_delay * 60.0)
 
             async with self._response_lock:

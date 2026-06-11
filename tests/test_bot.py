@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
@@ -172,6 +172,13 @@ def make_channel() -> MagicMock:
     channel = MagicMock()
     channel.send = AsyncMock()
     return channel
+
+
+def make_guild(joined_at: datetime | None) -> MagicMock:
+    guild = MagicMock(spec=discord.Guild)
+    guild.me = MagicMock(spec=discord.Member)
+    guild.me.joined_at = joined_at
+    return guild
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
@@ -366,6 +373,100 @@ async def test_rest_and_respond_loops_until_random_favors_response(
     # iteration 2: reduce 2.0-1.0=1.0, roll 0.0 < 1/2 → respond, 1 msg → fatigue=2.0
     channel.send.assert_called_once_with("llm response")
     assert bot._resting is False
+
+
+@patch.object(LivingBot, "guilds", new_callable=PropertyMock)
+def test_onboarding_active_when_no_guilds_returns_false(
+    mock_guilds: PropertyMock,
+) -> None:
+    mock_guilds.return_value = []
+    bot = make_bot()
+
+    result = bot._onboarding_active()
+
+    assert result is False
+
+
+@patch.object(LivingBot, "guilds", new_callable=PropertyMock)
+def test_onboarding_active_when_joined_recently_returns_true(
+    mock_guilds: PropertyMock,
+) -> None:
+    mock_guilds.return_value = [make_guild(discord.utils.utcnow() - timedelta(days=1))]
+    bot = make_bot()
+
+    result = bot._onboarding_active()
+
+    assert result is True
+
+
+@patch.object(LivingBot, "guilds", new_callable=PropertyMock)
+def test_onboarding_active_when_joined_over_period_ago_returns_false(
+    mock_guilds: PropertyMock,
+) -> None:
+    mock_guilds.return_value = [make_guild(discord.utils.utcnow() - timedelta(days=4))]
+    bot = make_bot()
+
+    result = bot._onboarding_active()
+
+    assert result is False
+
+
+@patch("random.random", return_value=0.6)
+@patch.object(LivingBot, "guilds", new_callable=PropertyMock)
+async def test_attempt_response_when_onboarding_active_responds_despite_high_fatigue(
+    mock_guilds: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    mock_guilds.return_value = [make_guild(discord.utils.utcnow() - timedelta(days=1))]
+    bot = make_bot()
+    bot._fatigue = 1.5
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), channel=channel))
+
+    # mood_factor=1.0, boosted to 2.0; should_respond = 0.6 < 2.0/2.5
+    result = await bot._attempt_response()
+
+    assert result is True
+    channel.send.assert_called_once_with("llm response")
+
+
+@patch("random.random", return_value=0.6)
+@patch.object(LivingBot, "guilds", new_callable=PropertyMock)
+async def test_attempt_response_when_not_onboarding_skips_response_with_same_roll(
+    mock_guilds: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    mock_guilds.return_value = []
+    bot = make_bot()
+    bot._fatigue = 1.5
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), channel=channel))
+
+    # mood_factor=1.0, not boosted; should_respond = 0.6 < 1.0/2.5 → False
+    result = await bot._attempt_response()
+
+    assert result is False
+    channel.send.assert_not_called()
+
+
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.random", return_value=0.0)
+@patch("random.uniform", return_value=1.0)
+@patch.object(LivingBot, "guilds", new_callable=PropertyMock)
+async def test_rest_and_respond_when_onboarding_active_shrinks_delay_range(
+    mock_guilds: PropertyMock,
+    mock_uniform: MagicMock,
+    mock_random: MagicMock,
+    mock_sleep: AsyncMock,
+) -> None:
+    mock_guilds.return_value = [make_guild(discord.utils.utcnow() - timedelta(days=1))]
+    bot = make_bot()
+    bot._fatigue = 3.0
+
+    await bot._rest_and_respond()
+
+    # mood_rest_factor=1.0, max_delay=15.0, divided by ONBOARDING_REST_DELAY_DIVISOR=4.0
+    mock_uniform.assert_any_call(0.75, 3.75)
 
 
 def test_format_message_includes_id_timestamp_author_and_content() -> None:
