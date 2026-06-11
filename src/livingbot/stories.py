@@ -196,6 +196,7 @@ class StoryGenerator:
         occurs_at: datetime,
         anchor: str | None,
         avoid: list[str],
+        new_hobbies: list[str] | None = None,
     ) -> Story | None:
         tier = _choose_tier()
         context = (
@@ -203,6 +204,9 @@ class StoryGenerator:
             if anchor
             else "She has no plans then — it happens in a free moment of her week."
         )
+        new_block = ""
+        if new_hobbies:
+            new_block = f"\nShe recently took up: {', '.join(new_hobbies)}."
         avoid_block = ""
         if avoid:
             listed = "\n".join(f"- {summary}" for summary in avoid)
@@ -212,7 +216,8 @@ class StoryGenerator:
             f"starting Monday {week_start}.\n"
             f"Her hobbies: {', '.join(hobbies)}.\n"
             f"Her home base: {home_location}.\n"
-            f"{context}\n"
+            f"{context}"
+            f"{new_block}\n"
             f"Plausibility level — {tier.guidance}"
             f"{avoid_block}"
         )

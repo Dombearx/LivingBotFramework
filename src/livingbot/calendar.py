@@ -77,7 +77,11 @@ class WeekPlanner:
         )
 
     async def plan(
-        self, week_start: date, hobbies: list[str], home_location: str
+        self,
+        week_start: date,
+        hobbies: list[str],
+        home_location: str,
+        new_hobbies: list[str] | None = None,
     ) -> list[PlanEntry]:
         week_end = week_start + timedelta(days=6)
         prompt = (
@@ -85,6 +89,11 @@ class WeekPlanner:
             f"Her hobbies: {', '.join(hobbies)}.\n"
             f"Her home base: {home_location}."
         )
+        if new_hobbies:
+            prompt += (
+                f"\nShe recently took up: {', '.join(new_hobbies)}. "
+                "Give these new hobbies real time in the week."
+            )
         try:
             result = await self._agent.run(prompt)
             return [PlanEntry(**a.model_dump()) for a in result.output.activities]

@@ -820,7 +820,7 @@ async def test_ensure_week_planned_when_week_unplanned_plans_and_saves(
     await bot._ensure_week_planned()
 
     week_start = datetime(2026, 6, 1).date()
-    week_planner.plan.assert_called_once_with(week_start, ["gym"], "home")
+    week_planner.plan.assert_called_once_with(week_start, ["gym"], "home", [])
     saved = calendar_store.save.call_args.args[0]
     assert saved.entries == [entry]
     assert saved.planned_week_start == week_start
@@ -1175,7 +1175,11 @@ async def test_generate_week_story_adds_story_with_rendered_image_path(
     bot = make_bot(story_generator=generator, story_store=story_store)
 
     await bot._generate_week_story(
-        Calendar(home_location="home"), ["gym"], date(2026, 6, 1), datetime(2026, 6, 1)
+        Calendar(home_location="home"),
+        ["gym"],
+        date(2026, 6, 1),
+        datetime(2026, 6, 1),
+        [],
     )
 
     story_store.add.assert_awaited_once()
@@ -1188,7 +1192,11 @@ async def test_generate_week_story_when_generation_returns_none_adds_nothing() -
     bot = make_bot(story_generator=generator, story_store=story_store)
 
     await bot._generate_week_story(
-        Calendar(home_location="home"), ["gym"], date(2026, 6, 1), datetime(2026, 6, 1)
+        Calendar(home_location="home"),
+        ["gym"],
+        date(2026, 6, 1),
+        datetime(2026, 6, 1),
+        [],
     )
 
     story_store.add.assert_not_awaited()

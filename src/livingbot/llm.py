@@ -5,13 +5,15 @@ from pydantic_ai import Agent, AgentRunResult, BinaryContent
 from pydantic_ai.messages import UserContent
 from pydantic_ai.models.openai import OpenAIChatModel
 
+from livingbot import config
 from livingbot.calendar import Calendar, CalendarStore
-from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore
+from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block
 from livingbot.relations import Relation
 from livingbot.spending import SpendingStore
 from livingbot.stories import Story, StoryStore
+from livingbot.timeformat import humanize_ago
 from livingbot.tools import (
     BotDeps,
     add_hobby,
@@ -86,7 +88,11 @@ class LLMClient:
         if photo_hint:
             parts.append(f"{photo_hint}\n\n")
         parts.append(_build_calendar_block(calendar_store.load(), now))
-        parts.append(_build_hobbies_block(hobby_store.load()))
+        hobbies = hobby_store.load()
+        parts.append(_build_hobbies_block(hobbies))
+        recent_block = _build_recent_block(hobbies, now)
+        if recent_block:
+            parts.append(recent_block)
         if mood is not None:
             parts.append(build_mood_block(mood, now))
         parts.append(spending_store.summary() + "\n\n")
@@ -158,6 +164,18 @@ def _build_hobbies_block(hobbies: Hobbies) -> str:
     for hobby in hobbies.entries:
         lines.append(
             f"  {hobby.name} — {hobby.level.value}: {_HOBBY_LEVEL_TONE[hobby.level]}"
+        )
+    return "\n".join(lines) + "\n\n"
+
+
+def _build_recent_block(hobbies: Hobbies, now: datetime) -> str:
+    recent = recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW)
+    if not recent:
+        return ""
+    lines = ["Recently in your life:"]
+    for hobby in recent:
+        lines.append(
+            f"  You took up {hobby.name} {humanize_ago(hobby.acquired_at, now)}."
         )
     return "\n".join(lines) + "\n\n"
 
