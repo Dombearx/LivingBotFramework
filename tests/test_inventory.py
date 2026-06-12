@@ -107,6 +107,70 @@ async def test_recent_returns_most_recently_used_items_capped_to_limit() -> None
     assert [item.name for item in items] == ["kozaki", "torebka"]
 
 
+async def test_recently_acquired_returns_items_since_cutoff_sorted_newest_first() -> (
+    None
+):
+    store, collection = make_store()
+    collection.get.return_value = {
+        "ids": ["old", "newer", "newest"],
+        "metadatas": [
+            {
+                "name": "stara torebka",
+                "description": "",
+                "acquired_at": "2026-05-01T10:00:00",
+                "last_used_at": "2026-05-01T10:00:00",
+            },
+            {
+                "name": "szalik",
+                "description": "",
+                "acquired_at": "2026-06-02T10:00:00",
+                "last_used_at": "2026-06-02T10:00:00",
+            },
+            {
+                "name": "sukienka",
+                "description": "",
+                "acquired_at": "2026-06-03T10:00:00",
+                "last_used_at": "2026-06-03T10:00:00",
+            },
+        ],
+    }
+
+    items = await store.recently_acquired(since=datetime(2026, 6, 1))
+
+    assert [item.name for item in items] == ["sukienka", "szalik"]
+
+
+async def test_recently_acquired_respects_limit() -> None:
+    store, collection = make_store()
+    collection.get.return_value = {
+        "ids": ["a", "b", "c"],
+        "metadatas": [
+            {
+                "name": "item1",
+                "description": "",
+                "acquired_at": "2026-06-01T10:00:00",
+                "last_used_at": "2026-06-01T10:00:00",
+            },
+            {
+                "name": "item2",
+                "description": "",
+                "acquired_at": "2026-06-02T10:00:00",
+                "last_used_at": "2026-06-02T10:00:00",
+            },
+            {
+                "name": "item3",
+                "description": "",
+                "acquired_at": "2026-06-03T10:00:00",
+                "last_used_at": "2026-06-03T10:00:00",
+            },
+        ],
+    }
+
+    items = await store.recently_acquired(since=datetime(2026, 5, 1), limit=2)
+
+    assert len(items) == 2
+
+
 async def test_remove_returns_false_when_item_absent() -> None:
     store, collection = make_store()
     collection.get.return_value = {"ids": []}
