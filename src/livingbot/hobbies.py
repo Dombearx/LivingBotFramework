@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
@@ -33,6 +34,7 @@ class Hobby(BaseModel):
     name: str
     level: HobbyLevel = HobbyLevel.novice
     experience: int = 0
+    acquired_at: datetime | None = None
 
     def gain_experience(self, amount: int) -> None:
         self.experience += amount
@@ -47,6 +49,14 @@ class Hobby(BaseModel):
 
 class Hobbies(BaseModel):
     entries: list[Hobby] = Field(default_factory=list)
+
+
+def recent_hobbies(hobbies: Hobbies, now: datetime, within: timedelta) -> list[Hobby]:
+    return [
+        hobby
+        for hobby in hobbies.entries
+        if hobby.acquired_at is not None and now - hobby.acquired_at < within
+    ]
 
 
 class HobbyStore:

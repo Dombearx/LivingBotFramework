@@ -5,13 +5,15 @@ from pydantic_ai import Agent, AgentRunResult, BinaryContent
 from pydantic_ai.messages import UserContent
 from pydantic_ai.models.openai import OpenAIChatModel
 
+from livingbot import config
 from livingbot.calendar import Calendar, CalendarStore
-from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore
+from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block
 from livingbot.relations import Relation
 from livingbot.spending import SpendingStore
 from livingbot.stories import Story, StoryStore
+from livingbot.timeformat import humanize_ago
 from livingbot.tools import (
     BotDeps,
     add_hobby,
@@ -86,7 +88,14 @@ class LLMClient:
         if photo_hint:
             parts.append(f"{photo_hint}\n\n")
         parts.append(_build_calendar_block(calendar_store.load(), now))
-        parts.append(_build_hobbies_block(hobby_store.load()))
+        hobbies = hobby_store.load()
+        parts.append(_build_hobbies_block(hobbies))
+        recent_items = await inventory_store.recently_acquired(
+            now - config.RECENT_PURCHASE_WINDOW
+        )
+        recent_block = _build_recent_block(hobbies, recent_items, now)
+        if recent_block:
+            parts.append(recent_block)
         if mood is not None:
             parts.append(build_mood_block(mood, now))
         parts.append(spending_store.summary() + "\n\n")
@@ -159,6 +168,32 @@ def _build_hobbies_block(hobbies: Hobbies) -> str:
         lines.append(
             f"  {hobby.name} — {hobby.level.value}: {_HOBBY_LEVEL_TONE[hobby.level]}"
         )
+    return "\n".join(lines) + "\n\n"
+
+
+def _build_recent_block(
+    hobbies: Hobbies, recent_items: list[InventoryItem], now: datetime
+) -> str:
+    highlights: list[tuple[datetime, str]] = []
+    for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW):
+        highlights.append(
+            (
+                hobby.acquired_at,
+                f"You took up {hobby.name} {humanize_ago(hobby.acquired_at, now)}.",
+            )
+        )
+    for item in recent_items:
+        highlights.append(
+            (
+                item.acquired_at,
+                f"You got {item.name} {humanize_ago(item.acquired_at, now)}.",
+            )
+        )
+    if not highlights:
+        return ""
+    highlights.sort(key=lambda highlight: highlight[0], reverse=True)
+    lines = ["Recently in your life:"]
+    lines.extend(f"  {text}" for _, text in highlights)
     return "\n".join(lines) + "\n\n"
 
 

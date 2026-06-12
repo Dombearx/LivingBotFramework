@@ -406,3 +406,28 @@ async def test_story_generator_generate_returns_none_when_agent_fails(
     )
 
     assert story is None
+
+
+@patch("livingbot.stories._choose_tier")
+@patch("livingbot.stories.Agent")
+async def test_story_generator_generate_passes_new_hobbies_in_prompt(
+    mock_agent_cls: MagicMock, mock_choose_tier: MagicMock
+) -> None:
+    mock_choose_tier.return_value = StoryTier(name="normal", weight=75, guidance="g")
+    generator = StoryGenerator(MagicMock())
+    generator._agent.run = AsyncMock(
+        return_value=SimpleNamespace(output=GeneratedStory(summary="s", content="c"))
+    )
+
+    await generator.generate(
+        date(2026, 6, 1),
+        ["gym", "pottery"],
+        "home",
+        datetime(2026, 6, 4),
+        None,
+        [],
+        ["pottery (took up 8 days ago)"],
+    )
+
+    prompt = generator._agent.run.call_args.args[0]
+    assert "pottery (took up 8 days ago)" in prompt

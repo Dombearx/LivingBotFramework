@@ -7,11 +7,13 @@ import discord
 from pydantic import Field
 from pydantic_ai import BinaryContent, RunContext
 
+from livingbot import config
 from livingbot.calendar import CalendarStore, PlanEntry
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.spending import POINT_COST, SpendCategory, SpendingStore
 from livingbot.stories import StoryStore
+from livingbot.timeformat import humanize_ago
 
 
 @dataclass
@@ -148,10 +150,25 @@ async def add_hobby(ctx: RunContext[BotDeps], name: str) -> str:
     """Add a new hobby to your life, e.g. when you genuinely take up something like
     pottery or running. You start out as a novice and grow more skilled at it over
     time as you spend time on it — see add_plan."""
+    now = datetime.now()
     hobbies = ctx.deps.hobby_store.load()
     if any(hobby.name == name for hobby in hobbies.entries):
         return f"{name} is already one of your hobbies."
-    hobbies.entries.append(Hobby(name=name))
+    last_acquired = max(
+        (hobby for hobby in hobbies.entries if hobby.acquired_at is not None),
+        key=lambda hobby: hobby.acquired_at,
+        default=None,
+    )
+    if (
+        last_acquired is not None
+        and now - last_acquired.acquired_at < config.HOBBY_COOLDOWN
+    ):
+        return (
+            f"You took up {last_acquired.name} "
+            f"{humanize_ago(last_acquired.acquired_at, now)} — it's too soon to take "
+            "up something new. Give it a couple of weeks before adding another hobby."
+        )
+    hobbies.entries.append(Hobby(name=name, acquired_at=now))
     ctx.deps.hobby_store.save(hobbies)
     return f"Added {name} to your hobbies."
 
