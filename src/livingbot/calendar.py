@@ -37,7 +37,8 @@ class Calendar(BaseModel):
         return sorted((e for e in self.entries if e.end >= now), key=lambda e: e.start)
 
     def prune_past(self, now: datetime) -> None:
-        self.entries = [e for e in self.entries if e.end >= now]
+        cutoff = now - timedelta(days=30)
+        self.entries = [e for e in self.entries if e.end >= cutoff]
 
 
 class CalendarStore:

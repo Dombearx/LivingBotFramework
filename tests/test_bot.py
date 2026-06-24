@@ -879,16 +879,16 @@ async def test_ensure_week_planned_prunes_finished_entries(
     mock_datetime: MagicMock,
 ) -> None:
     mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
-    finished = PlanEntry(
+    old = PlanEntry(
         activity="gym",
         location="gym",
-        start=datetime(2026, 6, 1, 18, 0),
-        end=datetime(2026, 6, 1, 19, 30),
+        start=datetime(2026, 5, 1, 18, 0),
+        end=datetime(2026, 5, 1, 19, 30),
     )
     calendar = Calendar(
         home_location="home",
         planned_week_start=datetime(2026, 6, 1).date(),
-        entries=[finished],
+        entries=[old],
     )
     calendar_store = make_calendar_store(calendar)
     bot = make_bot(calendar_store=calendar_store)
