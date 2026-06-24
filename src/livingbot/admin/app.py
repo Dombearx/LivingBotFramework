@@ -24,7 +24,7 @@ ADMIN_PORT = 8080
 
 
 def run() -> None:
-    configure_logfire()
+    configure_logfire(service_name="livingbot-admin")
     token = os.environ["DISCORD_BOT_TOKEN"]
     bot = build()
     context = AdminContext(bot=bot)

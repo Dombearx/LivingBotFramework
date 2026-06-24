@@ -204,10 +204,11 @@ class LivingBot(discord.Client):
     async def _life_loop(self) -> None:
         while True:
             try:
-                await self._ensure_week_planned()
-                await self._ensure_morning_mood_refresh()
-                await self._story_store.prune_stale(clock.now())
-                await self._maybe_post_spontaneously()
+                with logfire.span("life_loop_iteration"):
+                    await self._ensure_week_planned()
+                    await self._ensure_morning_mood_refresh()
+                    await self._story_store.prune_stale(clock.now())
+                    await self._maybe_post_spontaneously()
             except Exception:
                 logger.exception("Life loop iteration failed")
             await asyncio.sleep(config.LIFE_LOOP_INTERVAL_SECONDS)
@@ -358,24 +359,25 @@ class LivingBot(discord.Client):
         now: datetime,
         new_hobbies: list[str],
     ) -> None:
-        occurs_at, anchor = _pick_story_slot(calendar, week_start, now)
-        avoid = await self._story_store.recent_summaries(
-            config.STORY_AVOID_RECENT_LIMIT
-        )
-        story = await self._story_generator.generate(
-            week_start,
-            hobbies,
-            calendar.home_location,
-            occurs_at,
-            anchor,
-            avoid,
-            new_hobbies,
-        )
-        if story is None:
-            return
-        story.image_path = await self._render_story_image(story)
-        await self._story_store.add(story)
-        logger.info("Story for week %s happens %s", week_start, occurs_at)
+        with logfire.span("generate_week_story", week_start=str(week_start)):
+            occurs_at, anchor = _pick_story_slot(calendar, week_start, now)
+            avoid = await self._story_store.recent_summaries(
+                config.STORY_AVOID_RECENT_LIMIT
+            )
+            story = await self._story_generator.generate(
+                week_start,
+                hobbies,
+                calendar.home_location,
+                occurs_at,
+                anchor,
+                avoid,
+                new_hobbies,
+            )
+            if story is None:
+                return
+            story.image_path = await self._render_story_image(story)
+            await self._story_store.add(story)
+            logger.info("Story for week %s happens %s", week_start, occurs_at)
 
     async def _render_story_image(self, story: Story) -> str | None:
         try:
@@ -402,15 +404,25 @@ class LivingBot(discord.Client):
         if not await self._is_directed_at_bot(message):
             return
 
-        self._messages_since_photo += 1
-        self._queue.add(message)
+        with logfire.span(
+            "on_message",
+            author_id=message.author.id,
+            channel_id=message.channel.id,
+            message_id=message.id,
+        ):
+            self._messages_since_photo += 1
+            self._queue.add(message)
 
-        async with self._response_lock:
-            if self._resting:
-                return
-            if not await self._attempt_response():
-                self._resting = True
-                asyncio.create_task(self._rest_and_respond())
+            async with self._response_lock:
+                if self._resting:
+                    logger.debug("Resting; queued message from %s", message.author.id)
+                    return
+                if not await self._attempt_response():
+                    self._resting = True
+                    logger.info(
+                        "Holding off replying for now; will catch up after a rest"
+                    )
+                    asyncio.create_task(self._rest_and_respond())
 
     def _photo_hint_for_message(self) -> str:
         if self._messages_since_photo >= self._photo_cooldown:
@@ -470,7 +482,7 @@ class LivingBot(discord.Client):
                     "respond_to_channel",
                     channel_id=channel.id,
                     message_count=len(messages),
-                ):
+                ) as span:
                     formatted = [format_message(m) for m in messages]
                     images: list[BinaryContent] = []
                     for m in messages:
@@ -483,6 +495,8 @@ class LivingBot(discord.Client):
                         ]
                     )
                     relations = [self._relation_store.load(uid) for uid in author_ids]
+                    span.set_attribute("memories", len(memories))
+                    span.set_attribute("images", len(images))
                     result = await self._llm_client.complete(
                         formatted,
                         channel,
@@ -498,6 +512,7 @@ class LivingBot(discord.Client):
                         photo_hint=self._photo_hint_for_message(),
                         images=images,
                     )
+                    span.set_attribute("photo", result.photo is not None)
                     if result.photo is not None:
                         self._on_photo_taken()
                     await _send_chunked(channel, result.output, photo=result.photo)

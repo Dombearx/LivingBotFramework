@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
+import logfire
 from mem0 import Memory
 
 logger = logging.getLogger(__name__)
@@ -36,21 +37,24 @@ class MemoryStore:
         per_message_limit: int = 3,
         limit: int = 8,
     ) -> list[str]:
-        per_message = await asyncio.gather(
-            *[
-                self._retrieve_for_message(text, user_id, per_message_limit)
-                for text, user_id in queries
-            ]
-        )
+        with logfire.span("memory.retrieve", query_count=len(queries)) as span:
+            per_message = await asyncio.gather(
+                *[
+                    self._retrieve_for_message(text, user_id, per_message_limit)
+                    for text, user_id in queries
+                ]
+            )
 
-        seen: set[str] = set()
-        memories: list[str] = []
-        for column in itertools.zip_longest(*per_message):
-            for text in column:
-                if text is not None and text not in seen:
-                    seen.add(text)
-                    memories.append(text)
-        return memories[:limit]
+            seen: set[str] = set()
+            memories: list[str] = []
+            for column in itertools.zip_longest(*per_message):
+                for text in column:
+                    if text is not None and text not in seen:
+                        seen.add(text)
+                        memories.append(text)
+            result = memories[:limit]
+            span.set_attribute("retrieved", len(result))
+            return result
 
     async def _retrieve_for_message(
         self, query: str, user_id: str, limit: int
@@ -98,13 +102,14 @@ class MemoryStore:
     ) -> None:
         loop = asyncio.get_event_loop()
         targets = [GLOBAL_USER_ID] if user_id is None else [user_id, GLOBAL_USER_ID]
-        await asyncio.gather(
-            *[
-                loop.run_in_executor(
-                    None,
-                    functools.partial(self._memory.add, conversation, user_id=uid),
-                )
-                for uid in targets
-            ]
-        )
+        with logfire.span("memory.store", targets=targets, turns=len(conversation)):
+            await asyncio.gather(
+                *[
+                    loop.run_in_executor(
+                        None,
+                        functools.partial(self._memory.add, conversation, user_id=uid),
+                    )
+                    for uid in targets
+                ]
+            )
         logger.debug("Stored memories for %s", targets)
