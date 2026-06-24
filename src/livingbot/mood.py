@@ -9,12 +9,17 @@ from livingbot.calendar import Calendar
 SLEEP_WINDOW_START = 7
 SLEEP_WINDOW_END = 9
 _DRIFT_PER_HOUR = 1.0
+_FATIGUE_DECAY_PER_HOUR = 3.0
+_FATIGUE_RELIEF_PER_ACTIVITY = 3.0
+_FATIGUE_SLEEP_RETENTION = 0.1
 
 
 class Mood(BaseModel):
     value: float = Field(default=50.0, ge=0.0, le=100.0)
+    fatigue: float = Field(default=0.0, ge=0.0)
     last_sleep_date: date | None = None
     last_gym_boost_at: datetime | None = None
+    last_activity_relief_at: datetime | None = None
     last_refreshed_at: datetime | None = None
 
 
@@ -34,8 +39,10 @@ class MoodStore:
 
 def refresh_mood(mood: Mood, now: datetime, calendar: Calendar) -> Mood:
     value = mood.value
+    fatigue = mood.fatigue
     last_sleep_date = mood.last_sleep_date
     last_gym_boost_at = mood.last_gym_boost_at
+    last_activity_relief_at = mood.last_activity_relief_at
 
     if mood.last_refreshed_at is not None:
         hours_elapsed = (now - mood.last_refreshed_at).total_seconds() / 3600.0
@@ -44,10 +51,12 @@ def refresh_mood(mood: Mood, now: datetime, calendar: Calendar) -> Mood:
             value = max(50.0, value - drift)
         elif value < 50.0:
             value = min(50.0, value + drift)
+        fatigue = max(0.0, fatigue - _FATIGUE_DECAY_PER_HOUR * hours_elapsed)
 
     if SLEEP_WINDOW_START <= now.hour < SLEEP_WINDOW_END:
         if last_sleep_date is None or last_sleep_date < now.date():
             value += random.uniform(15.0, 25.0)
+            fatigue *= _FATIGUE_SLEEP_RETENTION
             last_sleep_date = now.date()
 
     cutoff = last_gym_boost_at if last_gym_boost_at is not None else datetime.min
@@ -61,12 +70,33 @@ def refresh_mood(mood: Mood, now: datetime, calendar: Calendar) -> Mood:
         value += random.uniform(10.0, 20.0)
         last_gym_boost_at = latest.end
 
+    # Time spent at any activity is time away from the chat, so finishing one
+    # eases how worn out she is from messaging.
+    relief_cutoff = (
+        last_activity_relief_at if last_activity_relief_at is not None else datetime.min
+    )
+    finished_activities = [e for e in calendar.entries if relief_cutoff < e.end <= now]
+    if finished_activities:
+        latest_activity = max(finished_activities, key=lambda e: e.end)
+        fatigue = max(
+            0.0, fatigue - _FATIGUE_RELIEF_PER_ACTIVITY * len(finished_activities)
+        )
+        last_activity_relief_at = latest_activity.end
+
     return Mood(
         value=max(0.0, min(100.0, value)),
+        fatigue=fatigue,
         last_sleep_date=last_sleep_date,
         last_gym_boost_at=last_gym_boost_at,
+        last_activity_relief_at=last_activity_relief_at,
         last_refreshed_at=now,
     )
+
+
+def add_fatigue(mood: Mood, amount: float) -> Mood:
+    if amount <= 0:
+        return mood
+    return mood.model_copy(update={"fatigue": mood.fatigue + amount})
 
 
 def apply_interaction_delta(mood: Mood, attitude_delta: int) -> Mood:

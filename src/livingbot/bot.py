@@ -19,6 +19,7 @@ from livingbot.mood import (
     SLEEP_WINDOW_END,
     SLEEP_WINDOW_START,
     MoodStore,
+    add_fatigue,
     apply_interaction_delta,
     refresh_mood,
 )
@@ -109,7 +110,6 @@ class LivingBot(discord.Client):
     ) -> None:
         super().__init__(**kwargs)
         self._queue = MessageQueue()
-        self._fatigue: float = 0.0
         self._resting: bool = False
         self._response_lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
@@ -164,7 +164,7 @@ class LivingBot(discord.Client):
 
     @property
     def fatigue(self) -> float:
-        return self._fatigue
+        return self._mood_store.load().fatigue
 
     @property
     def resting(self) -> bool:
@@ -342,17 +342,21 @@ class LivingBot(discord.Client):
         mood_factor = 0.5 + (mood.value / 100.0)
         if onboarding_active:
             mood_factor *= config.ONBOARDING_RESPONSE_BOOST
-        should_respond = random.random() < mood_factor / (self._fatigue + 1.0)
+        should_respond = random.random() < mood_factor / (mood.fatigue + 1.0)
         with logfire.span(
             "attempt_response",
             mood=mood.value,
-            fatigue=self._fatigue,
+            fatigue=mood.fatigue,
             onboarding_active=onboarding_active,
             should_respond=should_respond,
         ):
             if not should_respond:
                 return False
-            self._fatigue += len(self._queue)
+            message_count = len(self._queue)
+            async with self._state_lock:
+                self._mood_store.save(
+                    add_fatigue(self._mood_store.load(), message_count)
+                )
             for channel, messages in self._queue.flush().items():
                 with logfire.span(
                     "respond_to_channel",
@@ -437,7 +441,7 @@ class LivingBot(discord.Client):
         while True:
             mood = self._mood_store.load()
             mood_rest_factor = 1.5 - (mood.value / 100.0)
-            max_delay = max(3.0, 5.0 * self._fatigue * mood_rest_factor)
+            max_delay = max(3.0, 5.0 * mood.fatigue * mood_rest_factor)
             delay_divisor = (
                 config.ONBOARDING_REST_DELAY_DIVISOR
                 if self._onboarding_active()
@@ -448,8 +452,9 @@ class LivingBot(discord.Client):
             )
             await asyncio.sleep(actual_delay * 60.0)
 
+            # Fatigue recovers on its own while she waits: each attempt refreshes
+            # the mood, which decays fatigue over the elapsed time.
             async with self._response_lock:
-                self._fatigue = max(0.0, self._fatigue - actual_delay / 5.0)
                 if await self._attempt_response():
                     self._resting = False
                     return

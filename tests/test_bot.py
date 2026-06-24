@@ -18,6 +18,10 @@ from livingbot.mood import Mood
 from livingbot.relations import Relation
 from livingbot.stories import Story
 
+# A fixed afternoon moment: outside the sleep window and with no elapsed time
+# since the mood was last refreshed, so fatigue stays put during a test.
+STABLE_NOW = datetime(2026, 6, 24, 15, 0)
+
 
 def bot_user() -> MagicMock:
     return MagicMock(spec=discord.ClientUser)
@@ -227,6 +231,7 @@ async def test_on_message_when_random_favors_immediate_sends_llm_response(
     channel.send.assert_called_once_with("llm response")
 
 
+@patch("livingbot.bot.clock")
 @patch("asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("random.random", return_value=0.99)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
@@ -234,11 +239,12 @@ async def test_on_message_when_random_disfavors_immediate_does_not_send(
     mock_user: PropertyMock,
     mock_random: MagicMock,
     mock_create_task: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
+    mock_clock.now.return_value = STABLE_NOW
     user = bot_user()
     mock_user.return_value = user
-    bot = make_bot()
-    bot._fatigue = 1.0
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=1.0)))
     channel = make_channel()
 
     await bot.on_message(
@@ -248,6 +254,7 @@ async def test_on_message_when_random_disfavors_immediate_does_not_send(
     channel.send.assert_not_called()
 
 
+@patch("livingbot.bot.clock")
 @patch("asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("random.random", return_value=0.99)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
@@ -255,11 +262,12 @@ async def test_on_message_when_random_disfavors_immediate_sets_resting(
     mock_user: PropertyMock,
     mock_random: MagicMock,
     mock_create_task: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
+    mock_clock.now.return_value = STABLE_NOW
     user = bot_user()
     mock_user.return_value = user
-    bot = make_bot()
-    bot._fatigue = 1.0
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=1.0)))
 
     await bot.on_message(make_message(author=other_user(), mentions=[user]))
 
@@ -297,7 +305,6 @@ async def test_rest_and_respond_sends_llm_response_and_clears_resting(
     mock_user.return_value = user
     bot = make_bot()
     bot._resting = True
-    bot._fatigue = 2.0
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
 
@@ -307,48 +314,7 @@ async def test_rest_and_respond_sends_llm_response_and_clears_resting(
     assert bot._resting is False
 
 
-@patch("asyncio.sleep", new_callable=AsyncMock)
-@patch("random.random", return_value=0.0)
-@patch("random.uniform", return_value=10.0)
-@patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_rest_and_respond_reduces_fatigue_by_actual_delay_over_five(
-    mock_user: PropertyMock,
-    mock_uniform: MagicMock,
-    mock_random: MagicMock,
-    mock_sleep: AsyncMock,
-) -> None:
-    user = bot_user()
-    mock_user.return_value = user
-    bot = make_bot()
-    bot._fatigue = 3.0
-
-    await bot._rest_and_respond()
-
-    # actual=10 min, reduction=10/5=2.0, fatigue=max(0, 3.0-2.0)=1.0
-    assert bot._fatigue == 1.0
-
-
-@patch("asyncio.sleep", new_callable=AsyncMock)
-@patch("random.random", return_value=0.0)
-@patch("random.uniform", return_value=10.0)
-@patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_rest_and_respond_fatigue_reduction_is_clamped_to_zero(
-    mock_user: PropertyMock,
-    mock_uniform: MagicMock,
-    mock_random: MagicMock,
-    mock_sleep: AsyncMock,
-) -> None:
-    user = bot_user()
-    mock_user.return_value = user
-    bot = make_bot()
-    bot._fatigue = 1.0
-
-    await bot._rest_and_respond()
-
-    # actual=10 min, reduction=10/5=2.0 > fatigue=1.0, clamped to 0.0
-    assert bot._fatigue == 0.0
-
-
+@patch("livingbot.bot.clock")
 @patch("asyncio.sleep", new_callable=AsyncMock)
 @patch("random.random", side_effect=[0.99, 0.0])
 @patch("random.uniform", return_value=5.0)
@@ -358,19 +324,19 @@ async def test_rest_and_respond_loops_until_random_favors_response(
     mock_uniform: MagicMock,
     mock_random: MagicMock,
     mock_sleep: AsyncMock,
+    mock_clock: MagicMock,
 ) -> None:
+    mock_clock.now.return_value = STABLE_NOW
     user = bot_user()
     mock_user.return_value = user
-    bot = make_bot()
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=3.0)))
     bot._resting = True
-    bot._fatigue = 3.0
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
 
     await bot._rest_and_respond()
 
-    # iteration 1: reduce 3.0-1.0=2.0, roll 0.99 > 1/3 → loop
-    # iteration 2: reduce 2.0-1.0=1.0, roll 0.0 < 1/2 → respond, 1 msg → fatigue=2.0
+    # mood_factor=1.0, fatigue=3.0 → threshold 1/4: roll 0.99 loops, roll 0.0 responds
     channel.send.assert_called_once_with("llm response")
     assert bot._resting is False
 
@@ -411,15 +377,17 @@ def test_onboarding_active_when_joined_over_period_ago_returns_false(
     assert result is False
 
 
+@patch("livingbot.bot.clock")
 @patch("random.random", return_value=0.6)
 @patch.object(LivingBot, "guilds", new_callable=PropertyMock)
 async def test_attempt_response_when_onboarding_active_responds_despite_high_fatigue(
     mock_guilds: PropertyMock,
     mock_random: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
+    mock_clock.now.return_value = STABLE_NOW
     mock_guilds.return_value = [make_guild(discord.utils.utcnow() - timedelta(days=1))]
-    bot = make_bot()
-    bot._fatigue = 1.5
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=1.5)))
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), channel=channel))
 
@@ -430,15 +398,17 @@ async def test_attempt_response_when_onboarding_active_responds_despite_high_fat
     channel.send.assert_called_once_with("llm response")
 
 
+@patch("livingbot.bot.clock")
 @patch("random.random", return_value=0.6)
 @patch.object(LivingBot, "guilds", new_callable=PropertyMock)
 async def test_attempt_response_when_not_onboarding_skips_response_with_same_roll(
     mock_guilds: PropertyMock,
     mock_random: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
+    mock_clock.now.return_value = STABLE_NOW
     mock_guilds.return_value = []
-    bot = make_bot()
-    bot._fatigue = 1.5
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=1.5)))
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), channel=channel))
 
@@ -460,8 +430,7 @@ async def test_rest_and_respond_when_onboarding_active_shrinks_delay_range(
     mock_sleep: AsyncMock,
 ) -> None:
     mock_guilds.return_value = [make_guild(discord.utils.utcnow() - timedelta(days=1))]
-    bot = make_bot()
-    bot._fatigue = 3.0
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=3.0)))
 
     await bot._rest_and_respond()
 
