@@ -51,6 +51,12 @@ class InventoryStore:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._recent, limit)
 
+    async def recently_acquired(
+        self, since: datetime, limit: int = 5
+    ) -> list[InventoryItem]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._recently_acquired, since, limit)
+
     async def search(self, query: str, limit: int = 5) -> list[InventoryItem]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._search, query, limit)
@@ -79,6 +85,11 @@ class InventoryStore:
     def _recent(self, limit: int) -> list[InventoryItem]:
         items = self._all()
         items.sort(key=lambda item: item.last_used_at, reverse=True)
+        return items[:limit]
+
+    def _recently_acquired(self, since: datetime, limit: int) -> list[InventoryItem]:
+        items = [item for item in self._all() if item.acquired_at >= since]
+        items.sort(key=lambda item: item.acquired_at, reverse=True)
         return items[:limit]
 
     def _search(self, query: str, limit: int) -> list[InventoryItem]:

@@ -62,6 +62,7 @@ def _make_stores() -> tuple:
 
     inventory_store = MagicMock()
     inventory_store.recent = AsyncMock(return_value=[])
+    inventory_store.recently_acquired = AsyncMock(return_value=[])
 
     spending_store = MagicMock()
     spending_store.summary = MagicMock(return_value="Budget: 4 pts left this week.")

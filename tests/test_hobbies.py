@@ -1,10 +1,15 @@
+from datetime import datetime, timedelta
+
 from livingbot.hobbies import (
     Hobby,
     HobbyLevel,
     HobbyStore,
     Hobbies,
     LEVEL_UP_THRESHOLDS,
+    recent_hobbies,
 )
+
+NOW = datetime(2026, 6, 12, 12, 0)
 
 
 def test_gain_experience_below_threshold_stays_at_novice() -> None:
@@ -96,3 +101,30 @@ def test_hobby_store_gain_experience_does_nothing_when_hobby_not_found(
     hobbies = store.load()
     assert len(hobbies.entries) == 1
     assert hobbies.entries[0].name == "gym"
+
+
+def test_recent_hobbies_includes_hobby_acquired_within_window() -> None:
+    hobby = Hobby(name="pottery", acquired_at=NOW - timedelta(days=8))
+    hobbies = Hobbies(entries=[hobby])
+
+    result = recent_hobbies(hobbies, NOW, timedelta(days=14))
+
+    assert result == [hobby]
+
+
+def test_recent_hobbies_excludes_hobby_acquired_before_window() -> None:
+    hobby = Hobby(name="pottery", acquired_at=NOW - timedelta(days=15))
+    hobbies = Hobbies(entries=[hobby])
+
+    result = recent_hobbies(hobbies, NOW, timedelta(days=14))
+
+    assert result == []
+
+
+def test_recent_hobbies_excludes_hobby_with_no_acquired_at() -> None:
+    hobby = Hobby(name="gym", acquired_at=None)
+    hobbies = Hobbies(entries=[hobby])
+
+    result = recent_hobbies(hobbies, NOW, timedelta(days=14))
+
+    assert result == []

@@ -11,7 +11,7 @@ from pydantic_ai import BinaryContent
 
 from livingbot import config, llm_config, prompts
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
-from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore
+from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
 from livingbot.memory import MemoryStore
@@ -28,6 +28,7 @@ from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
 from livingbot.image import generate_image
 from livingbot.stories import Story, StoryGenerator, StoryStore
+from livingbot.timeformat import humanize_ago
 from livingbot.tools import extract_images, format_message
 
 logger = logging.getLogger(__name__)
@@ -208,10 +209,16 @@ class LivingBot(discord.Client):
         calendar.prune_past(now)
         if calendar.planned_week_start != week_start:
             hobbies = self._hobby_store.load()
+            hobby_names = [hobby.name for hobby in hobbies.entries]
+            new_hobby_notes = [
+                f"{hobby.name} (took up {humanize_ago(hobby.acquired_at, now)})"
+                for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW)
+            ]
             entries = await self._week_planner.plan(
                 week_start,
-                [hobby.name for hobby in hobbies.entries],
+                hobby_names,
                 calendar.home_location,
+                new_hobby_notes,
             )
             calendar.entries.extend(entries)
             calendar.planned_week_start = week_start
@@ -226,21 +233,32 @@ class LivingBot(discord.Client):
             self._calendar_store.save(calendar)
             asyncio.create_task(
                 self._generate_week_story(
-                    calendar, [hobby.name for hobby in hobbies.entries], week_start, now
+                    calendar, hobby_names, week_start, now, new_hobby_notes
                 )
             )
             return
         self._calendar_store.save(calendar)
 
     async def _generate_week_story(
-        self, calendar: Calendar, hobbies: list[str], week_start: date, now: datetime
+        self,
+        calendar: Calendar,
+        hobbies: list[str],
+        week_start: date,
+        now: datetime,
+        new_hobbies: list[str],
     ) -> None:
         occurs_at, anchor = _pick_story_slot(calendar, week_start, now)
         avoid = await self._story_store.recent_summaries(
             config.STORY_AVOID_RECENT_LIMIT
         )
         story = await self._story_generator.generate(
-            week_start, hobbies, calendar.home_location, occurs_at, anchor, avoid
+            week_start,
+            hobbies,
+            calendar.home_location,
+            occurs_at,
+            anchor,
+            avoid,
+            new_hobbies,
         )
         if story is None:
             return

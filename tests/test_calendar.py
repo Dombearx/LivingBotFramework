@@ -139,3 +139,36 @@ async def test_week_planner_returns_empty_list_when_agent_raises(
     result = await planner.plan(datetime(2026, 6, 1).date(), ["gym"], "home")
 
     assert result == []
+
+
+@patch("livingbot.calendar.Agent")
+async def test_week_planner_includes_new_hobbies_note_in_prompt(
+    mock_agent_class: MagicMock,
+) -> None:
+    agent = mock_agent_class.return_value
+    agent.run = AsyncMock(return_value=MagicMock(output=WeekPlan(activities=[])))
+    planner = WeekPlanner("openai:gpt-4o")
+
+    await planner.plan(
+        datetime(2026, 6, 1).date(),
+        ["gym", "pottery"],
+        "home",
+        ["pottery (took up 8 days ago)"],
+    )
+
+    prompt = agent.run.call_args.args[0]
+    assert "pottery (took up 8 days ago)" in prompt
+
+
+@patch("livingbot.calendar.Agent")
+async def test_week_planner_without_new_hobbies_omits_recent_mention(
+    mock_agent_class: MagicMock,
+) -> None:
+    agent = mock_agent_class.return_value
+    agent.run = AsyncMock(return_value=MagicMock(output=WeekPlan(activities=[])))
+    planner = WeekPlanner("openai:gpt-4o")
+
+    await planner.plan(datetime(2026, 6, 1).date(), ["gym"], "home")
+
+    prompt = agent.run.call_args.args[0]
+    assert "recently took up" not in prompt

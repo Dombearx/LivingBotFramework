@@ -1,10 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from livingbot import config
 from livingbot.calendar import Calendar, PlanEntry
+from livingbot.hobbies import Hobby, Hobbies
 from livingbot.inventory import InventoryItem
 from livingbot.llm import (
     _build_calendar_block,
     _build_inventory_block,
+    _build_recent_block,
     _build_stories_block,
 )
 from livingbot.stories import Story
@@ -97,3 +100,60 @@ def test_build_stories_block_mentions_show_story_image_tool() -> None:
     block = _build_stories_block([story])
 
     assert "show_story_image" in block
+
+
+def test_build_recent_block_when_nothing_recent_returns_empty_string() -> None:
+    hobbies = Hobbies(entries=[Hobby(name="gym")])
+
+    block = _build_recent_block(hobbies, [], NOW)
+
+    assert block == ""
+
+
+def test_build_recent_block_includes_recently_acquired_hobby() -> None:
+    hobby = Hobby(name="pottery", acquired_at=NOW - timedelta(days=2))
+    hobbies = Hobbies(entries=[hobby])
+
+    block = _build_recent_block(hobbies, [], NOW)
+
+    assert "You took up pottery 2 days ago." in block
+
+
+def test_build_recent_block_excludes_hobby_acquired_outside_window() -> None:
+    hobby = Hobby(
+        name="pottery",
+        acquired_at=NOW - config.RECENT_HOBBY_WINDOW - timedelta(days=1),
+    )
+    hobbies = Hobbies(entries=[hobby])
+
+    block = _build_recent_block(hobbies, [], NOW)
+
+    assert block == ""
+
+
+def test_build_recent_block_excludes_hobby_with_no_acquired_at() -> None:
+    hobbies = Hobbies(entries=[Hobby(name="gym", acquired_at=None)])
+
+    block = _build_recent_block(hobbies, [], NOW)
+
+    assert block == ""
+
+
+def test_build_recent_block_includes_recently_acquired_item() -> None:
+    item = InventoryItem(name="sukienka", acquired_at=NOW - timedelta(days=1))
+
+    block = _build_recent_block(Hobbies(), [item], NOW)
+
+    assert "You got sukienka 1 day ago." in block
+
+
+def test_build_recent_block_sorts_entries_newest_first() -> None:
+    hobby = Hobby(name="pottery", acquired_at=NOW - timedelta(days=5))
+    item = InventoryItem(name="sukienka", acquired_at=NOW - timedelta(days=1))
+    hobbies = Hobbies(entries=[hobby])
+
+    block = _build_recent_block(hobbies, [item], NOW)
+
+    lines = block.strip().splitlines()
+    assert "sukienka" in lines[1]
+    assert "pottery" in lines[2]

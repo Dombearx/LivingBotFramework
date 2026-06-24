@@ -1,15 +1,17 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from livingbot import config
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
-from livingbot.hobbies import Hobbies
+from livingbot.hobbies import Hobby, Hobbies
 from livingbot.inventory import InventoryItem
 from datetime import date
 
 from livingbot.spending import SpendCategory, SpendingState
 from livingbot.tools import (
     BotDeps,
+    add_hobby,
     add_item,
     add_plan,
     buy_item,
@@ -483,3 +485,119 @@ async def test_show_story_image_when_file_missing_returns_message(tmp_path) -> N
 
     assert "missing" in result.lower()
     assert ctx.deps.photo_result is None
+
+
+# ---------------------------------------------------------------------------
+# add_hobby
+# ---------------------------------------------------------------------------
+
+
+@patch("livingbot.tools.datetime")
+async def test_add_hobby_when_new_saves_hobby_with_acquired_at_now(
+    mock_datetime: MagicMock,
+) -> None:
+    now = datetime(2026, 6, 12, 12, 0)
+    mock_datetime.now.return_value = now
+    store = make_hobby_store()
+    store.load = MagicMock(return_value=Hobbies(entries=[]))
+    ctx = make_ctx(hobby_store=store)
+
+    result = await add_hobby(ctx, "pottery")
+
+    saved = store.save.call_args.args[0]
+    assert saved.entries[0].name == "pottery"
+    assert saved.entries[0].acquired_at == now
+    assert result == "Added pottery to your hobbies."
+
+
+async def test_add_hobby_when_already_present_returns_message_without_saving() -> None:
+    store = make_hobby_store()
+    store.load = MagicMock(return_value=Hobbies(entries=[Hobby(name="gym")]))
+    ctx = make_ctx(hobby_store=store)
+
+    result = await add_hobby(ctx, "gym")
+
+    assert result == "gym is already one of your hobbies."
+    store.save.assert_not_called()
+
+
+@patch("livingbot.tools.datetime")
+async def test_add_hobby_within_cooldown_returns_refusal_naming_hobby_and_time(
+    mock_datetime: MagicMock,
+) -> None:
+    now = datetime(2026, 6, 12, 12, 0)
+    mock_datetime.now.return_value = now
+    store = make_hobby_store()
+    store.load = MagicMock(
+        return_value=Hobbies(
+            entries=[Hobby(name="pottery", acquired_at=now - timedelta(days=3))]
+        )
+    )
+    ctx = make_ctx(hobby_store=store)
+
+    result = await add_hobby(ctx, "painting")
+
+    assert result == (
+        "You took up pottery 3 days ago — it's too soon to take "
+        "up something new. Give it a couple of weeks before adding another hobby."
+    )
+
+
+@patch("livingbot.tools.datetime")
+async def test_add_hobby_within_cooldown_does_not_save(
+    mock_datetime: MagicMock,
+) -> None:
+    now = datetime(2026, 6, 12, 12, 0)
+    mock_datetime.now.return_value = now
+    store = make_hobby_store()
+    store.load = MagicMock(
+        return_value=Hobbies(
+            entries=[Hobby(name="pottery", acquired_at=now - timedelta(days=3))]
+        )
+    )
+    ctx = make_ctx(hobby_store=store)
+
+    await add_hobby(ctx, "painting")
+
+    store.save.assert_not_called()
+
+
+@patch("livingbot.tools.datetime")
+async def test_add_hobby_after_cooldown_elapsed_adds_new_hobby(
+    mock_datetime: MagicMock,
+) -> None:
+    now = datetime(2026, 6, 12, 12, 0)
+    mock_datetime.now.return_value = now
+    store = make_hobby_store()
+    store.load = MagicMock(
+        return_value=Hobbies(
+            entries=[
+                Hobby(
+                    name="pottery",
+                    acquired_at=now - config.HOBBY_COOLDOWN - timedelta(days=1),
+                )
+            ]
+        )
+    )
+    ctx = make_ctx(hobby_store=store)
+
+    result = await add_hobby(ctx, "painting")
+
+    assert result == "Added painting to your hobbies."
+    saved = store.save.call_args.args[0]
+    assert [h.name for h in saved.entries] == ["pottery", "painting"]
+
+
+@patch("livingbot.tools.datetime")
+async def test_add_hobby_when_existing_hobbies_have_no_acquired_at_ignores_cooldown(
+    mock_datetime: MagicMock,
+) -> None:
+    now = datetime(2026, 6, 12, 12, 0)
+    mock_datetime.now.return_value = now
+    store = make_hobby_store()
+    store.load = MagicMock(return_value=Hobbies(entries=[Hobby(name="gym")]))
+    ctx = make_ctx(hobby_store=store)
+
+    result = await add_hobby(ctx, "pottery")
+
+    assert result == "Added pottery to your hobbies."
