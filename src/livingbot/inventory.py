@@ -7,6 +7,8 @@ from pathlib import Path
 import chromadb
 from pydantic import BaseModel, Field
 
+from livingbot import clock
+
 logger = logging.getLogger(__name__)
 
 COLLECTION_NAME = "inventory"
@@ -16,8 +18,8 @@ class InventoryItem(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     name: str
     description: str = ""
-    acquired_at: datetime = Field(default_factory=datetime.now)
-    last_used_at: datetime = Field(default_factory=datetime.now)
+    acquired_at: datetime = Field(default_factory=clock.now)
+    last_used_at: datetime = Field(default_factory=clock.now)
 
     def document(self) -> str:
         if self.description:
@@ -106,7 +108,7 @@ class InventoryStore:
     def _touch(self, items: list[InventoryItem]) -> None:
         if not items:
             return
-        now = datetime.now()
+        now = clock.now()
         for item in items:
             item.last_used_at = now
         self._collection.update(

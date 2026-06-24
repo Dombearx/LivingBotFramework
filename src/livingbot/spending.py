@@ -5,6 +5,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from livingbot import clock
+
 
 class SpendCategory(str, Enum):
     trivial = "trivial"
@@ -30,7 +32,7 @@ POINTS_CAP = 20
 class Purchase(BaseModel):
     name: str
     category: SpendCategory
-    bought_at: datetime = Field(default_factory=datetime.now)
+    bought_at: datetime = Field(default_factory=clock.now)
 
 
 class SpendingState(BaseModel):
@@ -96,5 +98,5 @@ class SpendingStore:
 
 
 def _current_week_start() -> date:
-    today = date.today()
+    today = clock.now().date()
     return today - timedelta(days=today.weekday())

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from nicegui import ui
 
+from livingbot import clock
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
 
@@ -10,7 +11,7 @@ def register(context: AdminContext) -> None:
     @ui.page("/")
     async def overview() -> None:
         with page_layout("Overview"):
-            now = datetime.now()
+            now = clock.now()
             bot = context.bot
 
             with ui.row().classes("w-full gap-4 flex-wrap"):

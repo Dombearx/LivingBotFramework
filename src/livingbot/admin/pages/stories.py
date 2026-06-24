@@ -73,10 +73,10 @@ def register(context: AdminContext) -> None:
                             )
 
             async def _toggle_told(story: Story) -> None:
-                from datetime import datetime
+                from livingbot import clock
 
                 updated = story.model_copy(
-                    update={"told_at": None if story.told_at else datetime.now()}
+                    update={"told_at": None if story.told_at else clock.now()}
                 )
                 await store.add(updated)
                 ui.notify("Updated")

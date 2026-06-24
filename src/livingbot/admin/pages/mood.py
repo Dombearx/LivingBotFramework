@@ -19,6 +19,7 @@ def register(context: AdminContext) -> None:
                 .classes("w-96")
             )
 
+            ui.label(f"Fatigue: {mood.fatigue:.1f}").classes("text-sm text-gray-500")
             ui.label(f"Last sleep date: {mood.last_sleep_date or '—'}").classes(
                 "text-sm text-gray-500"
             )

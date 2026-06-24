@@ -2,7 +2,14 @@ from datetime import date, datetime
 from unittest.mock import patch
 
 from livingbot.calendar import Calendar, PlanEntry
-from livingbot.mood import Mood, apply_interaction_delta, build_mood_block, refresh_mood
+from livingbot.mood import (
+    FATIGUE_MAX,
+    Mood,
+    add_fatigue,
+    apply_interaction_delta,
+    build_mood_block,
+    refresh_mood,
+)
 
 
 def make_gym_entry(end: datetime) -> PlanEntry:
@@ -157,6 +164,84 @@ def test_refresh_mood_updates_last_refreshed_at() -> None:
     result = refresh_mood(mood, now, empty_calendar())
 
     assert result.last_refreshed_at == now
+
+
+# --- refresh_mood: fatigue ---
+
+
+def test_refresh_mood_decays_fatigue_over_time() -> None:
+    mood = Mood(value=50.0, fatigue=10.0, last_refreshed_at=datetime(2024, 6, 1, 10, 0))
+    now = datetime(2024, 6, 1, 12, 0)  # 2 hours later
+
+    result = refresh_mood(mood, now, empty_calendar())
+
+    assert result.fatigue == 4.0  # 10 - 3.0/hour * 2 hours
+
+
+def test_refresh_mood_does_not_decay_fatigue_below_zero() -> None:
+    mood = Mood(value=50.0, fatigue=2.0, last_refreshed_at=datetime(2024, 6, 1, 10, 0))
+    now = datetime(2024, 6, 1, 20, 0)  # 10 hours later, more than enough to overshoot
+
+    result = refresh_mood(mood, now, empty_calendar())
+
+    assert result.fatigue == 0.0
+
+
+@patch("livingbot.mood.random.uniform", return_value=20.0)
+def test_refresh_mood_sleep_mostly_clears_fatigue(mock_uniform) -> None:
+    mood = Mood(value=50.0, fatigue=10.0, last_sleep_date=None)
+    now = datetime(2024, 6, 1, 8, 0)
+
+    result = refresh_mood(mood, now, empty_calendar())
+
+    assert result.fatigue == 1.0  # 10 * 0.1 retained
+
+
+def test_refresh_mood_finished_activity_relieves_fatigue() -> None:
+    gym_end = datetime(2024, 6, 1, 19, 0)
+    mood = Mood(value=50.0, fatigue=10.0)
+    now = datetime(2024, 6, 1, 19, 30)
+
+    result = refresh_mood(mood, now, calendar_with_gym(gym_end))
+
+    assert result.fatigue == 7.0  # 10 - 3.0 per finished activity
+
+
+def test_refresh_mood_does_not_relieve_fatigue_for_already_credited_activity() -> None:
+    gym_end = datetime(2024, 6, 1, 19, 0)
+    mood = Mood(value=50.0, fatigue=10.0, last_activity_relief_at=gym_end)
+    now = datetime(2024, 6, 1, 20, 0)
+
+    result = refresh_mood(mood, now, calendar_with_gym(gym_end))
+
+    assert result.fatigue == 10.0
+
+
+# --- add_fatigue ---
+
+
+def test_add_fatigue_increases_fatigue_by_amount() -> None:
+    mood = Mood(value=50.0, fatigue=2.0)
+
+    result = add_fatigue(mood, 3.0)
+
+    assert result.fatigue == 5.0
+
+
+def test_add_fatigue_ignores_nonpositive_amount() -> None:
+    mood = Mood(value=50.0, fatigue=2.0)
+
+    result = add_fatigue(mood, 0.0)
+
+    assert result.fatigue == 2.0
+
+
+def test_add_fatigue_caps_at_maximum() -> None:
+    mood = Mood(value=50.0, fatigue=9.0)
+
+    result = add_fatigue(mood, 5.0)
+
+    assert result.fatigue == FATIGUE_MAX
 
 
 # --- apply_interaction_delta ---
