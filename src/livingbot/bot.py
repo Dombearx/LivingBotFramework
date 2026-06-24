@@ -18,11 +18,13 @@ from livingbot.llm import LLMClient
 from livingbot.memory import MemoryStore
 from livingbot.mood import (
     FATIGUE_MAX,
-    SLEEP_WINDOW_END,
-    SLEEP_WINDOW_START,
+    MORNING_WINDOW_END,
+    MORNING_WINDOW_START,
     MoodStore,
     add_fatigue,
     apply_interaction_delta,
+    build_mood_block,
+    is_awake,
     refresh_mood,
 )
 from livingbot.observability import configure_logfire
@@ -30,6 +32,7 @@ from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
 from livingbot.image import generate_image
+from livingbot.spontaneous import SpontaneousMessenger, SpontaneousStore
 from livingbot.stories import Story, StoryGenerator, StoryStore
 from livingbot.timeformat import humanize_ago
 from livingbot.tools import extract_images, format_message
@@ -81,9 +84,7 @@ def _random_free_moment(
     for _ in range(10):
         day = _random_datetime_between(earliest, week_end)
         moment = day.replace(
-            hour=random.randint(
-                config.STORY_ACTIVE_HOUR_START, config.STORY_ACTIVE_HOUR_END - 1
-            ),
+            hour=random.randint(config.AWAKE_HOUR_START, config.AWAKE_HOUR_END - 1),
             minute=random.randint(0, 59),
             second=0,
             microsecond=0,
@@ -91,6 +92,19 @@ def _random_free_moment(
         if earliest <= moment <= week_end and calendar.current_entry(moment) is None:
             return moment
     return _random_datetime_between(earliest, week_end)
+
+
+def _next_spontaneous_time(now: datetime) -> datetime:
+    days_ahead = random.uniform(
+        config.RANDOM_POST_MIN_DAYS, config.RANDOM_POST_MAX_DAYS
+    )
+    target = now + timedelta(days=days_ahead)
+    return target.replace(
+        hour=random.randint(config.AWAKE_HOUR_START, config.AWAKE_HOUR_END - 1),
+        minute=random.randint(0, 59),
+        second=0,
+        microsecond=0,
+    )
 
 
 class LivingBot(discord.Client):
@@ -108,6 +122,8 @@ class LivingBot(discord.Client):
         story_store: StoryStore,
         story_generator: StoryGenerator,
         mood_store: MoodStore,
+        spontaneous_store: SpontaneousStore | None = None,
+        spontaneous_messenger: SpontaneousMessenger | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -127,6 +143,8 @@ class LivingBot(discord.Client):
         self._story_store = story_store
         self._story_generator = story_generator
         self._mood_store = mood_store
+        self._spontaneous_store = spontaneous_store
+        self._spontaneous_messenger = spontaneous_messenger
         self._messages_since_photo: int = 0
         self._photo_cooldown: int = random.randint(
             config.PHOTO_COOLDOWN_MIN, config.PHOTO_COOLDOWN_MAX
@@ -189,13 +207,14 @@ class LivingBot(discord.Client):
                 await self._ensure_week_planned()
                 await self._ensure_morning_mood_refresh()
                 await self._story_store.prune_stale(clock.now())
+                await self._maybe_post_spontaneously()
             except Exception:
                 logger.exception("Life loop iteration failed")
             await asyncio.sleep(config.LIFE_LOOP_INTERVAL_SECONDS)
 
     async def _ensure_morning_mood_refresh(self) -> None:
         now = clock.now()
-        if not (SLEEP_WINDOW_START <= now.hour < SLEEP_WINDOW_END):
+        if not (MORNING_WINDOW_START <= now.hour < MORNING_WINDOW_END):
             return
         async with self._state_lock:
             mood = self._mood_store.load()
@@ -205,6 +224,89 @@ class LivingBot(discord.Client):
             mood = refresh_mood(mood, now, calendar)
             self._mood_store.save(mood)
         logger.info("Morning mood refresh: %.1f", mood.value)
+
+    async def _maybe_post_spontaneously(self) -> None:
+        if config.RANDOM_POST_CHANNEL_ID is None:
+            return
+        if self._spontaneous_store is None or self._spontaneous_messenger is None:
+            return
+        now = clock.now()
+        async with self._state_lock:
+            state = self._spontaneous_store.load()
+            if state.next_post_at is None:
+                state.next_post_at = _next_spontaneous_time(now)
+                self._spontaneous_store.save(state)
+                return
+            if now < state.next_post_at or not is_awake(now):
+                return
+            state.next_post_at = _next_spontaneous_time(now)
+            self._spontaneous_store.save(state)
+        channel = self.get_channel(config.RANDOM_POST_CHANNEL_ID)
+        if not isinstance(channel, discord.abc.Messageable):
+            logger.warning(
+                "Spontaneous post channel %s not available",
+                config.RANDOM_POST_CHANNEL_ID,
+            )
+            return
+        message = await self._spontaneous_messenger.compose(
+            await self._build_spontaneous_context(now)
+        )
+        if message is None:
+            return
+        await _send_chunked(channel, message)
+        logger.info("Posted a spontaneous message to channel %s", channel.id)
+
+    async def _build_spontaneous_context(self, now: datetime) -> str:
+        calendar = self._calendar_store.load()
+        mood = self._mood_store.load()
+        hobbies = self._hobby_store.load()
+        untold = await self._story_store.untold()
+        relations = self._relation_store.all()
+
+        lines: list[str] = [f"Right now it is {now:%A, %Y-%m-%d %H:%M}."]
+        current = calendar.current_entry(now)
+        if current is not None:
+            lines.append(
+                f"You are at {current.location}, busy with {current.activity}."
+            )
+        else:
+            lines.append(f"You are at {calendar.home_location} with nothing scheduled.")
+        lines.append("")
+        lines.append(build_mood_block(mood, now).rstrip())
+        lines.append("")
+
+        if hobbies.entries:
+            names = ", ".join(hobby.name for hobby in hobbies.entries)
+            lines.append(f"Your hobbies: {names}.")
+        for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW):
+            if (acquired_at := hobby.acquired_at) is not None:
+                lines.append(
+                    f"You took up {hobby.name} {humanize_ago(acquired_at, now)}."
+                )
+        lines.append("")
+
+        if untold:
+            lines.append("Little episodes from your life you haven't shared yet:")
+            lines.extend(f"  - {story.summary}" for story in untold)
+        else:
+            lines.append("Nothing new has happened that you haven't already shared.")
+
+        if relations:
+            lines.append("")
+            lines.append(
+                "People you talk to here, in case you want to ask one of them something:"
+            )
+            for relation in relations:
+                details = [f"attitude {relation.attitude}/100"]
+                if relation.topics_of_interest:
+                    details.append("into " + ", ".join(relation.topics_of_interest))
+                if relation.inside_jokes:
+                    details.append("inside jokes: " + ", ".join(relation.inside_jokes))
+                if relation.most_important_memory:
+                    details.append(relation.most_important_memory)
+                lines.append(f"  - <@{relation.user_id}> ({'; '.join(details)})")
+
+        return "\n".join(lines)
 
     async def _ensure_week_planned(self) -> None:
         now = clock.now()
@@ -511,6 +613,10 @@ def build() -> LivingBot:
         llm_config.build_chat_model(llm_config.STORY_GENERATOR_MODEL)
     )
     mood_store = MoodStore(config.MOOD_DATA_PATH)
+    spontaneous_store = SpontaneousStore(config.SPONTANEOUS_DATA_PATH)
+    spontaneous_messenger = SpontaneousMessenger(
+        llm_config.build_chat_model(llm_config.SPONTANEOUS_MESSENGER_MODEL)
+    )
     return LivingBot(
         llm_client=llm_client,
         memory_store=memory_store,
@@ -524,6 +630,8 @@ def build() -> LivingBot:
         story_store=story_store,
         story_generator=story_generator,
         mood_store=mood_store,
+        spontaneous_store=spontaneous_store,
+        spontaneous_messenger=spontaneous_messenger,
         intents=intents,
     )
 

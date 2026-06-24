@@ -4,10 +4,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from livingbot import config
 from livingbot.calendar import Calendar
 
-SLEEP_WINDOW_START = 7
-SLEEP_WINDOW_END = 9
+# The early-morning hours in which she "wakes up" and gets her once-a-day mood
+# and fatigue recovery. This is not when she sleeps — see config.AWAKE_HOUR_* for
+# the hours she is awake during the day.
+MORNING_WINDOW_START = 7
+MORNING_WINDOW_END = 9
 _DRIFT_PER_HOUR = 1.0
 # Roughly the number of replied-to messages that leaves her too worn out to
 # answer right away. Raise it to let her take more before maxing out.
@@ -15,6 +19,10 @@ FATIGUE_MAX = 10.0
 _FATIGUE_DECAY_PER_HOUR = 3.0
 _FATIGUE_RELIEF_PER_ACTIVITY = 3.0
 _FATIGUE_SLEEP_RETENTION = 0.1
+
+
+def is_awake(now: datetime) -> bool:
+    return config.AWAKE_HOUR_START <= now.hour < config.AWAKE_HOUR_END
 
 
 class Mood(BaseModel):
@@ -56,7 +64,7 @@ def refresh_mood(mood: Mood, now: datetime, calendar: Calendar) -> Mood:
             value = min(50.0, value + drift)
         fatigue = max(0.0, fatigue - _FATIGUE_DECAY_PER_HOUR * hours_elapsed)
 
-    if SLEEP_WINDOW_START <= now.hour < SLEEP_WINDOW_END:
+    if MORNING_WINDOW_START <= now.hour < MORNING_WINDOW_END:
         if last_sleep_date is None or last_sleep_date < now.date():
             value += random.uniform(15.0, 25.0)
             fatigue *= _FATIGUE_SLEEP_RETENTION
