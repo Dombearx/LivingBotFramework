@@ -154,20 +154,20 @@ async def add_hobby(ctx: RunContext[BotDeps], name: str) -> str:
     hobbies = ctx.deps.hobby_store.load()
     if any(hobby.name == name for hobby in hobbies.entries):
         return f"{name} is already one of your hobbies."
-    last_acquired = max(
-        (hobby for hobby in hobbies.entries if hobby.acquired_at is not None),
-        key=lambda hobby: hobby.acquired_at,
-        default=None,
-    )
-    if (
-        last_acquired is not None
-        and now - last_acquired.acquired_at < config.HOBBY_COOLDOWN
-    ):
-        return (
-            f"You took up {last_acquired.name} "
-            f"{humanize_ago(last_acquired.acquired_at, now)} — it's too soon to take "
-            "up something new. Give it a couple of weeks before adding another hobby."
-        )
+    acquired = [
+        (hobby, hobby.acquired_at)
+        for hobby in hobbies.entries
+        if hobby.acquired_at is not None
+    ]
+    if acquired:
+        last_hobby, last_at = max(acquired, key=lambda pair: pair[1])
+        if now - last_at < config.HOBBY_COOLDOWN:
+            return (
+                f"You took up {last_hobby.name} "
+                f"{humanize_ago(last_at, now)} — it's too soon to take "
+                "up something new. Give it a couple of weeks before adding another "
+                "hobby."
+            )
     hobbies.entries.append(Hobby(name=name, acquired_at=now))
     ctx.deps.hobby_store.save(hobbies)
     return f"Added {name} to your hobbies."

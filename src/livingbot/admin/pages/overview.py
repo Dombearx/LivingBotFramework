@@ -5,6 +5,7 @@ from nicegui import ui
 from livingbot import clock
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
+from livingbot.bot import LivingBot
 
 
 def register(context: AdminContext) -> None:
@@ -27,14 +28,14 @@ def register(context: AdminContext) -> None:
             await _counts_card(context)
 
 
-def _card(title: str):
+def _card(title: str) -> ui.card:
     card = ui.card().classes("min-w-64 grow")
     with card:
         ui.label(title).classes("text-lg font-semibold")
     return card
 
 
-def _connection_card(bot) -> None:
+def _connection_card(bot: LivingBot) -> None:
     with _card("Discord"):
         ready = bot.is_ready()
         ui.label(f"Connected: {'yes' if ready else 'no'}")
@@ -44,7 +45,7 @@ def _connection_card(bot) -> None:
             ui.label(f"Guilds: {len(bot.guilds)}")
 
 
-def _runtime_card(bot) -> None:
+def _runtime_card(bot: LivingBot) -> None:
     with _card("Runtime"):
         ui.label(f"Fatigue: {bot.fatigue:.2f}")
         ui.label(f"Resting: {'yes' if bot.resting else 'no'}")

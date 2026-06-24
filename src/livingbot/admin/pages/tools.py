@@ -3,12 +3,15 @@ import inspect
 from datetime import datetime
 from enum import Enum
 from types import SimpleNamespace
-from typing import Callable, get_type_hints
+from typing import Any, Callable, cast, get_type_hints
 
+import discord
 from nicegui import ui
+from nicegui.elements.mixins.value_element import ValueElement
 
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
+from livingbot.bot import LivingBot
 from livingbot.tools import (
     BotDeps,
     add_hobby,
@@ -26,24 +29,23 @@ from livingbot.tools import (
     take_photo,
 )
 
-TOOLS: dict[str, Callable] = {
-    func.__name__: func
-    for func in [
-        load_context,
-        add_plan,
-        remove_plan,
-        add_item,
-        remove_item,
-        search_inventory,
-        add_hobby,
-        recall_story,
-        mark_story_told,
-        show_story_image,
-        check_budget,
-        buy_item,
-        take_photo,
-    ]
-}
+_TOOL_FUNCTIONS: list[Callable[..., Any]] = [
+    load_context,
+    add_plan,
+    remove_plan,
+    add_item,
+    remove_item,
+    search_inventory,
+    add_hobby,
+    recall_story,
+    mark_story_told,
+    show_story_image,
+    check_budget,
+    buy_item,
+    take_photo,
+]
+
+TOOLS: dict[str, Callable[..., Any]] = {func.__name__: func for func in _TOOL_FUNCTIONS}
 
 CHANNEL_TOOLS = {"load_context"}
 _DT_FORMAT = "%Y-%m-%d %H:%M"
@@ -99,7 +101,7 @@ def register(context: AdminContext) -> None:
                 if tool_select.value in CHANNEL_TOOLS and channel_select.value:
                     channel = bot.get_channel(int(channel_select.value))
                 deps = BotDeps(
-                    channel=channel,
+                    channel=cast("discord.abc.Messageable", channel),
                     calendar_store=context.calendar_store,
                     inventory_store=context.inventory_store,
                     spending_store=context.spending_store,
@@ -127,6 +129,7 @@ def register(context: AdminContext) -> None:
 def _make_field(name: str, annotation: object, default: object) -> Callable[[], object]:
     has_default = default is not inspect.Parameter.empty
 
+    widget: ValueElement[Any]
     if annotation is bool:
         widget = ui.checkbox(name, value=bool(default) if has_default else False)
         return lambda: widget.value
@@ -138,7 +141,9 @@ def _make_field(name: str, annotation: object, default: object) -> Callable[[], 
         return lambda: annotation(widget.value)
 
     if annotation is int:
-        widget = ui.number(name, value=default if has_default else 0).classes("w-full")
+        widget = ui.number(
+            name, value=cast(float, default) if has_default else 0
+        ).classes("w-full")
         return lambda: int(widget.value)
 
     if annotation is datetime:
@@ -149,7 +154,7 @@ def _make_field(name: str, annotation: object, default: object) -> Callable[[], 
     return lambda: widget.value
 
 
-def _text_channels(bot) -> dict[int, str]:
+def _text_channels(bot: LivingBot) -> dict[int, str]:
     if not bot.is_ready():
         return {}
     return {

@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import chromadb
 from pydantic import BaseModel, Field
@@ -78,9 +80,10 @@ class InventoryStore:
 
     def _all(self) -> list[InventoryItem]:
         result = self._collection.get(include=["metadatas"])
+        metadatas = result["metadatas"] or []
         items = [
             _to_item(item_id, metadata)
-            for item_id, metadata in zip(result["ids"], result["metadatas"])
+            for item_id, metadata in zip(result["ids"], metadatas)
         ]
         return sorted(items, key=lambda item: item.acquired_at)
 
@@ -98,9 +101,10 @@ class InventoryStore:
         result = self._collection.query(
             query_texts=[query], n_results=limit, include=["metadatas"]
         )
+        metadatas = (result["metadatas"] or [[]])[0]
         items = [
             _to_item(item_id, metadata)
-            for item_id, metadata in zip(result["ids"][0], result["metadatas"][0])
+            for item_id, metadata in zip(result["ids"][0], metadatas)
         ]
         self._touch(items)
         return items
@@ -117,7 +121,7 @@ class InventoryStore:
         )
 
 
-def _metadata(item: InventoryItem) -> dict:
+def _metadata(item: InventoryItem) -> dict[str, str]:
     return {
         "name": item.name,
         "description": item.description,
@@ -126,7 +130,7 @@ def _metadata(item: InventoryItem) -> dict:
     }
 
 
-def _to_item(item_id: str, metadata: dict) -> InventoryItem:
+def _to_item(item_id: str, metadata: Mapping[str, Any]) -> InventoryItem:
     return InventoryItem(
         id=item_id,
         name=metadata["name"],

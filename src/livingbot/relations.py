@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -51,7 +52,9 @@ class RelationUpdater:
             output_type=Relation,
         )
 
-    async def update(self, relation: Relation, conversation: list[dict]) -> Relation:
+    async def update(
+        self, relation: Relation, conversation: list[dict[str, Any]]
+    ) -> Relation:
         conversation_text = "\n".join(
             f"{turn['role'].upper()}: {turn['content']}" for turn in conversation
         )
