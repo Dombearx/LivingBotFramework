@@ -7,7 +7,7 @@ import discord
 from pydantic import Field
 from pydantic_ai import BinaryContent, RunContext
 
-from livingbot import config
+from livingbot import clock, config
 from livingbot.calendar import CalendarStore, PlanEntry
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
@@ -28,7 +28,7 @@ class BotDeps:
 
 
 def format_message(message: discord.Message) -> str:
-    timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = clock.to_local(message.created_at).strftime("%Y-%m-%d %H:%M:%S")
     return (
         f"[id:{message.id}] [{timestamp}] "
         f"{message.author.display_name}: {message.content}"
@@ -150,7 +150,7 @@ async def add_hobby(ctx: RunContext[BotDeps], name: str) -> str:
     """Add a new hobby to your life, e.g. when you genuinely take up something like
     pottery or running. You start out as a novice and grow more skilled at it over
     time as you spend time on it — see add_plan."""
-    now = datetime.now()
+    now = clock.now()
     hobbies = ctx.deps.hobby_store.load()
     if any(hobby.name == name for hobby in hobbies.entries):
         return f"{name} is already one of your hobbies."

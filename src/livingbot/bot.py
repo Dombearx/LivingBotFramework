@@ -9,7 +9,7 @@ import discord
 import logfire
 from pydantic_ai import BinaryContent
 
-from livingbot import config, llm_config, prompts
+from livingbot import clock, config, llm_config, prompts
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryStore
@@ -112,6 +112,7 @@ class LivingBot(discord.Client):
         self._fatigue: float = 0.0
         self._resting: bool = False
         self._response_lock = asyncio.Lock()
+        self._state_lock = asyncio.Lock()
         self._llm_client = llm_client
         self._memory_store = memory_store
         self._relation_store = relation_store
@@ -184,26 +185,27 @@ class LivingBot(discord.Client):
         while True:
             try:
                 await self._ensure_week_planned()
-                self._ensure_morning_mood_refresh()
-                await self._story_store.prune_stale(datetime.now())
+                await self._ensure_morning_mood_refresh()
+                await self._story_store.prune_stale(clock.now())
             except Exception:
                 logger.exception("Life loop iteration failed")
             await asyncio.sleep(config.LIFE_LOOP_INTERVAL_SECONDS)
 
-    def _ensure_morning_mood_refresh(self) -> None:
-        now = datetime.now()
+    async def _ensure_morning_mood_refresh(self) -> None:
+        now = clock.now()
         if not (SLEEP_WINDOW_START <= now.hour < SLEEP_WINDOW_END):
             return
-        mood = self._mood_store.load()
-        if mood.last_sleep_date is not None and mood.last_sleep_date >= now.date():
-            return
-        calendar = self._calendar_store.load()
-        mood = refresh_mood(mood, now, calendar)
-        self._mood_store.save(mood)
+        async with self._state_lock:
+            mood = self._mood_store.load()
+            if mood.last_sleep_date is not None and mood.last_sleep_date >= now.date():
+                return
+            calendar = self._calendar_store.load()
+            mood = refresh_mood(mood, now, calendar)
+            self._mood_store.save(mood)
         logger.info("Morning mood refresh: %.1f", mood.value)
 
     async def _ensure_week_planned(self) -> None:
-        now = datetime.now()
+        now = clock.now()
         week_start = now.date() - timedelta(days=now.weekday())
         calendar = self._calendar_store.load()
         calendar.prune_past(now)
@@ -220,6 +222,10 @@ class LivingBot(discord.Client):
                 calendar.home_location,
                 new_hobby_notes,
             )
+            # Reload so plans the bot added through tools while we awaited the
+            # planner aren't clobbered by this save.
+            calendar = self._calendar_store.load()
+            calendar.prune_past(now)
             calendar.entries.extend(entries)
             calendar.planned_week_start = week_start
             for entry in entries:
@@ -288,7 +294,7 @@ class LivingBot(discord.Client):
         if message.author == self.user:
             return
 
-        if not self._is_directed_at_bot(message):
+        if not await self._is_directed_at_bot(message):
             return
 
         self._messages_since_photo += 1
@@ -323,8 +329,14 @@ class LivingBot(discord.Client):
         return discord.utils.utcnow() - min(join_times) < config.ONBOARDING_PERIOD
 
     async def _attempt_response(self) -> bool:
-        now = datetime.now()
-        mood = refresh_mood(self._mood_store.load(), now, self._calendar_store.load())
+        if len(self._queue) == 0:
+            return True
+        now = clock.now()
+        async with self._state_lock:
+            mood = refresh_mood(
+                self._mood_store.load(), now, self._calendar_store.load()
+            )
+            self._mood_store.save(mood)
 
         onboarding_active = self._onboarding_active()
         mood_factor = 0.5 + (mood.value / 100.0)
@@ -340,7 +352,6 @@ class LivingBot(discord.Client):
         ):
             if not should_respond:
                 return False
-            self._mood_store.save(mood)
             self._fatigue += len(self._queue)
             for channel, messages in self._queue.flush().items():
                 with logfire.span(
@@ -415,9 +426,9 @@ class LivingBot(discord.Client):
             logger.debug("Updated relation for user_id=%s", relation.user_id)
             delta = updated.attitude - relation.attitude
             if delta != 0:
-                mood = self._mood_store.load()
-                mood = apply_interaction_delta(mood, delta)
-                self._mood_store.save(mood)
+                async with self._state_lock:
+                    mood = apply_interaction_delta(self._mood_store.load(), delta)
+                    self._mood_store.save(mood)
                 logger.debug(
                     "Mood adjusted by interaction delta=%d: %.1f", delta, mood.value
                 )
@@ -443,16 +454,27 @@ class LivingBot(discord.Client):
                     self._resting = False
                     return
 
-    def _is_directed_at_bot(self, message: discord.Message) -> bool:
+    async def _is_directed_at_bot(self, message: discord.Message) -> bool:
         if self.user is not None and self.user in message.mentions:
             return True
-        return self._is_reply_to_bot(message)
+        return await self._is_reply_to_bot(message)
 
-    def _is_reply_to_bot(self, message: discord.Message) -> bool:
-        if message.reference is None or self.user is None:
+    async def _is_reply_to_bot(self, message: discord.Message) -> bool:
+        reference = message.reference
+        if reference is None or self.user is None:
             return False
-        ref = message.reference.resolved
-        return isinstance(ref, discord.Message) and ref.author == self.user
+        resolved = reference.resolved
+        if isinstance(resolved, discord.Message):
+            return resolved.author == self.user
+        # resolved is None when the replied-to message isn't cached; fetch it so
+        # replies to older bot messages are still recognised.
+        if resolved is None and reference.message_id is not None:
+            try:
+                referenced = await message.channel.fetch_message(reference.message_id)
+            except discord.HTTPException:
+                return False
+            return referenced.author == self.user
+        return False
 
 
 def build() -> LivingBot:

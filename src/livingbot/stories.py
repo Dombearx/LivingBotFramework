@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
+from livingbot import clock
 from livingbot.prompts import (
     STORY_GENERATOR_SYSTEM_PROMPT,
     STORY_TIER_NORMAL,
@@ -27,7 +28,7 @@ class Story(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     summary: str
     content: str
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=clock.now)
     occurs_at: datetime | None = None
     told_at: datetime | None = None
     image_path: str | None = None
@@ -106,7 +107,7 @@ class StoryStore:
         return True
 
     def _untold(self, limit: int) -> list[Story]:
-        now = datetime.now()
+        now = clock.now()
         stories = [
             story
             for story in self._all()
@@ -124,7 +125,7 @@ class StoryStore:
             n_results=min(count, limit + 5),
             include=["metadatas"],
         )
-        now = datetime.now()
+        now = clock.now()
         stories = [
             _to_story(story_id, metadata)
             for story_id, metadata in zip(result["ids"][0], result["metadatas"][0])
@@ -146,7 +147,7 @@ class StoryStore:
         if not existing["ids"]:
             return False
         story = _to_story(existing["ids"][0], existing["metadatas"][0])
-        story.told_at = datetime.now()
+        story.told_at = clock.now()
         self._collection.update(ids=[story.id], metadatas=[_metadata(story)])
         return True
 
@@ -250,7 +251,7 @@ def _metadata(story: Story) -> dict:
 
 def _to_story(story_id: str, metadata: dict) -> Story:
     occurs_at = metadata.get("occurs_at", "")
-    told_at = metadata["told_at"]
+    told_at = metadata.get("told_at", "")
     return Story(
         id=story_id,
         summary=metadata["summary"],

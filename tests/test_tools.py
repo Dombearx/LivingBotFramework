@@ -492,12 +492,12 @@ async def test_show_story_image_when_file_missing_returns_message(tmp_path) -> N
 # ---------------------------------------------------------------------------
 
 
-@patch("livingbot.tools.datetime")
+@patch("livingbot.tools.clock")
 async def test_add_hobby_when_new_saves_hobby_with_acquired_at_now(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
     now = datetime(2026, 6, 12, 12, 0)
-    mock_datetime.now.return_value = now
+    mock_clock.now.return_value = now
     store = make_hobby_store()
     store.load = MagicMock(return_value=Hobbies(entries=[]))
     ctx = make_ctx(hobby_store=store)
@@ -521,12 +521,12 @@ async def test_add_hobby_when_already_present_returns_message_without_saving() -
     store.save.assert_not_called()
 
 
-@patch("livingbot.tools.datetime")
+@patch("livingbot.tools.clock")
 async def test_add_hobby_within_cooldown_returns_refusal_naming_hobby_and_time(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
     now = datetime(2026, 6, 12, 12, 0)
-    mock_datetime.now.return_value = now
+    mock_clock.now.return_value = now
     store = make_hobby_store()
     store.load = MagicMock(
         return_value=Hobbies(
@@ -543,12 +543,12 @@ async def test_add_hobby_within_cooldown_returns_refusal_naming_hobby_and_time(
     )
 
 
-@patch("livingbot.tools.datetime")
+@patch("livingbot.tools.clock")
 async def test_add_hobby_within_cooldown_does_not_save(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
     now = datetime(2026, 6, 12, 12, 0)
-    mock_datetime.now.return_value = now
+    mock_clock.now.return_value = now
     store = make_hobby_store()
     store.load = MagicMock(
         return_value=Hobbies(
@@ -562,12 +562,12 @@ async def test_add_hobby_within_cooldown_does_not_save(
     store.save.assert_not_called()
 
 
-@patch("livingbot.tools.datetime")
+@patch("livingbot.tools.clock")
 async def test_add_hobby_after_cooldown_elapsed_adds_new_hobby(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
     now = datetime(2026, 6, 12, 12, 0)
-    mock_datetime.now.return_value = now
+    mock_clock.now.return_value = now
     store = make_hobby_store()
     store.load = MagicMock(
         return_value=Hobbies(
@@ -588,12 +588,12 @@ async def test_add_hobby_after_cooldown_elapsed_adds_new_hobby(
     assert [h.name for h in saved.entries] == ["pottery", "painting"]
 
 
-@patch("livingbot.tools.datetime")
+@patch("livingbot.tools.clock")
 async def test_add_hobby_when_existing_hobbies_have_no_acquired_at_ignores_cooldown(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
     now = datetime(2026, 6, 12, 12, 0)
-    mock_datetime.now.return_value = now
+    mock_clock.now.return_value = now
     store = make_hobby_store()
     store.load = MagicMock(return_value=Hobbies(entries=[Hobby(name="gym")]))
     ctx = make_ctx(hobby_store=store)

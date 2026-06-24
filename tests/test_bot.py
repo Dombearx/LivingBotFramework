@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
@@ -469,15 +469,16 @@ async def test_rest_and_respond_when_onboarding_active_shrinks_delay_range(
     mock_uniform.assert_any_call(0.75, 3.75)
 
 
-def test_format_message_includes_id_timestamp_author_and_content() -> None:
+def test_format_message_shows_timestamp_in_warsaw_wall_clock() -> None:
     msg = MagicMock(spec=discord.Message)
     msg.id = 987654321
-    msg.created_at.strftime.return_value = "2024-06-01 10:00:00"
+    msg.created_at = datetime(2024, 6, 1, 8, 0, tzinfo=timezone.utc)
     msg.author.display_name = "Alice"
     msg.content = "hello world"
 
     result = format_message(msg)
 
+    # 08:00 UTC is 10:00 in Warsaw during summer (UTC+2).
     assert result == "[id:987654321] [2024-06-01 10:00:00] Alice: hello world"
 
 
@@ -644,7 +645,7 @@ async def test_attempt_response_stores_memories_globally_for_multiple_authors(
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-def test_is_reply_to_bot_when_no_reference_returns_false(
+async def test_is_reply_to_bot_when_no_reference_returns_false(
     mock_user: PropertyMock,
 ) -> None:
     user = bot_user()
@@ -652,13 +653,13 @@ def test_is_reply_to_bot_when_no_reference_returns_false(
     bot = make_bot()
     message = make_message(author=other_user(), reference=None)
 
-    result = bot._is_reply_to_bot(message)
+    result = await bot._is_reply_to_bot(message)
 
     assert result is False
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-def test_is_reply_to_bot_when_resolved_reference_is_bots_returns_true(
+async def test_is_reply_to_bot_when_resolved_reference_is_bots_returns_true(
     mock_user: PropertyMock,
 ) -> None:
     user = bot_user()
@@ -674,7 +675,7 @@ def test_is_reply_to_bot_when_resolved_reference_is_bots_returns_true(
     reference.resolved = bot_message
     message = make_message(author=other_user(), reference=reference)
 
-    result = bot._is_reply_to_bot(message)
+    result = await bot._is_reply_to_bot(message)
 
     assert result is True
 
@@ -797,11 +798,11 @@ async def test_update_relations_includes_bot_response_in_conversation(
     assert contents[-1] == "my reply"
 
 
-@patch("livingbot.bot.datetime")
+@patch("livingbot.bot.clock")
 async def test_ensure_week_planned_when_week_unplanned_plans_and_saves(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
-    mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
     entry = PlanEntry(
         activity="gym",
         location="gym",
@@ -826,12 +827,12 @@ async def test_ensure_week_planned_when_week_unplanned_plans_and_saves(
     assert saved.planned_week_start == week_start
 
 
-@patch("livingbot.bot.datetime")
+@patch("livingbot.bot.clock")
 async def test_ensure_week_planned_passes_recently_acquired_hobby_note_to_planner(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
     now = datetime(2026, 6, 3, 14, 30)
-    mock_datetime.now.return_value = now
+    mock_clock.now.return_value = now
     calendar_store = make_calendar_store(Calendar(home_location="home"))
     week_planner = make_week_planner()
     hobby_store = make_hobby_store(
@@ -856,11 +857,11 @@ async def test_ensure_week_planned_passes_recently_acquired_hobby_note_to_planne
     )
 
 
-@patch("livingbot.bot.datetime")
+@patch("livingbot.bot.clock")
 async def test_ensure_week_planned_when_week_already_planned_does_not_replan(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
-    mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
     calendar = Calendar(
         home_location="home", planned_week_start=datetime(2026, 6, 1).date()
     )
@@ -874,11 +875,11 @@ async def test_ensure_week_planned_when_week_already_planned_does_not_replan(
     week_planner.plan.assert_not_called()
 
 
-@patch("livingbot.bot.datetime")
+@patch("livingbot.bot.clock")
 async def test_ensure_week_planned_prunes_finished_entries(
-    mock_datetime: MagicMock,
+    mock_clock: MagicMock,
 ) -> None:
-    mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
     old = PlanEntry(
         activity="gym",
         location="gym",
@@ -1294,11 +1295,11 @@ async def test_render_story_image_returns_none_when_generation_fails(
 
 
 @patch("livingbot.bot.asyncio.create_task", side_effect=lambda coro: coro.close())
-@patch("livingbot.bot.datetime")
+@patch("livingbot.bot.clock")
 async def test_ensure_week_planned_schedules_story_generation_for_new_week(
-    mock_datetime: MagicMock, mock_create_task: MagicMock
+    mock_clock: MagicMock, mock_create_task: MagicMock
 ) -> None:
-    mock_datetime.now.return_value = datetime(2026, 6, 3, 14, 30)
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
     bot = make_bot(
         calendar_store=make_calendar_store(Calendar(home_location="home")),
         week_planner=make_week_planner([]),
