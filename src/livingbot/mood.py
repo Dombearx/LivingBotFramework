@@ -9,6 +9,9 @@ from livingbot.calendar import Calendar
 SLEEP_WINDOW_START = 7
 SLEEP_WINDOW_END = 9
 _DRIFT_PER_HOUR = 1.0
+# Roughly the number of replied-to messages that leaves her too worn out to
+# answer right away. Raise it to let her take more before maxing out.
+FATIGUE_MAX = 10.0
 _FATIGUE_DECAY_PER_HOUR = 3.0
 _FATIGUE_RELIEF_PER_ACTIVITY = 3.0
 _FATIGUE_SLEEP_RETENTION = 0.1
@@ -96,7 +99,7 @@ def refresh_mood(mood: Mood, now: datetime, calendar: Calendar) -> Mood:
 def add_fatigue(mood: Mood, amount: float) -> Mood:
     if amount <= 0:
         return mood
-    return mood.model_copy(update={"fatigue": mood.fatigue + amount})
+    return mood.model_copy(update={"fatigue": min(FATIGUE_MAX, mood.fatigue + amount)})
 
 
 def apply_interaction_delta(mood: Mood, attitude_delta: int) -> Mood:

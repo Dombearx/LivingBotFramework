@@ -16,6 +16,7 @@ from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
 from livingbot.memory import MemoryStore
 from livingbot.mood import (
+    FATIGUE_MAX,
     SLEEP_WINDOW_END,
     SLEEP_WINDOW_START,
     MoodStore,
@@ -342,7 +343,10 @@ class LivingBot(discord.Client):
         mood_factor = 0.5 + (mood.value / 100.0)
         if onboarding_active:
             mood_factor *= config.ONBOARDING_RESPONSE_BOOST
-        should_respond = random.random() < mood_factor / (mood.fatigue + 1.0)
+        # Quadratic falloff: a few messages barely dent her, but odds drop sharply
+        # as fatigue nears FATIGUE_MAX, where she stops replying right away.
+        fatigue_factor = max(0.0, 1.0 - (mood.fatigue / FATIGUE_MAX) ** 2)
+        should_respond = random.random() < mood_factor * fatigue_factor
         with logfire.span(
             "attempt_response",
             mood=mood.value,

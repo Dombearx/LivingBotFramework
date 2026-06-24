@@ -244,7 +244,7 @@ async def test_on_message_when_random_disfavors_immediate_does_not_send(
     mock_clock.now.return_value = STABLE_NOW
     user = bot_user()
     mock_user.return_value = user
-    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=1.0)))
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=8.0)))
     channel = make_channel()
 
     await bot.on_message(
@@ -267,7 +267,7 @@ async def test_on_message_when_random_disfavors_immediate_sets_resting(
     mock_clock.now.return_value = STABLE_NOW
     user = bot_user()
     mock_user.return_value = user
-    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=1.0)))
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=8.0)))
 
     await bot.on_message(make_message(author=other_user(), mentions=[user]))
 
@@ -387,11 +387,11 @@ async def test_attempt_response_when_onboarding_active_responds_despite_high_fat
 ) -> None:
     mock_clock.now.return_value = STABLE_NOW
     mock_guilds.return_value = [make_guild(discord.utils.utcnow() - timedelta(days=1))]
-    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=1.5)))
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=8.0)))
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), channel=channel))
 
-    # mood_factor=1.0, boosted to 2.0; should_respond = 0.6 < 2.0/2.5
+    # fatigue 8 → factor 0.36; mood_factor 1.0 boosted to 2.0 → odds 0.72; 0.6 < 0.72
     result = await bot._attempt_response()
 
     assert result is True
@@ -408,11 +408,11 @@ async def test_attempt_response_when_not_onboarding_skips_response_with_same_rol
 ) -> None:
     mock_clock.now.return_value = STABLE_NOW
     mock_guilds.return_value = []
-    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=1.5)))
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=8.0)))
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), channel=channel))
 
-    # mood_factor=1.0, not boosted; should_respond = 0.6 < 1.0/2.5 → False
+    # fatigue 8 → factor 0.36; mood_factor 1.0, not boosted → odds 0.36; 0.6 < 0.36 False
     result = await bot._attempt_response()
 
     assert result is False

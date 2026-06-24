@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.mood import (
+    FATIGUE_MAX,
     Mood,
     add_fatigue,
     apply_interaction_delta,
@@ -233,6 +234,14 @@ def test_add_fatigue_ignores_nonpositive_amount() -> None:
     result = add_fatigue(mood, 0.0)
 
     assert result.fatigue == 2.0
+
+
+def test_add_fatigue_caps_at_maximum() -> None:
+    mood = Mood(value=50.0, fatigue=9.0)
+
+    result = add_fatigue(mood, 5.0)
+
+    assert result.fatigue == FATIGUE_MAX
 
 
 # --- apply_interaction_delta ---
