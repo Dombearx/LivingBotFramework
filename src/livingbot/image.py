@@ -9,6 +9,7 @@ from importlib.resources import files
 from typing import Any
 
 import httpx
+import logfire
 
 from livingbot import llm_config
 from livingbot.prompts import IMAGE_ENHANCER_SYSTEM_PROMPT, SELFIE_PERSONA
@@ -32,15 +33,16 @@ async def _enhance_prompt(
         parts.append(persona)
     user_message = " ".join(parts)
     client = llm_config.build_openai_client()
-    response = await client.chat.completions.create(
-        model=llm_config.PROMPT_ENHANCER_MODEL,
-        messages=[
-            {"role": "system", "content": IMAGE_ENHANCER_SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
-        max_tokens=400,
-        temperature=0.7,
-    )
+    with logfire.span("enhance_image_prompt", model=llm_config.PROMPT_ENHANCER_MODEL):
+        response = await client.chat.completions.create(
+            model=llm_config.PROMPT_ENHANCER_MODEL,
+            messages=[
+                {"role": "system", "content": IMAGE_ENHANCER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            max_tokens=400,
+            temperature=0.7,
+        )
     return response.choices[0].message.content or description
 
 
@@ -83,24 +85,32 @@ async def _submit_job(endpoint_url: str, api_key: str, workflow: dict[str, Any])
 
 async def _poll_for_result(endpoint_url: str, api_key: str, job_id: str) -> bytes:
     deadline = asyncio.get_event_loop().time() + _POLL_TIMEOUT_SECONDS
-    async with httpx.AsyncClient() as client:
-        while True:
-            if asyncio.get_event_loop().time() > deadline:
-                raise TimeoutError(f"RunPod job {job_id} timed out")
-            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-            response = await client.get(
-                f"{endpoint_url}/status/{job_id}",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10.0,
-            )
-            response.raise_for_status()
-            data = response.json()
-            status = data.get("status")
-            if status == "COMPLETED":
-                image_b64: str = data["output"]["images"][0]
-                return base64.b64decode(image_b64)
-            if status in ("FAILED", "CANCELLED"):
-                raise RuntimeError(f"RunPod job {job_id} ended with status {status}")
+    with logfire.span("poll_runpod_job", job_id=job_id) as span:
+        async with httpx.AsyncClient() as client:
+            polls = 0
+            while True:
+                if asyncio.get_event_loop().time() > deadline:
+                    span.set_attribute("polls", polls)
+                    raise TimeoutError(f"RunPod job {job_id} timed out")
+                await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+                polls += 1
+                response = await client.get(
+                    f"{endpoint_url}/status/{job_id}",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+                status = data.get("status")
+                if status == "COMPLETED":
+                    span.set_attribute("polls", polls)
+                    image_b64: str = data["output"]["images"][0]
+                    return base64.b64decode(image_b64)
+                if status in ("FAILED", "CANCELLED"):
+                    span.set_attribute("polls", polls)
+                    raise RuntimeError(
+                        f"RunPod job {job_id} ended with status {status}"
+                    )
 
 
 async def generate_image(
@@ -111,18 +121,25 @@ async def generate_image(
     endpoint_url = os.environ["RUNPOD_ENDPOINT_URL"]
     api_key = os.environ["RUNPOD_API_KEY"]
 
-    logger.info("Enhancing prompt (include_mugda=%s)", include_mugda)
-    positive_prompt = await _enhance_prompt(
-        description, include_mugda, outfit_description
-    )
-    logger.info("Enhanced prompt: %s", positive_prompt)
+    with logfire.span(
+        "generate_image",
+        include_mugda=include_mugda,
+        has_outfit=bool(outfit_description),
+    ) as span:
+        positive_prompt = await _enhance_prompt(
+            description, include_mugda, outfit_description
+        )
+        span.set_attribute("prompt", positive_prompt)
+        logger.info("Enhanced prompt: %s", positive_prompt)
 
-    workflow = _load_workflow()
-    workflow = _inject_prompt(workflow, positive_prompt, include_mugda)
+        workflow = _load_workflow()
+        workflow = _inject_prompt(workflow, positive_prompt, include_mugda)
 
-    job_id = await _submit_job(endpoint_url, api_key, workflow)
-    logger.info("RunPod job submitted: %s", job_id)
+        job_id = await _submit_job(endpoint_url, api_key, workflow)
+        span.set_attribute("job_id", job_id)
+        logger.info("RunPod job submitted: %s", job_id)
 
-    image_bytes = await _poll_for_result(endpoint_url, api_key, job_id)
-    logger.info("RunPod job %s completed (%d bytes)", job_id, len(image_bytes))
-    return image_bytes
+        image_bytes = await _poll_for_result(endpoint_url, api_key, job_id)
+        span.set_attribute("image_bytes", len(image_bytes))
+        logger.info("RunPod job %s completed (%d bytes)", job_id, len(image_bytes))
+        return image_bytes

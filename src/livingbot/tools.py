@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,8 @@ from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.spending import POINT_COST, SpendCategory, SpendingStore
 from livingbot.stories import StoryStore
 from livingbot.timeformat import humanize_ago
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -289,9 +292,7 @@ async def take_photo(
             outfit_description=outfit_description,
         )
     except Exception:
-        import logging
-
-        logging.getLogger(__name__).exception("Image generation failed")
+        logger.exception("Image generation failed")
         return "Photo failed to generate — something went wrong on my end."
 
     ctx.deps.photo_result = image_bytes
