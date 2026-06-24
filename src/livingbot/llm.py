@@ -176,10 +176,12 @@ def _build_recent_block(
 ) -> str:
     highlights: list[tuple[datetime, str]] = []
     for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW):
+        acquired_at = hobby.acquired_at
+        assert acquired_at is not None
         highlights.append(
             (
-                hobby.acquired_at,
-                f"You took up {hobby.name} {humanize_ago(hobby.acquired_at, now)}.",
+                acquired_at,
+                f"You took up {hobby.name} {humanize_ago(acquired_at, now)}.",
             )
         )
     for item in recent_items:

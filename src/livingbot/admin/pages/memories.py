@@ -1,3 +1,5 @@
+from typing import Any
+
 from nicegui import ui
 
 from livingbot.admin.context import AdminContext
@@ -29,7 +31,7 @@ def register(context: AdminContext) -> None:
                 for entry in entries:
                     _render_memory(entry)
 
-            def _render_memory(entry: dict) -> None:
+            def _render_memory(entry: dict[str, Any]) -> None:
                 with ui.card().classes("w-full"):
                     with ui.row().classes("w-full items-center justify-between"):
                         ui.label(entry.get("memory", "")).classes("grow")

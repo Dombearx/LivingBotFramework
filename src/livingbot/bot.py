@@ -4,6 +4,7 @@ import logging
 import os
 import random
 from datetime import date, datetime, time, timedelta
+from typing import Any
 
 import discord
 import logfire
@@ -107,7 +108,7 @@ class LivingBot(discord.Client):
         story_store: StoryStore,
         story_generator: StoryGenerator,
         mood_store: MoodStore,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._queue = MessageQueue()
@@ -214,8 +215,9 @@ class LivingBot(discord.Client):
             hobbies = self._hobby_store.load()
             hobby_names = [hobby.name for hobby in hobbies.entries]
             new_hobby_notes = [
-                f"{hobby.name} (took up {humanize_ago(hobby.acquired_at, now)})"
+                f"{hobby.name} (took up {humanize_ago(acquired_at, now)})"
                 for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW)
+                if (acquired_at := hobby.acquired_at) is not None
             ]
             entries = await self._week_planner.plan(
                 week_start,

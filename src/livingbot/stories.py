@@ -2,8 +2,10 @@ import asyncio
 import logging
 import random
 import uuid
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import chromadb
 from pydantic import BaseModel, Field
@@ -95,9 +97,10 @@ class StoryStore:
 
     def _all(self) -> list[Story]:
         result = self._collection.get(include=["metadatas"])
+        metadatas = result["metadatas"] or []
         return [
             _to_story(story_id, metadata)
-            for story_id, metadata in zip(result["ids"], result["metadatas"])
+            for story_id, metadata in zip(result["ids"], metadatas)
         ]
 
     def _remove(self, story_id: str) -> bool:
@@ -126,9 +129,10 @@ class StoryStore:
             include=["metadatas"],
         )
         now = clock.now()
+        metadatas = (result["metadatas"] or [[]])[0]
         stories = [
             _to_story(story_id, metadata)
-            for story_id, metadata in zip(result["ids"][0], result["metadatas"][0])
+            for story_id, metadata in zip(result["ids"][0], metadatas)
         ]
         return [story for story in stories if story.has_happened(now)][:limit]
 
@@ -138,15 +142,17 @@ class StoryStore:
 
     def _get(self, story_id: str) -> Story | None:
         existing = self._collection.get(ids=[story_id], include=["metadatas"])
-        if not existing["ids"]:
+        metadatas = existing["metadatas"]
+        if not existing["ids"] or not metadatas:
             return None
-        return _to_story(existing["ids"][0], existing["metadatas"][0])
+        return _to_story(existing["ids"][0], metadatas[0])
 
     def _mark_told(self, story_id: str) -> bool:
         existing = self._collection.get(ids=[story_id], include=["metadatas"])
-        if not existing["ids"]:
+        metadatas = existing["metadatas"]
+        if not existing["ids"] or not metadatas:
             return False
-        story = _to_story(existing["ids"][0], existing["metadatas"][0])
+        story = _to_story(existing["ids"][0], metadatas[0])
         story.told_at = clock.now()
         self._collection.update(ids=[story.id], metadatas=[_metadata(story)])
         return True
@@ -238,7 +244,7 @@ def _choose_tier() -> StoryTier:
     return random.choices(STORY_TIERS, weights=[tier.weight for tier in STORY_TIERS])[0]
 
 
-def _metadata(story: Story) -> dict:
+def _metadata(story: Story) -> dict[str, str]:
     return {
         "summary": story.summary,
         "content": story.content,
@@ -249,7 +255,7 @@ def _metadata(story: Story) -> dict:
     }
 
 
-def _to_story(story_id: str, metadata: dict) -> Story:
+def _to_story(story_id: str, metadata: Mapping[str, Any]) -> Story:
     occurs_at = metadata.get("occurs_at", "")
     told_at = metadata.get("told_at", "")
     return Story(

@@ -1,7 +1,9 @@
 import asyncio
+import functools
 import itertools
 import logging
 from pathlib import Path
+from typing import Any, cast
 
 from mem0 import Memory
 
@@ -59,8 +61,8 @@ class MemoryStore:
             *[
                 loop.run_in_executor(
                     None,
-                    lambda uid=uid: self._memory.search(
-                        query, user_id=uid, limit=limit
+                    functools.partial(
+                        self._memory.search, query, user_id=uid, limit=limit
                     ),
                 )
                 for uid in banks
@@ -77,25 +79,30 @@ class MemoryStore:
                     memories.append(text)
         return memories
 
-    async def all(self, user_id: str) -> list[dict]:
+    async def all(self, user_id: str) -> list[dict[str, Any]]:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None, lambda: self._memory.get_all(user_id=user_id)
         )
-        return result.get("results", result) if isinstance(result, dict) else result
+        return cast(
+            "list[dict[str, Any]]",
+            result.get("results", result) if isinstance(result, dict) else result,
+        )
 
     async def delete(self, memory_id: str) -> None:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, lambda: self._memory.delete(memory_id))
 
-    async def store(self, conversation: list[dict], user_id: str | None = None) -> None:
+    async def store(
+        self, conversation: list[dict[str, Any]], user_id: str | None = None
+    ) -> None:
         loop = asyncio.get_event_loop()
         targets = [GLOBAL_USER_ID] if user_id is None else [user_id, GLOBAL_USER_ID]
         await asyncio.gather(
             *[
                 loop.run_in_executor(
                     None,
-                    lambda uid=uid: self._memory.add(conversation, user_id=uid),
+                    functools.partial(self._memory.add, conversation, user_id=uid),
                 )
                 for uid in targets
             ]

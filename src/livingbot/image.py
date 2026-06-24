@@ -6,6 +6,7 @@ import logging
 import os
 import random
 from importlib.resources import files
+from typing import Any
 
 import httpx
 
@@ -43,12 +44,15 @@ async def _enhance_prompt(
     return response.choices[0].message.content or description
 
 
-def _load_workflow() -> dict:
+def _load_workflow() -> dict[str, Any]:
     workflow_text = files("livingbot.workflows").joinpath("workflow.json").read_text()
-    return json.loads(workflow_text)
+    workflow: dict[str, Any] = json.loads(workflow_text)
+    return workflow
 
 
-def _inject_prompt(workflow: dict, positive_prompt: str, include_mugda: bool) -> dict:
+def _inject_prompt(
+    workflow: dict[str, Any], positive_prompt: str, include_mugda: bool
+) -> dict[str, Any]:
     workflow = copy.deepcopy(workflow)
     lora_strength = 1.0 if include_mugda else 0.0
     for node in workflow.values():
@@ -64,7 +68,7 @@ def _inject_prompt(workflow: dict, positive_prompt: str, include_mugda: bool) ->
     return workflow
 
 
-async def _submit_job(endpoint_url: str, api_key: str, workflow: dict) -> str:
+async def _submit_job(endpoint_url: str, api_key: str, workflow: dict[str, Any]) -> str:
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{endpoint_url}/run",
@@ -73,7 +77,8 @@ async def _submit_job(endpoint_url: str, api_key: str, workflow: dict) -> str:
             timeout=30.0,
         )
         response.raise_for_status()
-        return response.json()["id"]
+        job_id: str = response.json()["id"]
+        return job_id
 
 
 async def _poll_for_result(endpoint_url: str, api_key: str, job_id: str) -> bytes:
