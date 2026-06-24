@@ -66,15 +66,20 @@ def test_upcoming_excludes_past_and_sorts_by_start() -> None:
     assert result == [sooner, later]
 
 
-def test_prune_past_removes_finished_keeps_ongoing_and_future() -> None:
-    finished = entry(start=datetime(2026, 6, 2, 8, 0), end=datetime(2026, 6, 2, 9, 0))
+def test_prune_past_removes_entries_older_than_30_days_keeps_recent() -> None:
+    old = entry(start=datetime(2026, 5, 1, 8, 0), end=datetime(2026, 5, 1, 9, 0))
+    recent_finished = entry(
+        start=datetime(2026, 6, 2, 8, 0), end=datetime(2026, 6, 2, 9, 0)
+    )
     ongoing = entry(start=datetime(2026, 6, 3, 14, 0), end=datetime(2026, 6, 3, 16, 0))
     future = entry(start=datetime(2026, 6, 5, 18, 0), end=datetime(2026, 6, 5, 19, 0))
-    calendar = Calendar(home_location="home", entries=[finished, ongoing, future])
+    calendar = Calendar(
+        home_location="home", entries=[old, recent_finished, ongoing, future]
+    )
 
     calendar.prune_past(NOW)
 
-    assert calendar.entries == [ongoing, future]
+    assert calendar.entries == [recent_finished, ongoing, future]
 
 
 def test_plan_entry_generates_distinct_ids() -> None:
