@@ -14,6 +14,7 @@ from livingbot.admin.pages.layout import page_layout
 from livingbot.bot import LivingBot
 from livingbot.tools import (
     BotDeps,
+    add_activity_note,
     add_hobby,
     add_item,
     add_plan,
@@ -22,6 +23,7 @@ from livingbot.tools import (
     load_context,
     mark_story_told,
     recall_story,
+    remove_activity_note,
     remove_item,
     remove_plan,
     search_inventory,
@@ -33,6 +35,8 @@ _TOOL_FUNCTIONS: list[Callable[..., Any]] = [
     load_context,
     add_plan,
     remove_plan,
+    add_activity_note,
+    remove_activity_note,
     add_item,
     remove_item,
     search_inventory,
@@ -103,6 +107,7 @@ def register(context: AdminContext) -> None:
                 deps = BotDeps(
                     channel=cast("discord.abc.Messageable", channel),
                     calendar_store=context.calendar_store,
+                    activity_notes_store=context.activity_notes_store,
                     inventory_store=context.inventory_store,
                     spending_store=context.spending_store,
                     hobby_store=context.hobby_store,
