@@ -43,6 +43,7 @@ def make_ctx(
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=calendar_store or MagicMock(),
+        activity_notes_store=MagicMock(),
         inventory_store=inventory_store or make_inventory_store(),
         spending_store=spending_store or make_spending_store(),
         hobby_store=hobby_store or make_hobby_store(),
@@ -308,6 +309,7 @@ def make_photo_ctx() -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=MagicMock(),
+        activity_notes_store=MagicMock(),
         inventory_store=make_inventory_store(),
         spending_store=make_spending_store(),
         hobby_store=make_hobby_store(),
@@ -439,6 +441,7 @@ def make_story_image_ctx(story: Story | None) -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=MagicMock(),
+        activity_notes_store=MagicMock(),
         inventory_store=make_inventory_store(),
         spending_store=make_spending_store(),
         hobby_store=make_hobby_store(),

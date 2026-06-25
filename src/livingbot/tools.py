@@ -9,6 +9,7 @@ from pydantic import Field
 from pydantic_ai import BinaryContent, RunContext
 
 from livingbot import clock, config
+from livingbot.activity_notes import ActivityNote, ActivityNotesStore
 from livingbot.calendar import CalendarStore, PlanEntry
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 class BotDeps:
     channel: discord.abc.Messageable
     calendar_store: CalendarStore
+    activity_notes_store: ActivityNotesStore
     inventory_store: InventoryStore
     spending_store: SpendingStore
     hobby_store: HobbyStore
@@ -109,6 +111,42 @@ async def remove_plan(ctx: RunContext[BotDeps], entry_id: str) -> str:
     calendar.entries = remaining
     ctx.deps.calendar_store.save(calendar)
     return f"Removed calendar entry {entry_id}."
+
+
+async def add_activity_note(ctx: RunContext[BotDeps], activity: str, note: str) -> str:
+    """Save a standing reminder tied to an activity, so you remember it every time you
+    do that activity — e.g. activity "gym", note "bring my new personalised dumbbells".
+    The reminder sticks to every future occurrence of that activity and is attached to
+    any matching plans already on your calendar. Returns the reminder's id."""
+    store = ctx.deps.activity_notes_store
+    notes = store.load()
+    new_note = ActivityNote(activity=activity, note=note)
+    notes.entries.append(new_note)
+    store.save(notes)
+
+    calendar = ctx.deps.calendar_store.load()
+    matched = [e for e in calendar.upcoming(clock.now()) if new_note.matches(e)]
+    for entry in matched:
+        notes.apply_to(entry)
+    if matched:
+        ctx.deps.calendar_store.save(calendar)
+    return (
+        f"Saved [id:{new_note.id}] reminder for '{activity}': {note}. "
+        f"Attached it to {len(matched)} upcoming plan(s)."
+    )
+
+
+async def remove_activity_note(ctx: RunContext[BotDeps], note_id: str) -> str:
+    """Remove a standing activity reminder by its id, e.g. once it no longer applies.
+    The id is shown next to each reminder in your activity notes."""
+    store = ctx.deps.activity_notes_store
+    notes = store.load()
+    remaining = [n for n in notes.entries if n.id != note_id]
+    if len(remaining) == len(notes.entries):
+        return f"No activity reminder with id {note_id}."
+    notes.entries = remaining
+    store.save(notes)
+    return f"Removed activity reminder {note_id}."
 
 
 async def add_item(ctx: RunContext[BotDeps], name: str, description: str = "") -> str:

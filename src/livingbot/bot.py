@@ -11,6 +11,7 @@ import logfire
 from pydantic_ai import BinaryContent
 
 from livingbot import clock, config, llm_config, prompts
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryStore
@@ -115,6 +116,7 @@ class LivingBot(discord.Client):
         relation_store: RelationStore,
         relation_updater: RelationUpdater,
         calendar_store: CalendarStore,
+        activity_notes_store: ActivityNotesStore,
         week_planner: WeekPlanner,
         inventory_store: InventoryStore,
         spending_store: SpendingStore,
@@ -136,6 +138,7 @@ class LivingBot(discord.Client):
         self._relation_store = relation_store
         self._relation_updater = relation_updater
         self._calendar_store = calendar_store
+        self._activity_notes_store = activity_notes_store
         self._week_planner = week_planner
         self._inventory_store = inventory_store
         self._spending_store = spending_store
@@ -161,6 +164,10 @@ class LivingBot(discord.Client):
     @property
     def calendar_store(self) -> CalendarStore:
         return self._calendar_store
+
+    @property
+    def activity_notes_store(self) -> ActivityNotesStore:
+        return self._activity_notes_store
 
     @property
     def inventory_store(self) -> InventoryStore:
@@ -267,9 +274,12 @@ class LivingBot(discord.Client):
         lines: list[str] = [f"Right now it is {now:%A, %Y-%m-%d %H:%M}."]
         current = calendar.current_entry(now)
         if current is not None:
-            lines.append(
+            current_line = (
                 f"You are at {current.location}, busy with {current.activity}."
             )
+            if current.note:
+                current_line += f" ({current.note})"
+            lines.append(current_line)
         else:
             lines.append(f"You are at {calendar.home_location} with nothing scheduled.")
         lines.append("")
@@ -332,6 +342,9 @@ class LivingBot(discord.Client):
             # planner aren't clobbered by this save.
             calendar = self._calendar_store.load()
             calendar.prune_past(now)
+            activity_notes = self._activity_notes_store.load()
+            for entry in entries:
+                activity_notes.apply_to(entry)
             calendar.entries.extend(entries)
             calendar.planned_week_start = week_start
             for entry in entries:
@@ -501,6 +514,7 @@ class LivingBot(discord.Client):
                         formatted,
                         channel,
                         self._calendar_store,
+                        self._activity_notes_store,
                         self._inventory_store,
                         self._spending_store,
                         self._hobby_store,
@@ -617,6 +631,7 @@ def build() -> LivingBot:
         llm_config.build_chat_model(llm_config.RELATION_UPDATER_MODEL)
     )
     calendar_store = CalendarStore(config.CALENDAR_DATA_PATH, config.HOME_LOCATION)
+    activity_notes_store = ActivityNotesStore(config.ACTIVITY_NOTES_DATA_PATH)
     week_planner = WeekPlanner(
         llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL)
     )
@@ -638,6 +653,7 @@ def build() -> LivingBot:
         relation_store=relation_store,
         relation_updater=relation_updater,
         calendar_store=calendar_store,
+        activity_notes_store=activity_notes_store,
         week_planner=week_planner,
         inventory_store=inventory_store,
         spending_store=spending_store,
