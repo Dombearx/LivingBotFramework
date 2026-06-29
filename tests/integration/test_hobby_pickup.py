@@ -16,6 +16,7 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
@@ -73,6 +74,7 @@ def hobby_store_with_gym(tmp_path) -> HobbyStore:
 async def test_add_hobby_called_when_explicitly_asked(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     story_store: StoryStore,
@@ -89,6 +91,7 @@ async def test_add_hobby_called_when_explicitly_asked(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store_empty,
@@ -107,6 +110,7 @@ async def test_add_hobby_called_when_explicitly_asked(
 async def test_add_hobby_called_when_she_starts_a_new_regular_activity(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     story_store: StoryStore,
@@ -123,6 +127,7 @@ async def test_add_hobby_called_when_she_starts_a_new_regular_activity(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store_empty,
@@ -142,6 +147,7 @@ async def test_add_hobby_called_when_she_starts_a_new_regular_activity(
 async def test_add_hobby_not_called_for_one_time_event(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     story_store: StoryStore,
@@ -158,6 +164,7 @@ async def test_add_hobby_not_called_for_one_time_event(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store_empty,
@@ -177,6 +184,7 @@ async def test_add_hobby_not_called_for_one_time_event(
 async def test_add_hobby_not_called_when_hobby_already_exists(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     story_store: StoryStore,
@@ -193,6 +201,7 @@ async def test_add_hobby_not_called_when_hobby_already_exists(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store_with_gym,

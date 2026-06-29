@@ -16,6 +16,7 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
@@ -95,6 +96,7 @@ def inventory_store(tmp_path) -> InventoryStore:
 async def test_add_item_called_and_persisted_when_told_to_save(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -112,6 +114,7 @@ async def test_add_item_called_and_persisted_when_told_to_save(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -130,6 +133,7 @@ async def test_add_item_called_and_persisted_when_told_to_save(
 async def test_search_inventory_called_when_asked_to_check_what_she_owns(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -156,6 +160,7 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -171,6 +176,7 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
 async def test_remove_item_called_when_told_to_discard_a_thing(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -191,6 +197,7 @@ async def test_remove_item_called_when_told_to_discard_a_thing(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -206,6 +213,7 @@ async def test_remove_item_called_when_told_to_discard_a_thing(
 async def test_add_item_called_when_she_receives_a_gift(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -223,6 +231,7 @@ async def test_add_item_called_when_she_receives_a_gift(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -239,6 +248,7 @@ async def test_add_item_called_when_she_receives_a_gift(
 async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_party(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -267,6 +277,7 @@ async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_pa
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,

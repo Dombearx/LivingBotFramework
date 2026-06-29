@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from livingbot import llm_config, prompts
+from livingbot.activity_notes import ActivityNotes
 from livingbot.calendar import Calendar
 from livingbot.hobbies import Hobby, Hobbies
 from livingbot.llm import LLMClient
@@ -60,6 +61,9 @@ def _make_stores() -> tuple:
     calendar_store = MagicMock()
     calendar_store.load = MagicMock(return_value=Calendar(home_location="home"))
 
+    activity_notes_store = MagicMock()
+    activity_notes_store.load = MagicMock(return_value=ActivityNotes())
+
     inventory_store = MagicMock()
     inventory_store.recent = AsyncMock(return_value=[])
     inventory_store.recently_acquired = AsyncMock(return_value=[])
@@ -78,6 +82,7 @@ def _make_stores() -> tuple:
     return (
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -90,6 +95,7 @@ async def _get_response(message: str, mood_value: float) -> str:
     (
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -100,6 +106,7 @@ async def _get_response(message: str, mood_value: float) -> str:
         [message],
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
