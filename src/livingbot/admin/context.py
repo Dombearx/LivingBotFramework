@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.bot import LivingBot
 from livingbot.calendar import CalendarStore
 from livingbot.hobbies import HobbyStore
@@ -18,6 +19,10 @@ class AdminContext:
     @property
     def calendar_store(self) -> CalendarStore:
         return self.bot.calendar_store
+
+    @property
+    def activity_notes_store(self) -> ActivityNotesStore:
+        return self.bot.activity_notes_store
 
     @property
     def inventory_store(self) -> InventoryStore:

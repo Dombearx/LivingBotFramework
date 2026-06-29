@@ -15,6 +15,7 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
@@ -82,6 +83,7 @@ def inventory_store(tmp_path) -> InventoryStore:
 async def test_buy_item_called_and_persisted_when_told_to_buy(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -99,6 +101,7 @@ async def test_buy_item_called_and_persisted_when_told_to_buy(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -117,6 +120,7 @@ async def test_buy_item_called_and_persisted_when_told_to_buy(
 async def test_add_item_not_buy_item_when_she_receives_a_gift(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -135,6 +139,7 @@ async def test_add_item_not_buy_item_when_she_receives_a_gift(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -153,6 +158,7 @@ async def test_add_item_not_buy_item_when_she_receives_a_gift(
 async def test_buy_item_refused_and_not_retried_when_budget_exhausted(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
@@ -172,6 +178,7 @@ async def test_buy_item_refused_and_not_retried_when_budget_exhausted(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         drained,
         hobby_store,
@@ -193,6 +200,7 @@ async def test_buy_item_refused_and_not_retried_when_budget_exhausted(
 async def test_buy_item_called_when_she_decides_to_buy_without_being_told(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -223,6 +231,7 @@ async def test_buy_item_called_when_she_decides_to_buy_without_being_told(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,

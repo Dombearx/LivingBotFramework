@@ -14,6 +14,7 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
@@ -76,6 +77,7 @@ def client() -> LLMClient:
 async def test_load_context_called_when_explicitly_asked(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -97,6 +99,7 @@ async def test_load_context_called_when_explicitly_asked(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -112,6 +115,7 @@ async def test_load_context_called_when_explicitly_asked(
 async def test_load_context_called_for_polish_history_question(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -133,6 +137,7 @@ async def test_load_context_called_for_polish_history_question(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -148,6 +153,7 @@ async def test_load_context_called_for_polish_history_question(
 async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -169,6 +175,7 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -184,6 +191,7 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
 async def test_load_context_called_to_summarize_channel_discussion(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -207,6 +215,7 @@ async def test_load_context_called_to_summarize_channel_discussion(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -222,6 +231,7 @@ async def test_load_context_called_to_summarize_channel_discussion(
 async def test_load_context_called_for_implicit_context_reference(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -245,6 +255,7 @@ async def test_load_context_called_for_implicit_context_reference(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,

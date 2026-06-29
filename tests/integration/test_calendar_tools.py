@@ -15,6 +15,7 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
@@ -59,6 +60,7 @@ def inventory_store(tmp_path) -> InventoryStore:
 async def test_add_plan_called_and_persisted_when_told_to_save(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -75,6 +77,7 @@ async def test_add_plan_called_and_persisted_when_told_to_save(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -93,6 +96,7 @@ async def test_add_plan_called_and_persisted_when_told_to_save(
 async def test_remove_plan_called_when_told_to_cancel(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -116,6 +120,7 @@ async def test_remove_plan_called_when_told_to_cancel(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -131,6 +136,7 @@ async def test_remove_plan_called_when_told_to_cancel(
 async def test_add_plan_called_when_she_accepts_an_invitation(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -148,6 +154,7 @@ async def test_add_plan_called_when_she_accepts_an_invitation(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
@@ -164,6 +171,7 @@ async def test_add_plan_called_when_she_accepts_an_invitation(
 async def test_remove_plan_called_when_a_conflict_replaces_a_session(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -188,6 +196,7 @@ async def test_remove_plan_called_when_a_conflict_replaces_a_session(
         user_messages,
         channel,
         calendar_store,
+        activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,

@@ -6,6 +6,7 @@ from pydantic_ai.messages import UserContent
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import config
+from livingbot.activity_notes import ActivityNotes, ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore
 from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
@@ -16,6 +17,7 @@ from livingbot.stories import Story, StoryStore
 from livingbot.timeformat import humanize_ago
 from livingbot.tools import (
     BotDeps,
+    add_activity_note,
     add_hobby,
     add_item,
     add_plan,
@@ -24,6 +26,7 @@ from livingbot.tools import (
     load_context,
     mark_story_told,
     recall_story,
+    remove_activity_note,
     remove_item,
     remove_plan,
     search_inventory,
@@ -47,6 +50,8 @@ class LLMClient:
                 load_context,
                 add_plan,
                 remove_plan,
+                add_activity_note,
+                remove_activity_note,
                 add_item,
                 remove_item,
                 search_inventory,
@@ -65,6 +70,7 @@ class LLMClient:
         user_messages: list[str],
         channel: discord.abc.Messageable,
         calendar_store: CalendarStore,
+        activity_notes_store: ActivityNotesStore,
         inventory_store: InventoryStore,
         spending_store: SpendingStore,
         hobby_store: HobbyStore,
@@ -79,6 +85,7 @@ class LLMClient:
         deps = BotDeps(
             channel=channel,
             calendar_store=calendar_store,
+            activity_notes_store=activity_notes_store,
             inventory_store=inventory_store,
             spending_store=spending_store,
             hobby_store=hobby_store,
@@ -88,6 +95,7 @@ class LLMClient:
         if photo_hint:
             parts.append(f"{photo_hint}\n\n")
         parts.append(_build_calendar_block(calendar_store.load(), now))
+        parts.append(_build_activity_notes_block(activity_notes_store.load()))
         hobbies = hobby_store.load()
         parts.append(_build_hobbies_block(hobbies))
         recent_items = await inventory_store.recently_acquired(
@@ -116,10 +124,13 @@ def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
     lines: list[str] = [f"Right now it is {now:%A, %Y-%m-%d %H:%M}."]
     current = calendar.current_entry(now)
     if current is not None:
-        lines.append(
+        line = (
             f"You are at {current.location}, busy with {current.activity} "
             f"until {current.end:%H:%M}."
         )
+        if current.note:
+            line += f" ({current.note})"
+        lines.append(line)
     else:
         lines.append(f"You are at {calendar.home_location} with nothing scheduled.")
     upcoming = calendar.upcoming(now)
@@ -133,6 +144,20 @@ def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
             if entry.note:
                 line += f" ({entry.note})"
             lines.append(line)
+    return "\n".join(lines) + "\n\n"
+
+
+def _build_activity_notes_block(notes: ActivityNotes) -> str:
+    if not notes.entries:
+        return ""
+    lines = ["Standing reminders you keep for certain activities:"]
+    for note in notes.entries:
+        lines.append(f"  [id:{note.id}] {note.activity}: {note.note}")
+    lines.append(
+        "These follow you to every occurrence of the activity. Add one with "
+        "add_activity_note and drop it with remove_activity_note once it no longer "
+        "applies."
+    )
     return "\n".join(lines) + "\n\n"
 
 

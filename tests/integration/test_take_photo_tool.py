@@ -22,6 +22,7 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import llm_config, prompts
 from livingbot.prompts import PHOTO_HINT
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
@@ -119,6 +120,7 @@ def _make_complete_kwargs(
     client: LLMClient,
     messages: list[str],
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -129,6 +131,7 @@ def _make_complete_kwargs(
         user_messages=messages,
         channel=MagicMock(),
         calendar_store=calendar_store,
+        activity_notes_store=activity_notes_store,
         inventory_store=inventory_store,
         spending_store=spending_store,
         hobby_store=hobby_store,
@@ -160,6 +163,7 @@ async def _async_bytes() -> bytes:
 async def test_take_photo_called_when_explicitly_instructed(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -176,6 +180,7 @@ async def test_take_photo_called_when_explicitly_instructed(
                     "[id:100] [2026-06-04 18:15:00] Ola: Mugda użyj take_photo i wyślij mi jakieś zdjęcie, co tam u ciebie słychać"
                 ],
                 calendar_store,
+                activity_notes_store,
                 inventory_store,
                 spending_store,
                 hobby_store,
@@ -197,6 +202,7 @@ async def test_take_photo_called_when_explicitly_instructed(
 async def test_take_photo_include_mugda_true_when_selfie_requested(
     client: LLMClient,
     calendar_store_at_gym: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -213,6 +219,7 @@ async def test_take_photo_include_mugda_true_when_selfie_requested(
                     "[id:200] [2026-06-04 18:15:00] Marek: Mugda zrób sobie selfie na siłowni, chcę zobaczyć jak wyglądasz podczas treningu 💪"
                 ],
                 calendar_store_at_gym,
+                activity_notes_store,
                 inventory_store,
                 spending_store,
                 hobby_store,
@@ -238,6 +245,7 @@ async def test_take_photo_include_mugda_true_when_selfie_requested(
 async def test_take_photo_include_mugda_false_when_scenery_requested(
     client: LLMClient,
     calendar_store_at_park: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -254,6 +262,7 @@ async def test_take_photo_include_mugda_false_when_scenery_requested(
                     "[id:300] [2026-06-04 18:15:00] Kasia: Mugda zrób zdjęcie parku, tak żeby nie było ciebie na nim — chcę zobaczyć jak wygląda Łazienkowski o tej porze roku"
                 ],
                 calendar_store_at_park,
+                activity_notes_store,
                 inventory_store,
                 spending_store,
                 hobby_store,
@@ -280,6 +289,7 @@ async def test_take_photo_include_mugda_false_when_scenery_requested(
 async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
     client: LLMClient,
     calendar_store_at_gym: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -297,6 +307,7 @@ async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
                     "[id:400] [2026-06-04 18:15:00] Piotrek: hej Mugda, co tam robisz? wszystko ok? 😊"
                 ],
                 calendar_store_at_gym,
+                activity_notes_store,
                 inventory_store,
                 spending_store,
                 hobby_store,
@@ -319,6 +330,7 @@ async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
 async def test_take_photo_include_mugda_false_when_asked_about_place(
     client: LLMClient,
     calendar_store_at_park: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -336,6 +348,7 @@ async def test_take_photo_include_mugda_false_when_asked_about_place(
                     "[id:500] [2026-06-04 18:15:00] Bartek: Mugda jak tam w Łazienkach dziś wygląda? warto wpaść?"
                 ],
                 calendar_store_at_park,
+                activity_notes_store,
                 inventory_store,
                 spending_store,
                 hobby_store,
@@ -361,6 +374,7 @@ async def test_take_photo_include_mugda_false_when_asked_about_place(
 async def test_take_photo_not_called_for_routine_conversation(
     client: LLMClient,
     calendar_store: CalendarStore,
+    activity_notes_store: ActivityNotesStore,
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
@@ -377,6 +391,7 @@ async def test_take_photo_not_called_for_routine_conversation(
                     "[id:600] [2026-06-04 18:15:00] Ola: Mugda pamiętasz jak się nazywał ten serial co go razem oglądałyśmy w zeszłym roku?"
                 ],
                 calendar_store,
+                activity_notes_store,
                 inventory_store,
                 spending_store,
                 hobby_store,

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from livingbot import config
+from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.hobbies import Hobby, Hobbies
 from livingbot.inventory import InventoryItem
@@ -11,11 +12,13 @@ from datetime import date
 from livingbot.spending import SpendCategory, SpendingState
 from livingbot.tools import (
     BotDeps,
+    add_activity_note,
     add_hobby,
     add_item,
     add_plan,
     buy_item,
     check_budget,
+    remove_activity_note,
     remove_item,
     remove_plan,
     search_inventory,
@@ -43,6 +46,7 @@ def make_ctx(
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=calendar_store or MagicMock(),
+        activity_notes_store=MagicMock(),
         inventory_store=inventory_store or make_inventory_store(),
         spending_store=spending_store or make_spending_store(),
         hobby_store=hobby_store or make_hobby_store(),
@@ -308,6 +312,7 @@ def make_photo_ctx() -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=MagicMock(),
+        activity_notes_store=MagicMock(),
         inventory_store=make_inventory_store(),
         spending_store=make_spending_store(),
         hobby_store=make_hobby_store(),
@@ -439,6 +444,7 @@ def make_story_image_ctx(story: Story | None) -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         calendar_store=MagicMock(),
+        activity_notes_store=MagicMock(),
         inventory_store=make_inventory_store(),
         spending_store=make_spending_store(),
         hobby_store=make_hobby_store(),
@@ -601,3 +607,81 @@ async def test_add_hobby_when_existing_hobbies_have_no_acquired_at_ignores_coold
     result = await add_hobby(ctx, "pottery")
 
     assert result == "Added pottery to your hobbies."
+
+
+def make_activity_ctx(tmp_path) -> SimpleNamespace:
+    return SimpleNamespace(
+        deps=BotDeps(
+            channel=MagicMock(),
+            calendar_store=CalendarStore(tmp_path / "calendar", home_location="home"),
+            activity_notes_store=ActivityNotesStore(tmp_path / "activity_notes"),
+            inventory_store=make_inventory_store(),
+            spending_store=make_spending_store(),
+            hobby_store=make_hobby_store(),
+            story_store=make_story_store(),
+        )
+    )
+
+
+def _future_gym_entry() -> PlanEntry:
+    return PlanEntry(
+        activity="gym session",
+        location="gym",
+        start=datetime(2099, 1, 1, 18, 0),
+        end=datetime(2099, 1, 1, 19, 0),
+        hobby="gym",
+    )
+
+
+async def test_add_activity_note_persists_note_to_store(tmp_path) -> None:
+    ctx = make_activity_ctx(tmp_path)
+
+    await add_activity_note(ctx, "gym", "bring dumbbells")
+
+    saved = ctx.deps.activity_notes_store.load()
+    assert saved.entries[0].note == "bring dumbbells"
+
+
+async def test_add_activity_note_stamps_matching_upcoming_calendar_entry(
+    tmp_path,
+) -> None:
+    ctx = make_activity_ctx(tmp_path)
+    ctx.deps.calendar_store.save(
+        Calendar(home_location="home", entries=[_future_gym_entry()])
+    )
+
+    await add_activity_note(ctx, "gym", "bring dumbbells")
+
+    stamped = ctx.deps.calendar_store.load().entries[0]
+    assert stamped.note == "bring dumbbells"
+
+
+async def test_add_activity_note_reports_number_of_stamped_plans(tmp_path) -> None:
+    ctx = make_activity_ctx(tmp_path)
+    ctx.deps.calendar_store.save(
+        Calendar(home_location="home", entries=[_future_gym_entry()])
+    )
+
+    result = await add_activity_note(ctx, "gym", "bring dumbbells")
+
+    assert "Attached it to 1 upcoming plan(s)." in result
+
+
+async def test_remove_activity_note_when_present_removes_it_from_store(
+    tmp_path,
+) -> None:
+    ctx = make_activity_ctx(tmp_path)
+    await add_activity_note(ctx, "gym", "bring dumbbells")
+    note_id = ctx.deps.activity_notes_store.load().entries[0].id
+
+    await remove_activity_note(ctx, note_id)
+
+    assert ctx.deps.activity_notes_store.load().entries == []
+
+
+async def test_remove_activity_note_when_id_missing_returns_not_found(tmp_path) -> None:
+    ctx = make_activity_ctx(tmp_path)
+
+    result = await remove_activity_note(ctx, "nope1234")
+
+    assert result == "No activity reminder with id nope1234."
