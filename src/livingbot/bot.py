@@ -623,7 +623,8 @@ def build() -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
     llm_client = LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
+        llm_config.build_chat_model(llm_config.CHAT_MODEL, reasoning_effort="low"),
+        prompts.SYSTEM_PROMPT,
     )
     memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
     relation_store = RelationStore(config.RELATION_DATA_PATH)

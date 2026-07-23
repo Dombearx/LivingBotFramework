@@ -27,7 +27,14 @@ class MemoryStore:
                     "collection_name": "bot_memories",
                     "path": str(data_path),
                 },
-            }
+            },
+            "llm": {
+                "provider": "openai",
+                "config": {
+                    "model": "gpt-5-nano",
+                    "reasoning_effort": "low",
+                },
+            },
         }
         return cls(Memory.from_config(config))
 
@@ -101,7 +108,7 @@ class MemoryStore:
         self, conversation: list[dict[str, Any]], user_id: str | None = None
     ) -> None:
         loop = asyncio.get_event_loop()
-        targets = [GLOBAL_USER_ID] if user_id is None else [user_id, GLOBAL_USER_ID]
+        targets = [GLOBAL_USER_ID] if user_id is None else [user_id]
         with logfire.span("memory.store", targets=targets, turns=len(conversation)):
             await asyncio.gather(
                 *[
