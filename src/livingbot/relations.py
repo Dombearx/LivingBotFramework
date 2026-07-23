@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -47,7 +47,7 @@ class RelationStore:
 
 class RelationUpdater:
     @classmethod
-    def create(cls) -> "RelationUpdater":
+    def create(cls) -> Self:
         return cls(llm_config.build_chat_model(llm_config.RELATION_UPDATER_MODEL))
 
     def __init__(self, model: OpenAIChatModel) -> None:

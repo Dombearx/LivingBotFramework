@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Self
 
 from pydantic import BaseModel
 from pydantic_ai import Agent
@@ -32,7 +33,7 @@ class SpontaneousStore:
 
 class SpontaneousMessenger:
     @classmethod
-    def create(cls) -> "SpontaneousMessenger":
+    def create(cls) -> Self:
         return cls(llm_config.build_chat_model(llm_config.SPONTANEOUS_MESSENGER_MODEL))
 
     def __init__(self, model: OpenAIChatModel) -> None:

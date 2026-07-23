@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import chromadb
 from pydantic import BaseModel, Field
@@ -189,7 +189,7 @@ class GeneratedStory(BaseModel):
 
 class StoryGenerator:
     @classmethod
-    def create(cls) -> "StoryGenerator":
+    def create(cls) -> Self:
         return cls(llm_config.build_chat_model(llm_config.STORY_GENERATOR_MODEL))
 
     def __init__(self, model: OpenAIChatModel) -> None:

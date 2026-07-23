@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Self
 
 import discord
 from pydantic_ai import Agent, AgentRunResult, BinaryContent
@@ -47,7 +48,7 @@ class LLMResult:
 
 class LLMClient:
     @classmethod
-    def create(cls) -> "LLMClient":
+    def create(cls) -> Self:
         return cls(
             llm_config.build_chat_model(llm_config.CHAT_MODEL, reasoning_effort="low"),
             prompts.SYSTEM_PROMPT,

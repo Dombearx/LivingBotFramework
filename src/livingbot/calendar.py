@@ -2,6 +2,7 @@ import logging
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Self
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -72,7 +73,7 @@ class WeekPlan(BaseModel):
 
 class WeekPlanner:
     @classmethod
-    def create(cls) -> "WeekPlanner":
+    def create(cls) -> Self:
         return cls(llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL))
 
     def __init__(self, model: OpenAIChatModel) -> None:
