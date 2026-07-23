@@ -16,7 +16,7 @@ import pytest
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from livingbot import llm_config, prompts
+from livingbot import llm_config
 from livingbot.activity_notes import ActivityNotes
 from livingbot.calendar import Calendar
 from livingbot.hobbies import Hobby, HobbyLevel, Hobbies
@@ -52,9 +52,7 @@ async def _judge(response: str, rubric: str) -> _ToneVerdict:
 
 
 def _make_client() -> LLMClient:
-    return LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
-    )
+    return LLMClient.create()
 
 
 def _make_stores(hobby_level: HobbyLevel) -> tuple:

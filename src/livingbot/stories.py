@@ -5,14 +5,14 @@ import uuid
 from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import chromadb
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
-from livingbot import clock
+from livingbot import clock, llm_config
 from livingbot.prompts import (
     STORY_GENERATOR_SYSTEM_PROMPT,
     STORY_TIER_NORMAL,
@@ -188,6 +188,10 @@ class GeneratedStory(BaseModel):
 
 
 class StoryGenerator:
+    @classmethod
+    def create(cls) -> Self:
+        return cls(llm_config.build_chat_model(llm_config.STORY_GENERATOR_MODEL))
+
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, GeneratedStory] = Agent(
             model,

@@ -14,7 +14,6 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-from livingbot import llm_config, prompts
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.hobbies import HobbyStore
@@ -42,9 +41,7 @@ def _tool_was_called(result, tool_name: str) -> bool:
 
 @pytest.fixture
 def client() -> LLMClient:
-    return LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
-    )
+    return LLMClient.create()
 
 
 @pytest.fixture

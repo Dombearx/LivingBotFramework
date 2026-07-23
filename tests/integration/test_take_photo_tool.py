@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
-from livingbot import llm_config, prompts
 from livingbot.prompts import PHOTO_HINT
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
@@ -60,9 +59,7 @@ def _take_photo_args(result) -> dict:
 
 @pytest.fixture
 def client() -> LLMClient:
-    return LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
-    )
+    return LLMClient.create()
 
 
 @pytest.fixture

@@ -10,7 +10,6 @@ import os
 
 import pytest
 
-from livingbot import llm_config
 from livingbot.relations import Relation, RelationUpdater
 
 pytestmark = pytest.mark.skipif(
@@ -25,9 +24,7 @@ def _convo(*turns: tuple[str, str]) -> list[dict]:
 
 @pytest.fixture
 def updater() -> RelationUpdater:
-    return RelationUpdater(
-        llm_config.build_chat_model(llm_config.RELATION_UPDATER_MODEL)
-    )
+    return RelationUpdater.create()
 
 
 async def test_attitude_increases_after_warm_friendly_exchange(

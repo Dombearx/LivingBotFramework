@@ -1,11 +1,12 @@
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
+from livingbot import llm_config
 from livingbot.prompts import RELATION_UPDATE_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,10 @@ class RelationStore:
 
 
 class RelationUpdater:
+    @classmethod
+    def create(cls) -> Self:
+        return cls(llm_config.build_chat_model(llm_config.RELATION_UPDATER_MODEL))
+
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, Relation] = Agent(
             model,

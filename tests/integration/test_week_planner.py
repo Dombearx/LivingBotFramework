@@ -11,7 +11,6 @@ from datetime import date, datetime
 
 import pytest
 
-from livingbot import llm_config
 from livingbot.calendar import WeekPlanner
 
 pytestmark = pytest.mark.skipif(
@@ -25,7 +24,7 @@ WEEK_END = datetime(2026, 6, 7, 23, 59)
 
 @pytest.fixture
 def planner() -> WeekPlanner:
-    return WeekPlanner(llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL))
+    return WeekPlanner.create()
 
 
 async def test_plan_produces_entries(planner: WeekPlanner) -> None:

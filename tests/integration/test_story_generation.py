@@ -52,7 +52,7 @@ async def _judge(story_text: str, rubric: str) -> _StoryVerdict:
 
 @pytest.fixture
 def generator() -> StoryGenerator:
-    return StoryGenerator(llm_config.build_chat_model(llm_config.STORY_GENERATOR_MODEL))
+    return StoryGenerator.create()
 
 
 async def test_generated_story_reads_like_a_personal_anecdote(
