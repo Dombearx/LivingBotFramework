@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 import logfire
+from pydantic_ai import Agent, ModelSettings
 
 from livingbot import llm_config
 from livingbot.prompts import IMAGE_ENHANCER_SYSTEM_PROMPT, SELFIE_PERSONA
@@ -18,6 +19,15 @@ logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL_SECONDS = 3.0
 _POLL_TIMEOUT_SECONDS = 120.0
+
+
+def _build_enhancer_agent() -> Agent[None, str]:
+    return Agent(
+        llm_config.build_chat_model(llm_config.PROMPT_ENHANCER_MODEL),
+        name="prompt_enhancer",
+        instructions=IMAGE_ENHANCER_SYSTEM_PROMPT,
+        model_settings=ModelSettings(max_tokens=400, temperature=0.7),
+    )
 
 
 async def _enhance_prompt(
@@ -32,18 +42,10 @@ async def _enhance_prompt(
             persona += f" She is wearing: {outfit_description}."
         parts.append(persona)
     user_message = " ".join(parts)
-    client = llm_config.build_openai_client()
+    agent = _build_enhancer_agent()
     with logfire.span("enhance_image_prompt", model=llm_config.PROMPT_ENHANCER_MODEL):
-        response = await client.chat.completions.create(
-            model=llm_config.PROMPT_ENHANCER_MODEL,
-            messages=[
-                {"role": "system", "content": IMAGE_ENHANCER_SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            max_tokens=400,
-            temperature=0.7,
-        )
-    return response.choices[0].message.content or description
+        result = await agent.run(user_message)
+    return result.output or description
 
 
 def _load_workflow() -> dict[str, Any]:
