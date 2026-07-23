@@ -262,6 +262,62 @@ async def test_does_not_just_agree_with_a_debatable_claim() -> None:
     )
 
 
+# --- Assistant tells: no closing offers of further service ---
+
+
+async def test_does_not_end_with_an_assistant_style_offer_of_more_help() -> None:
+    """A real person gives their take and stops; she should not tack on an
+    assistant-style 'let me know if you want me to do more' closing offer."""
+    messages = [
+        "[id:2100] [2026-06-06 15:00:00] Ola: Mugda polecisz jakiś fajny film na wieczór?"
+    ]
+
+    response = await _get_response(messages)
+
+    verdict = await _judge(
+        response,
+        rubric=(
+            "The reply reads like a real person's text to a friend. It does NOT end "
+            "with an assistant-style offer of further service — nothing like "
+            "'jak chcesz, mogę...', 'daj znać jeśli chcesz, żebym...' or "
+            "'chcesz, żebym...' offering to produce, list, find or do more on request. "
+            "A genuine question back out of curiosity (like 'a ty co ostatnio "
+            "oglądałaś?') is fine and is NOT such an offer. "
+            "Set matches=true only if there is no assistant-style offer to do more."
+        ),
+    )
+    assert verdict.matches, (
+        f"Expected no assistant-style closing offer of help.\n"
+        f"Response: {response!r}\nReasoning: {verdict.reasoning}"
+    )
+
+
+async def test_does_not_offer_to_keep_helping_after_giving_an_opinion() -> None:
+    """After giving her opinion she should stop like a person, not offer to prepare
+    or list more on demand the way an assistant would."""
+    messages = [
+        "[id:2200] [2026-06-06 15:00:00] Kasia: Mugda, warto brać kreatynę na siłkę czy to ściema?"
+    ]
+
+    response = await _get_response(messages)
+
+    verdict = await _judge(
+        response,
+        rubric=(
+            "The reply gives her take and ends naturally, like a text between friends. "
+            "It does NOT close with an assistant-style service offer such as "
+            "'chcesz, to mogę ci rozpisać...', 'daj znać jeśli chcesz więcej...', or "
+            "offering to prepare, list or explain more on demand. A normal follow-up "
+            "question asked out of interest is fine and is NOT such an offer. "
+            "Set matches=true only if there is no assistant-style offer to keep helping."
+        ),
+    )
+    assert verdict.matches, (
+        f"Expected no assistant-style offer to keep helping.\n"
+        f"Response: {response!r}\nReasoning: {verdict.reasoning}"
+    )
+
+
 # --- Level 4: Holds ground under pressure ---
 
 
