@@ -48,7 +48,8 @@ class RelationUpdater:
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, Relation] = Agent(
             model,
-            system_prompt=RELATION_UPDATE_SYSTEM_PROMPT,
+            name="relation_updater",
+            instructions=RELATION_UPDATE_SYSTEM_PROMPT,
             output_type=Relation,
         )
 

@@ -79,64 +79,47 @@ def test_inject_prompt_sets_lora_strength_to_zero_when_mugda_excluded() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_openai_response(content: str) -> MagicMock:
-    choice = MagicMock()
-    choice.message.content = content
-    response = MagicMock()
-    response.choices = [choice]
-    return response
+def _make_enhancer_agent(output: str) -> MagicMock:
+    agent = MagicMock()
+    agent.run = AsyncMock(return_value=MagicMock(output=output))
+    return agent
 
 
-@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
-@patch("livingbot.llm_config.AsyncOpenAI")
+@patch("livingbot.image._build_enhancer_agent")
 async def test_enhance_prompt_without_mugda_sends_only_description(
-    mock_openai_cls: MagicMock,
+    mock_build_agent: MagicMock,
 ) -> None:
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(
-        return_value=_make_openai_response("tags")
-    )
-    mock_openai_cls.return_value = client
+    agent = _make_enhancer_agent("tags")
+    mock_build_agent.return_value = agent
 
     await _enhance_prompt(
         "rainy street at night", include_mugda=False, outfit_description=""
     )
 
-    call_kwargs = client.chat.completions.create.call_args
-    messages = call_kwargs.kwargs["messages"]
-    user_content = next(m["content"] for m in messages if m["role"] == "user")
+    user_content = agent.run.call_args.args[0]
     assert "rainy street at night" in user_content
     assert "Mugda" not in user_content
 
 
-@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
-@patch("livingbot.llm_config.AsyncOpenAI")
+@patch("livingbot.image._build_enhancer_agent")
 async def test_enhance_prompt_with_mugda_includes_mugda_in_message(
-    mock_openai_cls: MagicMock,
+    mock_build_agent: MagicMock,
 ) -> None:
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(
-        return_value=_make_openai_response("tags")
-    )
-    mock_openai_cls.return_value = client
+    agent = _make_enhancer_agent("tags")
+    mock_build_agent.return_value = agent
 
     await _enhance_prompt("at the gym", include_mugda=True, outfit_description="")
 
-    messages = client.chat.completions.create.call_args.kwargs["messages"]
-    user_content = next(m["content"] for m in messages if m["role"] == "user")
+    user_content = agent.run.call_args.args[0]
     assert "Mugda" in user_content
 
 
-@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
-@patch("livingbot.llm_config.AsyncOpenAI")
+@patch("livingbot.image._build_enhancer_agent")
 async def test_enhance_prompt_with_outfit_includes_outfit_in_message(
-    mock_openai_cls: MagicMock,
+    mock_build_agent: MagicMock,
 ) -> None:
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(
-        return_value=_make_openai_response("tags")
-    )
-    mock_openai_cls.return_value = client
+    agent = _make_enhancer_agent("tags")
+    mock_build_agent.return_value = agent
 
     await _enhance_prompt(
         "at the gym",
@@ -144,39 +127,32 @@ async def test_enhance_prompt_with_outfit_includes_outfit_in_message(
         outfit_description="black sports bra, grey leggings",
     )
 
-    messages = client.chat.completions.create.call_args.kwargs["messages"]
-    user_content = next(m["content"] for m in messages if m["role"] == "user")
+    user_content = agent.run.call_args.args[0]
     assert "black sports bra, grey leggings" in user_content
 
 
-@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
-@patch("livingbot.llm_config.AsyncOpenAI")
+@patch("livingbot.image._build_enhancer_agent")
 async def test_enhance_prompt_without_mugda_ignores_outfit_description(
-    mock_openai_cls: MagicMock,
+    mock_build_agent: MagicMock,
 ) -> None:
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(
-        return_value=_make_openai_response("tags")
-    )
-    mock_openai_cls.return_value = client
+    agent = _make_enhancer_agent("tags")
+    mock_build_agent.return_value = agent
 
     await _enhance_prompt(
         "forest path", include_mugda=False, outfit_description="red dress"
     )
 
-    messages = client.chat.completions.create.call_args.kwargs["messages"]
-    user_content = next(m["content"] for m in messages if m["role"] == "user")
+    user_content = agent.run.call_args.args[0]
     assert "red dress" not in user_content
 
 
-@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
-@patch("livingbot.llm_config.AsyncOpenAI")
-async def test_enhance_prompt_returns_model_content(mock_openai_cls: MagicMock) -> None:
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(
-        return_value=_make_openai_response("a vivid scene | photorealistic, 8k")
+@patch("livingbot.image._build_enhancer_agent")
+async def test_enhance_prompt_returns_model_content(
+    mock_build_agent: MagicMock,
+) -> None:
+    mock_build_agent.return_value = _make_enhancer_agent(
+        "a vivid scene | photorealistic, 8k"
     )
-    mock_openai_cls.return_value = client
 
     result = await _enhance_prompt(
         "beach sunset", include_mugda=False, outfit_description=""
@@ -185,18 +161,11 @@ async def test_enhance_prompt_returns_model_content(mock_openai_cls: MagicMock) 
     assert result == "a vivid scene | photorealistic, 8k"
 
 
-@patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"})
-@patch("livingbot.llm_config.AsyncOpenAI")
-async def test_enhance_prompt_when_model_returns_none_falls_back_to_description(
-    mock_openai_cls: MagicMock,
+@patch("livingbot.image._build_enhancer_agent")
+async def test_enhance_prompt_when_model_returns_empty_output_falls_back_to_description(
+    mock_build_agent: MagicMock,
 ) -> None:
-    choice = MagicMock()
-    choice.message.content = None
-    response = MagicMock()
-    response.choices = [choice]
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=response)
-    mock_openai_cls.return_value = client
+    mock_build_agent.return_value = _make_enhancer_agent("")
 
     result = await _enhance_prompt(
         "beach sunset", include_mugda=False, outfit_description=""
@@ -232,14 +201,13 @@ def _make_runpod_responses(
     {
         "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
         "RUNPOD_API_KEY": "key",
-        "OPENROUTER_API_KEY": "key",
     },
 )
-@patch("livingbot.llm_config.AsyncOpenAI")
+@patch("livingbot.image._build_enhancer_agent")
 @patch("livingbot.image.httpx.AsyncClient")
 async def test_generate_image_returns_decoded_image_bytes(
     mock_httpx_cls: MagicMock,
-    mock_openai_cls: MagicMock,
+    mock_build_agent: MagicMock,
 ) -> None:
     raw_bytes = b"fake-image-data"
     image_b64 = base64.b64encode(raw_bytes).decode()
@@ -252,11 +220,9 @@ async def test_generate_image_returns_decoded_image_bytes(
     http_client.__aexit__ = AsyncMock(return_value=False)
     mock_httpx_cls.return_value = http_client
 
-    openai_client = MagicMock()
-    openai_client.chat.completions.create = AsyncMock(
-        return_value=_make_openai_response("enhanced prompt | photorealistic")
+    mock_build_agent.return_value = _make_enhancer_agent(
+        "enhanced prompt | photorealistic"
     )
-    mock_openai_cls.return_value = openai_client
 
     result = await generate_image("gym selfie", include_mugda=True)
 
@@ -268,14 +234,13 @@ async def test_generate_image_returns_decoded_image_bytes(
     {
         "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
         "RUNPOD_API_KEY": "key",
-        "OPENROUTER_API_KEY": "key",
     },
 )
-@patch("livingbot.llm_config.AsyncOpenAI")
+@patch("livingbot.image._build_enhancer_agent")
 @patch("livingbot.image.httpx.AsyncClient")
 async def test_generate_image_submits_workflow_to_runpod(
     mock_httpx_cls: MagicMock,
-    mock_openai_cls: MagicMock,
+    mock_build_agent: MagicMock,
 ) -> None:
     submit_resp, poll_resp = _make_runpod_responses(
         image_b64=base64.b64encode(b"img").decode()
@@ -288,11 +253,7 @@ async def test_generate_image_submits_workflow_to_runpod(
     http_client.__aexit__ = AsyncMock(return_value=False)
     mock_httpx_cls.return_value = http_client
 
-    openai_client = MagicMock()
-    openai_client.chat.completions.create = AsyncMock(
-        return_value=_make_openai_response("scene | tags")
-    )
-    mock_openai_cls.return_value = openai_client
+    mock_build_agent.return_value = _make_enhancer_agent("scene | tags")
 
     await generate_image("rainy park", include_mugda=False)
 
@@ -306,14 +267,13 @@ async def test_generate_image_submits_workflow_to_runpod(
     {
         "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
         "RUNPOD_API_KEY": "key",
-        "OPENROUTER_API_KEY": "key",
     },
 )
-@patch("livingbot.llm_config.AsyncOpenAI")
+@patch("livingbot.image._build_enhancer_agent")
 @patch("livingbot.image.httpx.AsyncClient")
 async def test_generate_image_raises_when_job_fails(
     mock_httpx_cls: MagicMock,
-    mock_openai_cls: MagicMock,
+    mock_build_agent: MagicMock,
 ) -> None:
     submit_resp = MagicMock()
     submit_resp.raise_for_status = MagicMock()
@@ -330,11 +290,7 @@ async def test_generate_image_raises_when_job_fails(
     http_client.__aexit__ = AsyncMock(return_value=False)
     mock_httpx_cls.return_value = http_client
 
-    openai_client = MagicMock()
-    openai_client.chat.completions.create = AsyncMock(
-        return_value=_make_openai_response("scene | tags")
-    )
-    mock_openai_cls.return_value = openai_client
+    mock_build_agent.return_value = _make_enhancer_agent("scene | tags")
 
     with pytest.raises(RuntimeError, match="FAILED"):
         await generate_image("beach", include_mugda=False)

@@ -191,7 +191,8 @@ class StoryGenerator:
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, GeneratedStory] = Agent(
             model,
-            system_prompt=STORY_GENERATOR_SYSTEM_PROMPT,
+            name="story_generator",
+            instructions=STORY_GENERATOR_SYSTEM_PROMPT,
             output_type=GeneratedStory,
         )
 

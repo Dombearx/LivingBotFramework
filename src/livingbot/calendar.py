@@ -73,7 +73,8 @@ class WeekPlanner:
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, WeekPlan] = Agent(
             model,
-            system_prompt=WEEK_PLAN_SYSTEM_PROMPT,
+            name="week_planner",
+            instructions=WEEK_PLAN_SYSTEM_PROMPT,
             output_type=WeekPlan,
         )
 

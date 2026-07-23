@@ -12,7 +12,7 @@ dependencies = [
     "mem0ai>=2.0.4",
     "nicegui>=3.13.0",
     "openai>=2.38.0",
-    "pydantic-ai>=1.104.0",
+    "pydantic-ai-slim[openai]>=2.16.0",
 ]
 
 [project.scripts]

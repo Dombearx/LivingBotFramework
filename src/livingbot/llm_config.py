@@ -1,6 +1,5 @@
 import os
 
-from openai import AsyncOpenAI
 from openai.types.shared import ReasoningEffort
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -36,7 +35,3 @@ def build_chat_model(
         provider=OpenAIProvider(base_url=_base_url(), api_key=_api_key()),
         settings=settings,
     )
-
-
-def build_openai_client() -> AsyncOpenAI:
-    return AsyncOpenAI(base_url=_base_url(), api_key=_api_key())
