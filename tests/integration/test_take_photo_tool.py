@@ -5,7 +5,7 @@ Progression:
   1. Explicit instruction to take a photo with tool name mentioned
   2. Explicit instruction to take a selfie — should use include_mugda=True
   3. Explicit instruction to take a photo of surroundings — include_mugda=False
-  4. Natural context (at the gym, asked how she's doing) — should decide to take photo
+  4. Natural context (at the gym, asked to show a photo) — should take one
   5. Natural context asking about a place she's at — photo of scenery, not selfie
   6. Unambiguous "no photo needed" conversation — must NOT call take_photo
 
@@ -278,12 +278,12 @@ async def test_take_photo_include_mugda_false_when_scenery_requested(
 
 
 # ---------------------------------------------------------------------------
-# 4. Natural context: asked how she's doing while at the gym + hint present
-#    She should decide to take a photo on her own
+# 4. Natural context: the group directly asks to see a photo from the gym
+#    A genuine "show us" request should make her take one
 # ---------------------------------------------------------------------------
 
 
-async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
+async def test_take_photo_called_when_group_asks_to_see_a_photo(
     client: LLMClient,
     calendar_store_at_gym: CalendarStore,
     activity_notes_store: ActivityNotesStore,
@@ -292,8 +292,8 @@ async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
     hobby_store: HobbyStore,
     story_store: StoryStore,
 ) -> None:
-    """Natural trigger: someone asks how she's doing while she's mid-workout.
-    The hint is present, so she should choose to take a gym photo."""
+    """A direct request to see a photo while she's at the gym should trigger
+    take_photo, without the tool being named."""
     with patch(
         "livingbot.image.generate_image", new=AsyncMock(return_value=b"\xff\xd8\xff")
     ):
@@ -301,7 +301,8 @@ async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
             **_make_complete_kwargs(
                 client,
                 [
-                    "[id:400] [2026-06-04 18:15:00] Piotrek: hej Mugda, co tam robisz? wszystko ok? 😊"
+                    "[id:400] [2026-06-04 18:15:00] Piotrek: ej Mugda pokaż no jakąś "
+                    "fotkę z siłowni, chcemy zobaczyć jak tam u ciebie 💪"
                 ],
                 calendar_store_at_gym,
                 activity_notes_store,
@@ -314,7 +315,7 @@ async def test_take_photo_called_naturally_when_at_gym_and_hint_present(
         )
 
     assert _tool_was_called(result, "take_photo"), (
-        f"Expected take_photo to be called spontaneously at the gym with hint. "
+        f"Expected take_photo to be called after a direct request to see a photo. "
         f"Response: {result.output}"
     )
 
