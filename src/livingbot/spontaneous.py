@@ -32,7 +32,9 @@ class SpontaneousStore:
 class SpontaneousMessenger:
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, str] = Agent(
-            model, system_prompt=SPONTANEOUS_MESSAGE_SYSTEM_PROMPT
+            model,
+            name="spontaneous_messenger",
+            instructions=SPONTANEOUS_MESSAGE_SYSTEM_PROMPT,
         )
 
     async def compose(self, context: str) -> str | None:

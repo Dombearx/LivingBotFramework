@@ -42,10 +42,11 @@ class LLMResult:
 
 
 class LLMClient:
-    def __init__(self, model: OpenAIChatModel, system_prompt: str) -> None:
+    def __init__(self, model: OpenAIChatModel, instructions: str) -> None:
         self._agent: Agent[BotDeps, str] = Agent(
             model,
-            system_prompt=system_prompt,
+            name="chat",
+            instructions=instructions,
             tools=[
                 load_context,
                 add_plan,
