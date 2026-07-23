@@ -2,7 +2,7 @@ from datetime import datetime
 
 import discord
 from pydantic_ai import Agent, AgentRunResult, BinaryContent
-from pydantic_ai.messages import UserContent
+from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import config
@@ -37,8 +37,12 @@ from livingbot.tools import (
 
 class LLMResult:
     def __init__(self, run_result: AgentRunResult[str], deps: BotDeps) -> None:
+        self._run_result = run_result
         self.output: str = run_result.output
         self.photo: bytes | None = deps.photo_result
+
+    def all_messages(self) -> list[ModelMessage]:
+        return self._run_result.all_messages()
 
 
 class LLMClient:
