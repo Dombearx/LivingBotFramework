@@ -41,26 +41,31 @@ def _recent_filler_items() -> list[InventoryItem]:
         InventoryItem(
             name="czarna sukienka koktajlowa",
             description="elegancka, do kolan",
+            acquired_at=LONG_AGO,
             last_used_at=RECENTLY_USED,
         ),
         InventoryItem(
             name="kozaki za kolano",
             description="czarne, skórzane",
+            acquired_at=LONG_AGO,
             last_used_at=RECENTLY_USED,
         ),
         InventoryItem(
             name="skórzana ramoneska",
             description="brązowa kurtka",
+            acquired_at=LONG_AGO,
             last_used_at=RECENTLY_USED,
         ),
         InventoryItem(
             name="srebrny naszyjnik z księżycem",
             description="drobny, na cienkim łańcuszku",
+            acquired_at=LONG_AGO,
             last_used_at=RECENTLY_USED,
         ),
         InventoryItem(
             name="jedwabna apaszka w kwiaty",
             description="pastelowa",
+            acquired_at=LONG_AGO,
             last_used_at=RECENTLY_USED,
         ),
     ]
@@ -144,6 +149,7 @@ async def test_search_inventory_called_when_asked_to_check_what_she_owns(
         InventoryItem(
             name="strój kąpielowy",
             description="niebieski, jednoczęściowy",
+            acquired_at=LONG_AGO,
             last_used_at=LONG_AGO,
         )
     )
@@ -181,7 +187,11 @@ async def test_remove_item_called_when_told_to_discard_a_thing(
 ) -> None:
     """Explicit: told an item is gone for good, she should drop it from inventory."""
     await inventory_store.add(
-        InventoryItem(name="czarne glany", description="skórzane, sznurowane")
+        InventoryItem(
+            name="czarne glany",
+            description="skórzane, sznurowane",
+            acquired_at=LONG_AGO,
+        )
     )
     channel = MagicMock()
     user_messages = [
@@ -260,6 +270,7 @@ async def test_search_inventory_called_when_deciding_what_to_wear_for_a_theme_pa
         InventoryItem(
             name="neonowe legginsy",
             description="jaskrawe różowe, w stylu lat 80",
+            acquired_at=LONG_AGO,
             last_used_at=LONG_AGO,
         )
     )

@@ -29,6 +29,7 @@ pytestmark = pytest.mark.skipif(
 
 NOW = datetime(2026, 6, 3, 14, 30)
 RECENTLY_USED = datetime(2026, 6, 2, 12, 0)
+LONG_AGO = datetime(2026, 4, 1, 12, 0)
 
 
 def _tool_was_called(result, tool_name: str) -> bool:
@@ -215,7 +216,12 @@ async def test_buy_item_called_when_she_decides_to_buy_without_being_told(
         ("szorty do siłowni", "czarne, stretch"),
     ]:
         await inventory_store.add(
-            InventoryItem(name=name, description=desc, last_used_at=RECENTLY_USED)
+            InventoryItem(
+                name=name,
+                description=desc,
+                acquired_at=LONG_AGO,
+                last_used_at=RECENTLY_USED,
+            )
         )
     channel = MagicMock()
     user_messages = [
