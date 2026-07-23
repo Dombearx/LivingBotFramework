@@ -66,7 +66,8 @@ def _make_drained_spending_store(tmp_path) -> SpendingStore:
 @pytest.fixture
 def client() -> LLMClient:
     return LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
+        llm_config.build_chat_model(llm_config.CHAT_MODEL, reasoning_effort="low"),
+        prompts.SYSTEM_PROMPT,
     )
 
 

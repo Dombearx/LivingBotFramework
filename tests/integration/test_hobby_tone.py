@@ -53,7 +53,8 @@ async def _judge(response: str, rubric: str) -> _ToneVerdict:
 
 def _make_client() -> LLMClient:
     return LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL), prompts.SYSTEM_PROMPT
+        llm_config.build_chat_model(llm_config.CHAT_MODEL, reasoning_effort="low"),
+        prompts.SYSTEM_PROMPT,
     )
 
 
