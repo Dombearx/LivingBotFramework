@@ -10,7 +10,7 @@ import discord
 import logfire
 from pydantic_ai import BinaryContent
 
-from livingbot import clock, config, llm_config, prompts
+from livingbot import clock, config, prompts
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
@@ -622,32 +622,21 @@ class LivingBot(discord.Client):
 def build() -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
-    llm_client = LLMClient(
-        llm_config.build_chat_model(llm_config.CHAT_MODEL, reasoning_effort="low"),
-        prompts.SYSTEM_PROMPT,
-    )
+    llm_client = LLMClient.create()
     memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
     relation_store = RelationStore(config.RELATION_DATA_PATH)
-    relation_updater = RelationUpdater(
-        llm_config.build_chat_model(llm_config.RELATION_UPDATER_MODEL)
-    )
+    relation_updater = RelationUpdater.create()
     calendar_store = CalendarStore(config.CALENDAR_DATA_PATH, config.HOME_LOCATION)
     activity_notes_store = ActivityNotesStore(config.ACTIVITY_NOTES_DATA_PATH)
-    week_planner = WeekPlanner(
-        llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL)
-    )
+    week_planner = WeekPlanner.create()
     inventory_store = InventoryStore.create(config.INVENTORY_DATA_PATH)
     spending_store = SpendingStore(config.SPENDING_DATA_PATH)
     hobby_store = HobbyStore(config.HOBBY_DATA_PATH, config.DEFAULT_HOBBIES)
     story_store = StoryStore.create(config.STORY_DATA_PATH)
-    story_generator = StoryGenerator(
-        llm_config.build_chat_model(llm_config.STORY_GENERATOR_MODEL)
-    )
+    story_generator = StoryGenerator.create()
     mood_store = MoodStore(config.MOOD_DATA_PATH)
     spontaneous_store = SpontaneousStore(config.SPONTANEOUS_DATA_PATH)
-    spontaneous_messenger = SpontaneousMessenger(
-        llm_config.build_chat_model(llm_config.SPONTANEOUS_MESSENGER_MODEL)
-    )
+    spontaneous_messenger = SpontaneousMessenger.create()
     return LivingBot(
         llm_client=llm_client,
         memory_store=memory_store,

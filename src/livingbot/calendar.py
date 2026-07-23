@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
+from livingbot import llm_config
 from livingbot.prompts import WEEK_PLAN_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,10 @@ class WeekPlan(BaseModel):
 
 
 class WeekPlanner:
+    @classmethod
+    def create(cls) -> "WeekPlanner":
+        return cls(llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL))
+
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, WeekPlan] = Agent(
             model,

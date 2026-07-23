@@ -5,7 +5,7 @@ from pydantic_ai import Agent, AgentRunResult, BinaryContent
 from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.models.openai import OpenAIChatModel
 
-from livingbot import config
+from livingbot import config, llm_config, prompts
 from livingbot.activity_notes import ActivityNotes, ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore
 from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
@@ -46,6 +46,13 @@ class LLMResult:
 
 
 class LLMClient:
+    @classmethod
+    def create(cls) -> "LLMClient":
+        return cls(
+            llm_config.build_chat_model(llm_config.CHAT_MODEL, reasoning_effort="low"),
+            prompts.SYSTEM_PROMPT,
+        )
+
     def __init__(self, model: OpenAIChatModel, instructions: str) -> None:
         self._agent: Agent[BotDeps, str] = Agent(
             model,

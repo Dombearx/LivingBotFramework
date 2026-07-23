@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
+from livingbot import llm_config
 from livingbot.prompts import SPONTANEOUS_MESSAGE_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,10 @@ class SpontaneousStore:
 
 
 class SpontaneousMessenger:
+    @classmethod
+    def create(cls) -> "SpontaneousMessenger":
+        return cls(llm_config.build_chat_model(llm_config.SPONTANEOUS_MESSENGER_MODEL))
+
     def __init__(self, model: OpenAIChatModel) -> None:
         self._agent: Agent[None, str] = Agent(
             model,

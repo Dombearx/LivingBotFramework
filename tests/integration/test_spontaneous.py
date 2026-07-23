@@ -47,9 +47,7 @@ async def _judge(message: str, rubric: str) -> _Verdict:
 
 
 def _messenger() -> SpontaneousMessenger:
-    return SpontaneousMessenger(
-        llm_config.build_chat_model(llm_config.SPONTANEOUS_MESSENGER_MODEL)
-    )
+    return SpontaneousMessenger.create()
 
 
 def _context(situation: str, mood_value: float, *extra: str) -> str:
