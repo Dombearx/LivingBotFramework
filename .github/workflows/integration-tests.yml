@@ -10,15 +10,24 @@ on:
         type: choice
         options:
           - all
+          - tools_core
+          - tools_context
+          - persona
+          - lifestyle
+          - background_agents
+          - calendar_tools
           - context_tool
+          - discord_behavior
+          - hobby_pickup
+          - hobby_tone
+          - inventory_tools
+          - mood_tone
           - relation_updater
           - spending_tools
-          - mood_tone
-          - take_photo_tool
-          - discord_behavior
-          - hobby_tone
-          - hobby_pickup
+          - spontaneous
           - story_generation
+          - take_photo_tool
+          - week_planner
 
 jobs:
   integration-test:
@@ -38,15 +47,26 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
+          t=tests/integration
           case "${{ inputs.test_group }}" in
-            context_tool)      uv run pytest tests/integration/test_load_context_tool.py ;;
-            relation_updater)  uv run pytest tests/integration/test_relation_updater.py ;;
-            spending_tools)    uv run pytest tests/integration/test_spending_tools.py ;;
-            mood_tone)         uv run pytest tests/integration/test_mood_tone.py ;;
-            take_photo_tool)   uv run pytest tests/integration/test_take_photo_tool.py ;;
-            discord_behavior)  uv run pytest tests/integration/test_discord_behavior.py ;;
-            hobby_tone)        uv run pytest tests/integration/test_hobby_tone.py ;;
-            hobby_pickup)      uv run pytest tests/integration/test_hobby_pickup.py ;;
-            story_generation)  uv run pytest tests/integration/test_story_generation.py ;;
-            *)                 uv run pytest tests/integration/ ;;
+            tools_core)        files="$t/test_calendar_tools.py $t/test_spending_tools.py $t/test_inventory_tools.py" ;;
+            tools_context)     files="$t/test_load_context_tool.py $t/test_take_photo_tool.py" ;;
+            persona)           files="$t/test_discord_behavior.py $t/test_mood_tone.py" ;;
+            lifestyle)         files="$t/test_hobby_pickup.py $t/test_hobby_tone.py" ;;
+            background_agents) files="$t/test_relation_updater.py $t/test_week_planner.py $t/test_story_generation.py $t/test_spontaneous.py" ;;
+            calendar_tools)    files="$t/test_calendar_tools.py" ;;
+            context_tool)      files="$t/test_load_context_tool.py" ;;
+            discord_behavior)  files="$t/test_discord_behavior.py" ;;
+            hobby_pickup)      files="$t/test_hobby_pickup.py" ;;
+            hobby_tone)        files="$t/test_hobby_tone.py" ;;
+            inventory_tools)   files="$t/test_inventory_tools.py" ;;
+            mood_tone)         files="$t/test_mood_tone.py" ;;
+            relation_updater)  files="$t/test_relation_updater.py" ;;
+            spending_tools)    files="$t/test_spending_tools.py" ;;
+            spontaneous)       files="$t/test_spontaneous.py" ;;
+            story_generation)  files="$t/test_story_generation.py" ;;
+            take_photo_tool)   files="$t/test_take_photo_tool.py" ;;
+            week_planner)      files="$t/test_week_planner.py" ;;
+            *)                 files="$t/" ;;
           esac
+          uv run pytest $files
