@@ -4,11 +4,11 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
-from livingbot import llm_config
+from livingbot import clock, llm_config
 from livingbot.prompts import WEEK_PLAN_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,13 @@ class PlanEntry(BaseModel):
     end: datetime
     note: str = ""
     hobby: str = ""
+
+    # LLMs sometimes emit timezone-aware datetimes; the life layer reasons in
+    # Mugda's naive local wall clock (see clock.now), so normalise on the way in.
+    @field_validator("start", "end")
+    @classmethod
+    def _to_naive_local(cls, value: datetime) -> datetime:
+        return clock.to_local(value)
 
 
 class Calendar(BaseModel):
