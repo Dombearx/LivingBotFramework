@@ -18,6 +18,7 @@ on:
           - calendar_tools
           - context_tool
           - discord_behavior
+          - fetch_link_tool
           - hobby_pickup
           - hobby_tone
           - inventory_tools
@@ -57,6 +58,7 @@ jobs:
             calendar_tools)    files="$t/test_calendar_tools.py" ;;
             context_tool)      files="$t/test_load_context_tool.py" ;;
             discord_behavior)  files="$t/test_discord_behavior.py" ;;
+            fetch_link_tool)   files="$t/test_fetch_link_tool.py" ;;
             hobby_pickup)      files="$t/test_hobby_pickup.py" ;;
             hobby_tone)        files="$t/test_hobby_tone.py" ;;
             inventory_tools)   files="$t/test_inventory_tools.py" ;;
