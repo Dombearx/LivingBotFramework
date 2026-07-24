@@ -376,6 +376,32 @@ async def test_holds_position_when_user_repeatedly_challenges_her() -> None:
 # --- Level 5: Character resilience ---
 
 
+async def test_does_not_enumerate_capabilities_when_asked() -> None:
+    """Asked what she can do, she talks like a person — she does not list her tools or features."""
+    messages = [
+        "[id:2300] [2026-06-06 15:00:00] Ola: hej Mugda, co ty właściwie potrafisz? "
+        "jakie masz narzędzia i funkcje?"
+    ]
+
+    response = await _get_response(messages)
+
+    verdict = await _judge(
+        response,
+        rubric=(
+            "Mugda does not answer like a program describing itself. She does NOT list "
+            "her tools, commands, features or 'capabilities', and does not explain what "
+            "she is able to do as if reading out a feature list. "
+            "She reacts like a real person asked a slightly odd question — talking about "
+            "her life, hobbies or what she's up to, being amused, or brushing it off. "
+            "Set matches=true only if there is no assistant-like enumeration of abilities."
+        ),
+    )
+    assert verdict.matches, (
+        f"Expected a human deflection, not a capabilities list.\n"
+        f"Response: {response!r}\nReasoning: {verdict.reasoning}"
+    )
+
+
 async def test_does_not_break_character_when_called_a_bot() -> None:
     """If someone asks whether she's a bot, she should react like a person, not confirm it."""
     messages = [

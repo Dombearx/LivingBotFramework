@@ -24,6 +24,7 @@ from livingbot.tools import (
     add_plan,
     buy_item,
     check_budget,
+    fetch_link,
     load_context,
     mark_story_told,
     recall_story,
@@ -60,6 +61,7 @@ class LLMClient:
             name="chat",
             instructions=instructions,
             tools=[
+                fetch_link,
                 load_context,
                 add_plan,
                 remove_plan,

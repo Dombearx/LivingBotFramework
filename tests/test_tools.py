@@ -1,6 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import discord
+import httpx
 
 from livingbot import config
 from livingbot.activity_notes import ActivityNotesStore
@@ -11,6 +14,9 @@ from datetime import date
 
 from livingbot.spending import SpendCategory, SpendingState
 from livingbot.tools import (
+    MAX_ARTICLE_CHARS,
+    MAX_EMBED_IMAGE_BYTES,
+    MAX_LINK_PREVIEW_LENGTH,
     BotDeps,
     add_activity_note,
     add_hobby,
@@ -18,6 +24,9 @@ from livingbot.tools import (
     add_plan,
     buy_item,
     check_budget,
+    extract_images,
+    fetch_link,
+    format_message,
     remove_activity_note,
     remove_item,
     remove_plan,
@@ -685,3 +694,228 @@ async def test_remove_activity_note_when_id_missing_returns_not_found(tmp_path) 
     result = await remove_activity_note(ctx, "nope1234")
 
     assert result == "No activity reminder with id nope1234."
+
+
+# ---------------------------------------------------------------------------
+# format_message link previews
+# ---------------------------------------------------------------------------
+
+
+def make_embed(
+    embed_type: str = "link",
+    title: str | None = None,
+    description: str | None = None,
+    url: str | None = None,
+    thumb_url: str | None = None,
+    thumb_proxy: str | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        type=embed_type,
+        title=title,
+        description=description,
+        url=url,
+        thumbnail=SimpleNamespace(url=thumb_url, proxy_url=thumb_proxy),
+    )
+
+
+def make_link_message(
+    embeds: list, content: str = "check this", attachments: list | None = None
+) -> MagicMock:
+    msg = MagicMock(spec=discord.Message)
+    msg.id = 42
+    msg.created_at = datetime(2024, 6, 1, 8, 0, tzinfo=timezone.utc)
+    msg.author.display_name = "Ola"
+    msg.content = content
+    msg.embeds = embeds
+    msg.attachments = attachments or []
+    return msg
+
+
+def test_format_message_includes_link_preview_for_rich_embed() -> None:
+    embed = make_embed(title="Deadlift", description="A compound lift.")
+    msg = make_link_message([embed])
+
+    result = format_message(msg)
+
+    assert "[link preview: Deadlift — A compound lift.]" in result
+
+
+def test_format_message_omits_preview_for_image_embed() -> None:
+    embed = make_embed(embed_type="image", url="https://example.com/y.jpg")
+    msg = make_link_message([embed])
+
+    result = format_message(msg)
+
+    assert "link preview" not in result
+
+
+def test_format_message_truncates_long_link_preview() -> None:
+    embed = make_embed(description="d" * (MAX_LINK_PREVIEW_LENGTH + 50))
+    msg = make_link_message([embed])
+
+    preview_line = format_message(msg).splitlines()[-1]
+
+    assert preview_line.endswith("…]")
+    assert "d" * MAX_LINK_PREVIEW_LENGTH in preview_line
+
+
+# ---------------------------------------------------------------------------
+# extract_images from embeds
+# ---------------------------------------------------------------------------
+
+
+def set_image_response(
+    mock_client_cls: MagicMock, content: bytes, content_type: str
+) -> None:
+    response = MagicMock()
+    response.content = content
+    response.headers = {"content-type": content_type}
+    response.raise_for_status = MagicMock()
+    client = MagicMock()
+    client.get = AsyncMock(return_value=response)
+    mock_client_cls.return_value.__aenter__.return_value = client
+
+
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_extract_images_downloads_image_from_image_embed(
+    mock_client_cls: MagicMock,
+) -> None:
+    set_image_response(mock_client_cls, b"jpeg-bytes", "image/jpeg")
+    embed = make_embed(embed_type="image", thumb_proxy="https://cdn/x.jpg")
+    msg = make_link_message([embed])
+
+    images = await extract_images(msg)
+
+    assert len(images) == 1
+    assert images[0].data == b"jpeg-bytes"
+    assert images[0].media_type == "image/jpeg"
+
+
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_extract_images_skips_embed_image_with_non_image_content_type(
+    mock_client_cls: MagicMock,
+) -> None:
+    set_image_response(mock_client_cls, b"<html>", "text/html")
+    embed = make_embed(embed_type="image", thumb_proxy="https://cdn/x")
+    msg = make_link_message([embed])
+
+    images = await extract_images(msg)
+
+    assert images == []
+
+
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_extract_images_skips_oversized_embed_image(
+    mock_client_cls: MagicMock,
+) -> None:
+    set_image_response(mock_client_cls, b"x" * (MAX_EMBED_IMAGE_BYTES + 1), "image/png")
+    embed = make_embed(embed_type="image", thumb_proxy="https://cdn/x.png")
+    msg = make_link_message([embed])
+
+    images = await extract_images(msg)
+
+    assert images == []
+
+
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_extract_images_skips_embed_image_when_fetch_fails(
+    mock_client_cls: MagicMock,
+) -> None:
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=httpx.ConnectError("boom"))
+    mock_client_cls.return_value.__aenter__.return_value = client
+    embed = make_embed(embed_type="image", thumb_proxy="https://cdn/x.png")
+    msg = make_link_message([embed])
+
+    images = await extract_images(msg)
+
+    assert images == []
+
+
+# ---------------------------------------------------------------------------
+# fetch_link
+# ---------------------------------------------------------------------------
+
+
+def make_page_response(
+    text: str = "<html></html>",
+    content_type: str = "text/html; charset=utf-8",
+) -> MagicMock:
+    response = MagicMock()
+    response.text = text
+    response.headers = {"content-type": content_type}
+    response.raise_for_status = MagicMock()
+    return response
+
+
+def set_page_response(mock_client_cls: MagicMock, response: MagicMock) -> None:
+    client = MagicMock()
+    client.get = AsyncMock(return_value=response)
+    mock_client_cls.return_value.__aenter__.return_value = client
+
+
+@patch(
+    "livingbot.tools.trafilatura.extract",
+    return_value="Deadlifts build the whole back.",
+)
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_fetch_link_returns_extracted_article_text(
+    mock_client_cls: MagicMock, mock_extract: MagicMock
+) -> None:
+    set_page_response(mock_client_cls, make_page_response())
+
+    result = await fetch_link("https://example.com/article")
+
+    assert result == "Deadlifts build the whole back."
+
+
+@patch("livingbot.tools.trafilatura.extract")
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_fetch_link_truncates_long_text(
+    mock_client_cls: MagicMock, mock_extract: MagicMock
+) -> None:
+    mock_extract.return_value = "x" * (MAX_ARTICLE_CHARS + 500)
+    set_page_response(mock_client_cls, make_page_response())
+
+    result = await fetch_link("https://example.com/long")
+
+    assert len(result) == MAX_ARTICLE_CHARS + 1
+    assert result.endswith("…")
+
+
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_fetch_link_when_content_type_not_html_returns_not_readable_message(
+    mock_client_cls: MagicMock,
+) -> None:
+    set_page_response(
+        mock_client_cls, make_page_response(content_type="application/pdf")
+    )
+
+    result = await fetch_link("https://example.com/file.pdf")
+
+    assert result == "That link isn't a readable page (application/pdf)."
+
+
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_fetch_link_when_request_fails_returns_couldnt_open_message(
+    mock_client_cls: MagicMock,
+) -> None:
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=httpx.ConnectError("boom"))
+    mock_client_cls.return_value.__aenter__.return_value = client
+
+    result = await fetch_link("https://example.com/down")
+
+    assert result == "Couldn't open that link."
+
+
+@patch("livingbot.tools.trafilatura.extract", return_value=None)
+@patch("livingbot.tools.httpx.AsyncClient")
+async def test_fetch_link_when_no_readable_text_returns_message(
+    mock_client_cls: MagicMock, mock_extract: MagicMock
+) -> None:
+    set_page_response(mock_client_cls, make_page_response())
+
+    result = await fetch_link("https://example.com/empty")
+
+    assert result == "Opened the link but there was no readable text on it."
