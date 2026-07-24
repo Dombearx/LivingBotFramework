@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Annotated
 
 import discord
+import httpx
 from pydantic import Field
 from pydantic_ai import BinaryContent, RunContext
 
@@ -18,6 +19,9 @@ from livingbot.stories import StoryStore
 from livingbot.timeformat import humanize_ago
 
 logger = logging.getLogger(__name__)
+
+MAX_LINK_PREVIEW_LENGTH = 300
+MAX_EMBED_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 @dataclass
@@ -34,20 +38,77 @@ class BotDeps:
 
 def format_message(message: discord.Message) -> str:
     timestamp = clock.to_local(message.created_at).strftime("%Y-%m-%d %H:%M:%S")
-    return (
+    line = (
         f"[id:{message.id}] [{timestamp}] "
         f"{message.author.display_name}: {message.content}"
     )
+    previews = _format_link_previews(message)
+    if previews:
+        line += f"\n{previews}"
+    return line
+
+
+def _format_link_previews(message: discord.Message) -> str:
+    previews: list[str] = []
+    for embed in message.embeds:
+        if embed.type == "image":
+            continue
+        parts = [part for part in (embed.title, embed.description) if part]
+        text = " — ".join(parts) if parts else (embed.url or "")
+        if not text:
+            continue
+        if len(text) > MAX_LINK_PREVIEW_LENGTH:
+            text = text[:MAX_LINK_PREVIEW_LENGTH].rstrip() + "…"
+        previews.append(f"  [link preview: {text}]")
+    return "\n".join(previews)
 
 
 async def extract_images(message: discord.Message) -> list[BinaryContent]:
-    """Download any image attachments on a message for the VLM to look at."""
+    """Download image attachments and images shared as links for the VLM to look at."""
     images: list[BinaryContent] = []
     for attachment in message.attachments:
         if attachment.content_type and attachment.content_type.startswith("image/"):
             data = await attachment.read()
             images.append(BinaryContent(data=data, media_type=attachment.content_type))
+    images.extend(await _extract_embed_images(message))
     return images
+
+
+async def _extract_embed_images(message: discord.Message) -> list[BinaryContent]:
+    # Discord unfurls a pasted image link into an "image" embed; the bytes still
+    # live behind a URL we have to fetch ourselves.
+    urls: list[str] = []
+    for embed in message.embeds:
+        if embed.type != "image":
+            continue
+        url = embed.thumbnail.proxy_url or embed.thumbnail.url or embed.url
+        if url:
+            urls.append(url)
+    if not urls:
+        return []
+    images: list[BinaryContent] = []
+    async with httpx.AsyncClient() as client:
+        for url in dict.fromkeys(urls):
+            content = await _download_image(client, url)
+            if content is not None:
+                images.append(content)
+    return images
+
+
+async def _download_image(client: httpx.AsyncClient, url: str) -> BinaryContent | None:
+    try:
+        response = await client.get(url, timeout=10.0)
+        response.raise_for_status()
+    except httpx.HTTPError:
+        logger.warning("Could not fetch image behind link %s", url)
+        return None
+    media_type = response.headers.get("content-type", "").split(";")[0].strip()
+    if not media_type.startswith("image/"):
+        return None
+    if len(response.content) > MAX_EMBED_IMAGE_BYTES:
+        logger.warning("Image behind link %s is too large; skipping", url)
+        return None
+    return BinaryContent(data=response.content, media_type=media_type)
 
 
 async def load_context(
