@@ -13,6 +13,7 @@ dependencies = [
     "nicegui>=3.13.0",
     "openai>=2.38.0",
     "pydantic-ai-slim[openai]>=2.16.0",
+    "trafilatura>=2.1.0",
 ]
 
 [project.scripts]

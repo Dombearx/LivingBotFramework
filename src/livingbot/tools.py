@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -6,6 +7,7 @@ from typing import Annotated
 
 import discord
 import httpx
+import trafilatura
 from pydantic import Field
 from pydantic_ai import BinaryContent, RunContext
 
@@ -22,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 MAX_LINK_PREVIEW_LENGTH = 300
 MAX_EMBED_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_ARTICLE_CHARS = 6000
+_FETCH_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+)
 
 
 @dataclass
@@ -109,6 +116,34 @@ async def _download_image(client: httpx.AsyncClient, url: str) -> BinaryContent 
         logger.warning("Image behind link %s is too large; skipping", url)
         return None
     return BinaryContent(data=response.content, media_type=media_type)
+
+
+async def fetch_link(url: str) -> str:
+    """Open a web link someone shared and read what's actually on the page — an article,
+    a blog post, a recipe — so you can react to it with your own honest opinion instead
+    of guessing from the URL. Pass the full link. Returns the page's main text, trimmed
+    if it's long. Use it whenever someone drops a link and wants your take, or when what
+    you'd say depends on what the page really says. React like a person with a view on
+    it — don't summarise it like an assistant."""
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(
+                url, timeout=15.0, headers={"User-Agent": _FETCH_USER_AGENT}
+            )
+            response.raise_for_status()
+    except httpx.HTTPError:
+        logger.warning("Could not open link %s", url)
+        return "Couldn't open that link."
+    content_type = response.headers.get("content-type", "").split(";")[0].strip()
+    if content_type and not content_type.startswith(("text/html", "application/xhtml")):
+        return f"That link isn't a readable page ({content_type})."
+    text = await asyncio.to_thread(trafilatura.extract, response.text)
+    if not text or not text.strip():
+        return "Opened the link but there was no readable text on it."
+    text = text.strip()
+    if len(text) > MAX_ARTICLE_CHARS:
+        text = text[:MAX_ARTICLE_CHARS].rstrip() + "…"
+    return text
 
 
 async def load_context(
