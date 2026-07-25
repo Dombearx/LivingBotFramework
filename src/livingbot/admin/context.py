@@ -7,8 +7,10 @@ from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.memory import MemoryStore
 from livingbot.mood import MoodStore
+from livingbot.preferences import PreferenceStore
 from livingbot.relations import RelationStore
 from livingbot.spending import SpendingStore
+from livingbot.spontaneous import SpontaneousStore
 from livingbot.stories import StoryStore
 
 
@@ -51,3 +53,11 @@ class AdminContext:
     @property
     def memory_store(self) -> MemoryStore:
         return self.bot.memory_store
+
+    @property
+    def preference_store(self) -> PreferenceStore:
+        return self.bot.preference_store
+
+    @property
+    def spontaneous_store(self) -> SpontaneousStore | None:
+        return self.bot.spontaneous_store

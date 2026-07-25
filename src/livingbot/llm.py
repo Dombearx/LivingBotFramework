@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Self
 
 import discord
@@ -8,10 +8,11 @@ from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import config, llm_config, prompts
 from livingbot.activity_notes import ActivityNotes, ActivityNotesStore
-from livingbot.calendar import Calendar, CalendarStore
+from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
-from livingbot.mood import Mood, build_mood_block
+from livingbot.mood import Mood, build_mood_block, is_awake
+from livingbot.preferences import Preferences, PreferenceStore
 from livingbot.relations import Relation
 from livingbot.spending import SpendingStore
 from livingbot.stories import Story, StoryStore
@@ -28,6 +29,7 @@ from livingbot.tools import (
     load_context,
     mark_story_told,
     recall_story,
+    record_preference,
     remove_activity_note,
     remove_item,
     remove_plan,
@@ -71,6 +73,7 @@ class LLMClient:
                 remove_item,
                 search_inventory,
                 add_hobby,
+                record_preference,
                 recall_story,
                 mark_story_told,
                 show_story_image,
@@ -90,12 +93,14 @@ class LLMClient:
         spending_store: SpendingStore,
         hobby_store: HobbyStore,
         story_store: StoryStore,
+        preference_store: PreferenceStore,
         now: datetime,
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
         mood: Mood | None = None,
         photo_hint: str = "",
         images: list[BinaryContent] | None = None,
+        waiting_since: datetime | None = None,
     ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
@@ -105,11 +110,15 @@ class LLMClient:
             spending_store=spending_store,
             hobby_store=hobby_store,
             story_store=story_store,
+            preference_store=preference_store,
         )
         parts: list[str] = []
         if photo_hint:
             parts.append(f"{photo_hint}\n\n")
-        parts.append(_build_calendar_block(calendar_store.load(), now))
+        calendar = calendar_store.load()
+        parts.append(_build_calendar_block(calendar, now))
+        if waiting_since is not None:
+            parts.append(_build_delay_block(calendar, waiting_since, now))
         parts.append(_build_activity_notes_block(activity_notes_store.load()))
         hobbies = hobby_store.load()
         parts.append(_build_hobbies_block(hobbies))
@@ -123,6 +132,7 @@ class LLMClient:
             parts.append(build_mood_block(mood, now))
         parts.append(spending_store.summary() + "\n\n")
         parts.append(_build_inventory_block(await inventory_store.recent()))
+        parts.append(_build_preferences_block(preference_store.load()))
         if relations:
             parts.append(_build_relations_block(relations))
         parts.append(_build_stories_block(await story_store.untold()))
@@ -160,6 +170,51 @@ def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
                 line += f" ({entry.note})"
             lines.append(line)
     return "\n".join(lines) + "\n\n"
+
+
+def _build_delay_block(
+    calendar: Calendar, waiting_since: datetime, now: datetime
+) -> str:
+    """Explain a long silence only when her life accounts for it.
+
+    Being worn out from too much messaging is deliberately left unexplained: it is
+    a mechanic, not something a person would narrate, so she is simply late.
+    """
+    if now - waiting_since < config.DELAY_EXPLANATION_THRESHOLD:
+        return ""
+    reasons: list[str] = []
+    if _asleep_between(waiting_since, now):
+        reasons.append("you were asleep")
+    entry = _entry_between(calendar, waiting_since, now)
+    if entry is not None:
+        reasons.append(f"you were at {entry.location}, busy with {entry.activity}")
+    if not reasons:
+        return ""
+    return (
+        f"That message came in {humanize_ago(waiting_since, now)} and you're only "
+        f"getting to it now — {' and '.join(reasons)} in the meantime. React the way "
+        "anyone does picking their phone back up after a while: bring it up in passing "
+        "if it fits, keep it light rather than a formal apology, and never explain the "
+        "gap in mechanical terms.\n\n"
+    )
+
+
+def _asleep_between(start: datetime, end: datetime) -> bool:
+    moment = start
+    while moment < end:
+        if not is_awake(moment):
+            return True
+        moment += timedelta(hours=1)
+    return not is_awake(end)
+
+
+def _entry_between(
+    calendar: Calendar, start: datetime, end: datetime
+) -> PlanEntry | None:
+    overlapping = [e for e in calendar.entries if e.start < end and e.end > start]
+    if not overlapping:
+        return None
+    return max(overlapping, key=lambda e: e.end)
 
 
 def _build_activity_notes_block(notes: ActivityNotes) -> str:
@@ -281,6 +336,21 @@ def _build_inventory_block(items: list[InventoryItem]) -> str:
     return "\n".join(lines) + "\n\n"
 
 
+def _build_preferences_block(preferences: Preferences) -> str:
+    lines = ["Tastes and preferences you have already settled on:"]
+    if preferences.entries:
+        for preference in preferences.entries:
+            lines.append(f"  {preference.topic}: {preference.stance}")
+    else:
+        lines.append("  (you haven't pinned any down yet)")
+    lines.append(
+        "Stay consistent with these — they are yours. When you're asked about "
+        "something not on the list, don't sit on the fence: decide, say which side "
+        "you're on, and record it with record_preference so it sticks."
+    )
+    return "\n".join(lines) + "\n\n"
+
+
 def _build_relations_block(relations: list[Relation]) -> str:
     blocks: list[str] = ["My relationships with the people in this conversation:"]
     for relation in relations:
@@ -300,4 +370,11 @@ def _build_relations_block(relations: list[Relation]) -> str:
                 " (only reference these if they are clearly relevant to what they just said)"
             )
         blocks.append("\n".join(parts))
+    if any(relation.inside_jokes for relation in relations):
+        blocks.append(
+            "Inside jokes are callbacks, not catchphrases. Only bring one up when this "
+            "moment genuinely calls it back, and never work one into a message just to "
+            "use it — repeating the same line over and over is the fastest way to stop "
+            "sounding like a person."
+        )
     return "\n".join(blocks) + "\n\n"

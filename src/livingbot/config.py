@@ -9,6 +9,7 @@ ACTIVITY_NOTES_DATA_PATH = Path("data/activity_notes")
 INVENTORY_DATA_PATH = Path("data/inventory")
 SPENDING_DATA_PATH = Path("data/spending")
 HOBBY_DATA_PATH = Path("data/hobbies")
+PREFERENCE_DATA_PATH = Path("data/preferences")
 HOBBY_COOLDOWN = timedelta(days=14)
 RECENT_HOBBY_WINDOW = timedelta(days=14)
 RECENT_PURCHASE_WINDOW = timedelta(days=7)
@@ -37,6 +38,9 @@ STORY_AVOID_RECENT_LIMIT = 20
 RANDOM_POST_CHANNEL_ID: int | None = 1081120855746166794  # #rozmowy-z-botami
 RANDOM_POST_MIN_DAYS = 7.0
 RANDOM_POST_MAX_DAYS = 10.0
+# How long a message must have sat unanswered before she is told why she is only
+# getting to it now. Below this, a reply is prompt enough to need no explanation.
+DELAY_EXPLANATION_THRESHOLD = timedelta(minutes=20)
 ONBOARDING_PERIOD = timedelta(days=3)
 ONBOARDING_RESPONSE_BOOST = 2.0
 ONBOARDING_REST_DELAY_DIVISOR = 4.0

@@ -21,6 +21,7 @@ on:
           - fetch_link_tool
           - hobby_pickup
           - hobby_tone
+          - inside_jokes
           - inventory_tools
           - mood_tone
           - relation_updater
@@ -54,13 +55,14 @@ jobs:
             tools_context)     files="$t/test_load_context_tool.py $t/test_take_photo_tool.py" ;;
             persona)           files="$t/test_discord_behavior.py $t/test_mood_tone.py" ;;
             lifestyle)         files="$t/test_hobby_pickup.py $t/test_hobby_tone.py" ;;
-            background_agents) files="$t/test_relation_updater.py $t/test_week_planner.py $t/test_story_generation.py $t/test_spontaneous.py" ;;
+            background_agents) files="$t/test_relation_updater.py $t/test_inside_jokes.py $t/test_week_planner.py $t/test_story_generation.py $t/test_spontaneous.py" ;;
             calendar_tools)    files="$t/test_calendar_tools.py" ;;
             context_tool)      files="$t/test_load_context_tool.py" ;;
             discord_behavior)  files="$t/test_discord_behavior.py" ;;
             fetch_link_tool)   files="$t/test_fetch_link_tool.py" ;;
             hobby_pickup)      files="$t/test_hobby_pickup.py" ;;
             hobby_tone)        files="$t/test_hobby_tone.py" ;;
+            inside_jokes)      files="$t/test_inside_jokes.py" ;;
             inventory_tools)   files="$t/test_inventory_tools.py" ;;
             mood_tone)         files="$t/test_mood_tone.py" ;;
             relation_updater)  files="$t/test_relation_updater.py" ;;

@@ -18,6 +18,9 @@ class MessageQueue:
     def add(self, message: discord.Message) -> None:
         self._pending.append(message)
 
+    def pending(self) -> list[discord.Message]:
+        return list(self._pending)
+
     def flush(self) -> dict[MessageableChannel, list[discord.Message]]:
         grouped: dict[MessageableChannel, list[discord.Message]] = {}
         for msg in self._pending:

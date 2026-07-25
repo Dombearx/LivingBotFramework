@@ -135,6 +135,7 @@ def make_bot(
     story_store: MagicMock | None = None,
     story_generator: MagicMock | None = None,
     mood_store: MagicMock | None = None,
+    preference_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
@@ -152,8 +153,14 @@ def make_bot(
         story_store=story_store or make_story_store(),
         story_generator=story_generator or make_story_generator(),
         mood_store=mood_store or make_mood_store(),
+        preference_store=preference_store or MagicMock(),
         intents=intents,
     )
+
+
+# STABLE_NOW expressed as the aware UTC instant Discord would stamp a message
+# with, so replies in tests look prompt and need no delay explanation.
+STABLE_NOW_UTC = datetime(2026, 6, 24, 13, 0, tzinfo=timezone.utc)
 
 
 def make_message(
@@ -161,11 +168,13 @@ def make_message(
     mentions: list | None = None,
     reference: MagicMock | None = None,
     channel: MagicMock | None = None,
+    created_at: datetime | None = None,
 ) -> MagicMock:
     msg = MagicMock(spec=discord.Message)
     msg.author = author
     msg.mentions = mentions or []
     msg.reference = reference
+    msg.created_at = created_at or STABLE_NOW_UTC
     if channel is None:
         msg.channel = MagicMock()
         msg.channel.send = AsyncMock()
@@ -482,12 +491,14 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         bot._spending_store,
         bot._hobby_store,
         bot._story_store,
+        bot._preference_store,
         ANY,
         [],
         [Relation(user_id="123"), Relation(user_id="123")],
         ANY,
         photo_hint=ANY,
         images=[],
+        waiting_since=ANY,
     )
 
 
@@ -564,7 +575,7 @@ async def test_attempt_response_passes_retrieved_memories_to_llm(
 
     await bot._attempt_response()
 
-    assert llm_client.complete.call_args.args[9] == ["remember this"]
+    assert llm_client.complete.call_args.args[10] == ["remember this"]
 
 
 @patch("random.random", return_value=0.0)

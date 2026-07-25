@@ -11,6 +11,8 @@ from livingbot.admin.pages import (
     memories,
     mood,
     overview,
+    preferences,
+    queue,
     relations,
     spending,
     stories,
@@ -31,6 +33,7 @@ def run() -> None:
 
     for page in (
         overview,
+        queue,
         inventory,
         stories,
         memories,
@@ -38,6 +41,7 @@ def run() -> None:
         hobbies,
         spending,
         mood,
+        preferences,
         relations,
         tools,
     ):

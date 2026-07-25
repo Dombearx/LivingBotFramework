@@ -29,6 +29,7 @@ from livingbot.mood import (
     refresh_mood,
 )
 from livingbot.observability import configure_logfire
+from livingbot.preferences import PreferenceStore
 from livingbot.queue import MessageQueue
 from livingbot.relations import Relation, RelationStore, RelationUpdater
 from livingbot.spending import SpendingStore
@@ -124,6 +125,7 @@ class LivingBot(discord.Client):
         story_store: StoryStore,
         story_generator: StoryGenerator,
         mood_store: MoodStore,
+        preference_store: PreferenceStore,
         spontaneous_store: SpontaneousStore | None = None,
         spontaneous_messenger: SpontaneousMessenger | None = None,
         **kwargs: Any,
@@ -131,6 +133,7 @@ class LivingBot(discord.Client):
         super().__init__(**kwargs)
         self._queue = MessageQueue()
         self._resting: bool = False
+        self._next_attempt_at: datetime | None = None
         self._response_lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
         self._llm_client = llm_client
@@ -146,6 +149,7 @@ class LivingBot(discord.Client):
         self._story_store = story_store
         self._story_generator = story_generator
         self._mood_store = mood_store
+        self._preference_store = preference_store
         self._spontaneous_store = spontaneous_store
         self._spontaneous_messenger = spontaneous_messenger
         self._messages_since_photo: int = 0
@@ -190,12 +194,28 @@ class LivingBot(discord.Client):
         return self._mood_store
 
     @property
+    def preference_store(self) -> PreferenceStore:
+        return self._preference_store
+
+    @property
+    def spontaneous_store(self) -> SpontaneousStore | None:
+        return self._spontaneous_store
+
+    @property
     def fatigue(self) -> float:
         return self._mood_store.load().fatigue
 
     @property
     def resting(self) -> bool:
         return self._resting
+
+    @property
+    def pending_messages(self) -> list[discord.Message]:
+        return self._queue.pending()
+
+    @property
+    def next_attempt_at(self) -> datetime | None:
+        return self._next_attempt_at
 
     @property
     def messages_since_photo(self) -> int:
@@ -519,12 +539,16 @@ class LivingBot(discord.Client):
                         self._spending_store,
                         self._hobby_store,
                         self._story_store,
+                        self._preference_store,
                         now,
                         memories,
                         relations,
                         mood,
                         photo_hint=self._photo_hint_for_message(),
                         images=images,
+                        waiting_since=min(
+                            clock.to_local(m.created_at) for m in messages
+                        ),
                     )
                     span.set_attribute("photo", result.photo is not None)
                     if result.photo is not None:
@@ -587,6 +611,7 @@ class LivingBot(discord.Client):
             actual_delay = random.uniform(
                 3.0 / delay_divisor, max_delay / delay_divisor
             )
+            self._next_attempt_at = clock.now() + timedelta(minutes=actual_delay)
             await asyncio.sleep(actual_delay * 60.0)
 
             # Fatigue recovers on its own while she waits: each attempt refreshes
@@ -594,6 +619,7 @@ class LivingBot(discord.Client):
             async with self._response_lock:
                 if await self._attempt_response():
                     self._resting = False
+                    self._next_attempt_at = None
                     return
 
     async def _is_directed_at_bot(self, message: discord.Message) -> bool:
@@ -635,6 +661,7 @@ def build() -> LivingBot:
     story_store = StoryStore.create(config.STORY_DATA_PATH)
     story_generator = StoryGenerator.create()
     mood_store = MoodStore(config.MOOD_DATA_PATH)
+    preference_store = PreferenceStore(config.PREFERENCE_DATA_PATH)
     spontaneous_store = SpontaneousStore(config.SPONTANEOUS_DATA_PATH)
     spontaneous_messenger = SpontaneousMessenger.create()
     return LivingBot(
@@ -651,6 +678,7 @@ def build() -> LivingBot:
         story_store=story_store,
         story_generator=story_generator,
         mood_store=mood_store,
+        preference_store=preference_store,
         spontaneous_store=spontaneous_store,
         spontaneous_messenger=spontaneous_messenger,
         intents=intents,
