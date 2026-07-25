@@ -39,7 +39,7 @@ def _build_enhancer_agent() -> Agent[None, str]:
         ),
         name="prompt_enhancer",
         instructions=IMAGE_ENHANCER_SYSTEM_PROMPT,
-        model_settings=ModelSettings(max_tokens=1000),
+        model_settings=ModelSettings(max_tokens=3000),
     )
 
 
