@@ -158,16 +158,23 @@ def make_bot(
     )
 
 
+# STABLE_NOW expressed as the aware UTC instant Discord would stamp a message
+# with, so replies in tests look prompt and need no delay explanation.
+STABLE_NOW_UTC = datetime(2026, 6, 24, 13, 0, tzinfo=timezone.utc)
+
+
 def make_message(
     author: MagicMock,
     mentions: list | None = None,
     reference: MagicMock | None = None,
     channel: MagicMock | None = None,
+    created_at: datetime | None = None,
 ) -> MagicMock:
     msg = MagicMock(spec=discord.Message)
     msg.author = author
     msg.mentions = mentions or []
     msg.reference = reference
+    msg.created_at = created_at or STABLE_NOW_UTC
     if channel is None:
         msg.channel = MagicMock()
         msg.channel.send = AsyncMock()
@@ -491,6 +498,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         ANY,
         photo_hint=ANY,
         images=[],
+        waiting_since=ANY,
     )
 
 

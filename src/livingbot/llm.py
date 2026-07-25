@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Self
 
 import discord
@@ -8,10 +8,10 @@ from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import config, llm_config, prompts
 from livingbot.activity_notes import ActivityNotes, ActivityNotesStore
-from livingbot.calendar import Calendar, CalendarStore
+from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
-from livingbot.mood import Mood, build_mood_block
+from livingbot.mood import Mood, build_mood_block, is_awake
 from livingbot.preferences import Preferences, PreferenceStore
 from livingbot.relations import Relation
 from livingbot.spending import SpendingStore
@@ -100,6 +100,7 @@ class LLMClient:
         mood: Mood | None = None,
         photo_hint: str = "",
         images: list[BinaryContent] | None = None,
+        waiting_since: datetime | None = None,
     ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
@@ -114,7 +115,10 @@ class LLMClient:
         parts: list[str] = []
         if photo_hint:
             parts.append(f"{photo_hint}\n\n")
-        parts.append(_build_calendar_block(calendar_store.load(), now))
+        calendar = calendar_store.load()
+        parts.append(_build_calendar_block(calendar, now))
+        if waiting_since is not None:
+            parts.append(_build_delay_block(calendar, waiting_since, now))
         parts.append(_build_activity_notes_block(activity_notes_store.load()))
         hobbies = hobby_store.load()
         parts.append(_build_hobbies_block(hobbies))
@@ -166,6 +170,51 @@ def _build_calendar_block(calendar: Calendar, now: datetime) -> str:
                 line += f" ({entry.note})"
             lines.append(line)
     return "\n".join(lines) + "\n\n"
+
+
+def _build_delay_block(
+    calendar: Calendar, waiting_since: datetime, now: datetime
+) -> str:
+    """Explain a long silence only when her life accounts for it.
+
+    Being worn out from too much messaging is deliberately left unexplained: it is
+    a mechanic, not something a person would narrate, so she is simply late.
+    """
+    if now - waiting_since < config.DELAY_EXPLANATION_THRESHOLD:
+        return ""
+    reasons: list[str] = []
+    if _asleep_between(waiting_since, now):
+        reasons.append("you were asleep")
+    entry = _entry_between(calendar, waiting_since, now)
+    if entry is not None:
+        reasons.append(f"you were at {entry.location}, busy with {entry.activity}")
+    if not reasons:
+        return ""
+    return (
+        f"That message came in {humanize_ago(waiting_since, now)} and you're only "
+        f"getting to it now — {' and '.join(reasons)} in the meantime. React the way "
+        "anyone does picking their phone back up after a while: bring it up in passing "
+        "if it fits, keep it light rather than a formal apology, and never explain the "
+        "gap in mechanical terms.\n\n"
+    )
+
+
+def _asleep_between(start: datetime, end: datetime) -> bool:
+    moment = start
+    while moment < end:
+        if not is_awake(moment):
+            return True
+        moment += timedelta(hours=1)
+    return not is_awake(end)
+
+
+def _entry_between(
+    calendar: Calendar, start: datetime, end: datetime
+) -> PlanEntry | None:
+    overlapping = [e for e in calendar.entries if e.start < end and e.end > start]
+    if not overlapping:
+        return None
+    return max(overlapping, key=lambda e: e.end)
 
 
 def _build_activity_notes_block(notes: ActivityNotes) -> str:

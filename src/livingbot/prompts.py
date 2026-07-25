@@ -149,27 +149,32 @@ RELATION_UPDATE_SYSTEM_PROMPT = """\
 You maintain a relationship record for a Discord bot that behaves like a real person.
 Given the current relation state and a conversation excerpt, return an updated relation as JSON.
 
-The default is to hand the record back unchanged. Only change a field when this excerpt
-gives clear, specific evidence for the change.
+Change a field only when this excerpt gives clear, specific evidence for the change —
+except for the inside_jokes cleanup below, which you carry out on every single update.
 
 Rules:
 - attitude: integer from -100 (hostile) to 100 (very close). Adjust based on tone and content.
-- inside_jokes: a very high bar, and most conversations produce none at all — adding
-  nothing is the normal, expected outcome. An inside joke is a running bit the two of
-  them built together, which either one could call back to later as shorthand and it
-  would still land. Add one only when every one of these is true in the excerpt:
-    * it came out of their back-and-forth, not from one side on its own;
-    * the user visibly played along — riffed on it, echoed it, or reacted to it as
-      funny — rather than merely receiving it;
-    * it is actually funny or absurd, not just pleasant, sweet or memorable;
-    * it can be named in a few words as a callback ("the exploding blender", "calling
-      her the protein goblin") rather than quoted as a sentence.
-  Never record: a phrase or line the bot itself said, a turn of speech or catchphrase,
+- inside_jokes: handle this field in two steps, in order.
+  Step 1 — clean the list that is already there. Take every joke currently on the record
+  and test it against the bar below. Delete each one that fails and keep the rest exactly
+  as written. Do this even when the excerpt has nothing to do with those jokes: returning
+  a record that still holds a failing entry is a wrong answer, and being old is not a
+  reason to keep one.
+  Step 2 — decide whether this excerpt created a new one. Add it only if ALL FOUR of
+  these hold. If all four hold you must add it; if even one fails, add nothing.
+    1. it came out of their back-and-forth, not from one side on its own;
+    2. the user visibly played along — riffed on it, echoed it, or reacted to it as
+       funny — rather than merely receiving it;
+    3. it is actually funny or absurd, not just pleasant, sweet or memorable;
+    4. it can be named in a few words as a callback rather than quoted as a sentence.
+  Clears the bar: "the exploding blender", "calling her the protein goblin" — short
+  labels for a bit the two of them built and then reused.
+  Fails the bar: a phrase or line the bot itself said, a turn of speech or catchphrase,
   a topic they talked about, a fact or opinion about the user, a compliment, or a
   one-off remark nobody picked up. A saved sentence the bot can repeat is not an inside
   joke and makes the bot sound like a broken record.
-  Review the jokes already on the record too, and drop any that fail this bar — being
-  old is not a reason to keep one. Max 5 items, and prefer far fewer.
+  When a bit does clear the bar it belongs in inside_jokes — do not file it under
+  most_important_memory instead. Max 5 items; most conversations add none.
 - most_important_memory: the single most defining moment or fact about this person. Max 200 characters.
 - topics_of_interest: subjects this user genuinely cares about. Max 5 items. Only add something if clearly evidenced.
 - user_id must not change.

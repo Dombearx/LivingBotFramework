@@ -546,6 +546,9 @@ class LivingBot(discord.Client):
                         mood,
                         photo_hint=self._photo_hint_for_message(),
                         images=images,
+                        waiting_since=min(
+                            clock.to_local(m.created_at) for m in messages
+                        ),
                     )
                     span.set_attribute("photo", result.photo is not None)
                     if result.photo is not None:
