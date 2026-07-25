@@ -2,6 +2,7 @@ import asyncio
 import functools
 import itertools
 import logging
+import os
 from pathlib import Path
 from typing import Any, cast
 
@@ -11,6 +12,12 @@ from mem0 import Memory
 logger = logging.getLogger(__name__)
 
 GLOBAL_USER_ID = "global"
+
+# mem0's OpenAI LLM backend already auto-detects OPENROUTER_API_KEY and routes
+# through OpenRouter on its own; the embedder doesn't, so it's pointed at
+# OpenRouter explicitly here — OpenRouter proxies OpenAI's embeddings API too,
+# so no separate OPENAI_API_KEY is needed.
+_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 class MemoryStore:
@@ -33,6 +40,14 @@ class MemoryStore:
                 "config": {
                     "model": "gpt-5-nano",
                     "reasoning_effort": "low",
+                },
+            },
+            "embedder": {
+                "provider": "openai",
+                "config": {
+                    "model": "text-embedding-3-small",
+                    "api_key": os.environ["OPENROUTER_API_KEY"],
+                    "openai_base_url": _OPENROUTER_BASE_URL,
                 },
             },
         }

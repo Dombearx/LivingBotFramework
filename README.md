@@ -37,7 +37,10 @@ The bot is configured entirely through environment variables:
 | `OPENROUTER_API_KEY` | yes | API key for the chat and helper models (via OpenRouter). |
 | `OPENROUTER_BASE_URL` | no | Override the OpenRouter base URL. |
 | `RUNPOD_API_KEY` | for photos | RunPod API key (calls RunPod's public nano-banana-edit and qwen-image-t2i endpoints). |
-| `OPENAI_API_KEY` | yes | Used directly by the memory subsystem (mem0) for embeddings and its own LLM calls. |
+
+The memory subsystem (mem0) is configured to route its LLM calls and
+embeddings through OpenRouter using `OPENROUTER_API_KEY` above — no separate
+OpenAI key is needed.
 
 Persistent state (memories, calendar, mood, inventory, spending, hobbies,
 stories and story images) is written under `data/`.
