@@ -36,8 +36,7 @@ The bot is configured entirely through environment variables:
 | `DISCORD_BOT_TOKEN` | yes | Discord bot token used to connect. |
 | `OPENROUTER_API_KEY` | yes | API key for the chat and helper models (via OpenRouter). |
 | `OPENROUTER_BASE_URL` | no | Override the OpenRouter base URL. |
-| `RUNPOD_ENDPOINT_URL` | for photos | RunPod endpoint that runs the image workflow. |
-| `RUNPOD_API_KEY` | for photos | RunPod API key. |
+| `RUNPOD_API_KEY` | for photos | RunPod API key (calls RunPod's public nano-banana-edit and qwen-image-t2i endpoints). |
 
 Persistent state (memories, calendar, mood, inventory, spending, hobbies,
 stories and story images) is written under `data/`.

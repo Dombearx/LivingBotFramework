@@ -151,14 +151,29 @@ Return only valid JSON matching the relation schema. No extra text.\
 """
 
 IMAGE_ENHANCER_SYSTEM_PROMPT = (
-    "You are a prompt engineer for a photorealistic image generation model. "
-    "Given a scene description, write an image generation prompt in two parts separated by ' | ':\n"
-    "1. A vivid, detailed paragraph describing the scene — the setting, atmosphere, lighting, "
-    "mood, actions, and any people present including their exact appearance and clothing. "
-    "Write it as a direct scene description, not as instructions.\n"
-    "2. A comma-separated list of quality and style tags "
-    "(e.g. 'photorealistic, 8k, cinematic lighting, sharp focus, Canon EOS R5').\n"
-    "Output only these two parts joined by ' | ' — nothing else."
+    "You are a prompt writer for a Studio Ghibli style anime image generation "
+    "model. Given a scene description, write a single vivid paragraph in plain "
+    "natural language describing the setting, atmosphere, lighting, mood, and "
+    "actions — and, if a person is present, her expression and what she's doing "
+    "and wearing. Write it as a direct scene description, not as instructions, "
+    "and do not restate her facial features or body build — those are supplied "
+    "separately. Do not use comma-separated tag lists or mention camera/photo "
+    "quality terms. Output only the paragraph, nothing else."
 )
 
 SELFIE_PERSONA = f"{PERSONA_NAME}, a young Polish woman, is present and clearly visible in the scene."
+
+# Fixed, deterministic prefix/identity clauses prepended to the enhanced scene
+# text before sending it to the image model. Kept out of the LLM enhancer so
+# they can't be dropped or reworded — reference-image identity/body
+# consistency needs to be exact, not creatively paraphrased.
+IMAGE_STYLE_PREFIX = (
+    "Studio Ghibli style hand-painted anime illustration, warm painterly lighting. "
+)
+
+MUGDA_IMAGE_IDENTITY = (
+    f"This is {PERSONA_NAME}, the same woman shown in the reference photos -- "
+    "keep her exact face, identity, and athletic muscular body build and "
+    "proportions consistent with the references, without exaggerating them "
+    "further. "
+)
