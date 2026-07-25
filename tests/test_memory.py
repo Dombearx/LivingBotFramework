@@ -1,6 +1,37 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from livingbot.memory import MemoryStore
+
+# ---------------------------------------------------------------------------
+# MemoryStore.create
+# ---------------------------------------------------------------------------
+
+
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-router-key"})
+@patch("livingbot.memory.Memory")
+def test_create_points_embedder_at_openrouter_with_the_router_key(
+    mock_memory_cls: MagicMock, tmp_path
+) -> None:
+    MemoryStore.create(tmp_path)
+
+    config = mock_memory_cls.from_config.call_args.args[0]
+    assert config["embedder"]["config"]["api_key"] == "test-router-key"
+    assert (
+        config["embedder"]["config"]["openai_base_url"]
+        == "https://openrouter.ai/api/v1"
+    )
+
+
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-router-key"})
+@patch("livingbot.memory.Memory")
+def test_create_makes_the_data_path_directory(
+    mock_memory_cls: MagicMock, tmp_path
+) -> None:
+    data_path = tmp_path / "memories"
+
+    MemoryStore.create(data_path)
+
+    assert data_path.is_dir()
 
 
 async def test_all_returns_results_list_when_get_all_returns_dict() -> None:
