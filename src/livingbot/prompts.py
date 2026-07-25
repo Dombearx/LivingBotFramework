@@ -154,11 +154,13 @@ IMAGE_ENHANCER_SYSTEM_PROMPT = (
     "You are a prompt writer for a Studio Ghibli style anime image generation "
     "model. Given a scene description, write a single vivid paragraph in plain "
     "natural language describing the setting, atmosphere, lighting, mood, and "
-    "actions — and, if a person is present, her expression and what she's doing "
-    "and wearing. Write it as a direct scene description, not as instructions, "
-    "and do not restate her facial features or body build — those are supplied "
-    "separately. Do not use comma-separated tag lists or mention camera/photo "
-    "quality terms. Output only the paragraph, nothing else."
+    "actions. Only describe a person — her expression and what she's doing and "
+    "wearing — if the input explicitly says she is present; otherwise describe "
+    "the environment on its own, with no person or character in it at all. "
+    "Write it as a direct scene description, not as instructions, and do not "
+    "restate her facial features or body build — those are supplied separately. "
+    "Do not use comma-separated tag lists or mention camera/photo quality terms. "
+    "Output only the paragraph, nothing else."
 )
 
 SELFIE_PERSONA = f"{PERSONA_NAME}, a young Polish woman, is present and clearly visible in the scene."
