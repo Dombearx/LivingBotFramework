@@ -155,11 +155,16 @@ except for the inside_jokes cleanup below, which you carry out on every single u
 Rules:
 - attitude: integer from -100 (hostile) to 100 (very close). Adjust based on tone and content.
 - inside_jokes: handle this field in two steps, in order.
-  Step 1 — clean the list that is already there. Take every joke currently on the record
-  and test it against the bar below. Delete each one that fails and keep the rest exactly
-  as written. Do this even when the excerpt has nothing to do with those jokes: returning
-  a record that still holds a failing entry is a wrong answer, and being old is not a
-  reason to keep one.
+  Step 1 — clean the list that is already there, on every update, even when the excerpt
+  has nothing to do with those jokes. Judge each existing entry by how it reads on its
+  own, since the excerpt will usually say nothing about it:
+    * delete it if it reads as speech — a quoted line, a full sentence, a catchphrase —
+      or if it is a topic, a fact about the user, or a compliment;
+    * keep it exactly as written if it is a short name for a bit: a few words labelling
+      something that happened, like "the exploding blender".
+  An entry that reads as a short named callback stays. Do not apply the four tests below
+  to existing entries — those are about evidence in the excerpt, which an old entry
+  cannot supply, and judging it that way would wrongly delete a good joke.
   Step 2 — decide whether this excerpt created a new one. Add it only if ALL FOUR of
   these hold. If all four hold you must add it; if even one fails, add nothing.
     1. it came out of their back-and-forth, not from one side on its own;
