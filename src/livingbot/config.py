@@ -34,7 +34,7 @@ AWAKE_HOUR_END = 23
 STORY_AVOID_RECENT_LIMIT = 20
 # Channel she drops the occasional unprompted message into. Set this to the
 # hardcoded channel's ID; while it is None she never posts on her own.
-RANDOM_POST_CHANNEL_ID: int | None = None
+RANDOM_POST_CHANNEL_ID: int | None = 1081120855746166794  # #rozmowy-z-botami
 RANDOM_POST_MIN_DAYS = 7.0
 RANDOM_POST_MAX_DAYS = 10.0
 ONBOARDING_PERIOD = timedelta(days=3)

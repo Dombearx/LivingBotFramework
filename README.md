@@ -37,6 +37,7 @@ The bot is configured entirely through environment variables:
 | `OPENROUTER_API_KEY` | yes | API key for the chat and helper models (via OpenRouter). |
 | `OPENROUTER_BASE_URL` | no | Override the OpenRouter base URL. |
 | `RUNPOD_API_KEY` | for photos | RunPod API key (calls RunPod's public nano-banana-edit and qwen-image-t2i endpoints). |
+| `OPENAI_API_KEY` | yes | Used directly by the memory subsystem (mem0) for embeddings and its own LLM calls. |
 
 Persistent state (memories, calendar, mood, inventory, spending, hobbies,
 stories and story images) is written under `data/`.
@@ -51,11 +52,18 @@ uv run livingbot
 ```
 
 To run the bot together with the local admin dashboard (NiceGUI, served on
-`http://127.0.0.1:8080`):
+`http://0.0.0.0:9080`):
 
 ```bash
 uv run livingbot-admin
 ```
+
+## Deployment
+
+`docker compose up -d` (or `make up`) builds and runs the bot together with
+the admin dashboard, matching `uv run livingbot-admin` above. `data/` is
+mounted as a volume so persistent state survives rebuilds. See the `Makefile`
+for `up`/`down`/`build`/`restart`/`logs` targets.
 
 ## Development
 

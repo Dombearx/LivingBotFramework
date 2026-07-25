@@ -19,8 +19,8 @@ from livingbot.admin.pages import (
 from livingbot.bot import build
 from livingbot.observability import configure_logfire
 
-ADMIN_HOST = "127.0.0.1"
-ADMIN_PORT = 8080
+ADMIN_HOST = "0.0.0.0"
+ADMIN_PORT = 9080
 
 
 def run() -> None:
