@@ -16,6 +16,7 @@ from livingbot.activity_notes import ActivityNote, ActivityNotesStore
 from livingbot.calendar import CalendarStore, PlanEntry
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
+from livingbot.preferences import PreferenceStore
 from livingbot.spending import POINT_COST, SpendCategory, SpendingStore
 from livingbot.stories import StoryStore
 from livingbot.timeformat import humanize_ago
@@ -40,6 +41,7 @@ class BotDeps:
     spending_store: SpendingStore
     hobby_store: HobbyStore
     story_store: StoryStore
+    preference_store: PreferenceStore
     photo_result: bytes | None = None
 
 
@@ -308,6 +310,18 @@ async def add_hobby(ctx: RunContext[BotDeps], name: str) -> str:
     hobbies.entries.append(Hobby(name=name, acquired_at=now))
     ctx.deps.hobby_store.save(hobbies)
     return f"Added {name} to your hobbies."
+
+
+async def record_preference(ctx: RunContext[BotDeps], topic: str, stance: str) -> str:
+    """Write down a taste of yours so you keep it for good. Use this the moment you make
+    your mind up about something you had never settled before — the kind of guys you go
+    for, how you take your coffee, which films you can't sit through. topic is the area
+    in a few words ("body type in guys"); stance is your actual position, specific and
+    one-sided ("lean and visibly strong, not skinny and not heavy"). Recording the same
+    topic again replaces the old stance, so only do that when your mind genuinely
+    changes."""
+    preference = ctx.deps.preference_store.record(topic, stance)
+    return f"Noted [id:{preference.id}] {preference.topic}: {preference.stance}."
 
 
 async def recall_story(

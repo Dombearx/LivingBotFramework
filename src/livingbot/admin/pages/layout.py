@@ -5,6 +5,7 @@ from nicegui import ui
 
 NAV: list[tuple[str, str]] = [
     ("/", "Overview"),
+    ("/queue", "Queue"),
     ("/inventory", "Inventory"),
     ("/stories", "Stories"),
     ("/memories", "Memories"),
@@ -12,6 +13,7 @@ NAV: list[tuple[str, str]] = [
     ("/hobbies", "Hobbies"),
     ("/spending", "Spending"),
     ("/mood", "Mood"),
+    ("/preferences", "Preferences"),
     ("/relations", "Relations"),
     ("/tools", "Tools"),
 ]

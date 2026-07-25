@@ -23,6 +23,7 @@ from livingbot.tools import (
     load_context,
     mark_story_told,
     recall_story,
+    record_preference,
     remove_activity_note,
     remove_item,
     remove_plan,
@@ -41,6 +42,7 @@ _TOOL_FUNCTIONS: list[Callable[..., Any]] = [
     remove_item,
     search_inventory,
     add_hobby,
+    record_preference,
     recall_story,
     mark_story_told,
     show_story_image,
@@ -112,6 +114,7 @@ def register(context: AdminContext) -> None:
                     spending_store=context.spending_store,
                     hobby_store=context.hobby_store,
                     story_store=context.story_store,
+                    preference_store=context.preference_store,
                 )
                 ctx = SimpleNamespace(deps=deps)
                 with result_area:

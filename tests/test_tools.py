@@ -60,6 +60,7 @@ def make_ctx(
         spending_store=spending_store or make_spending_store(),
         hobby_store=hobby_store or make_hobby_store(),
         story_store=story_store or make_story_store(),
+        preference_store=MagicMock(),
     )
     return SimpleNamespace(deps=deps)
 
@@ -326,6 +327,7 @@ def make_photo_ctx() -> SimpleNamespace:
         spending_store=make_spending_store(),
         hobby_store=make_hobby_store(),
         story_store=make_story_store(),
+        preference_store=MagicMock(),
     )
     return SimpleNamespace(deps=deps)
 
@@ -458,6 +460,7 @@ def make_story_image_ctx(story: Story | None) -> SimpleNamespace:
         spending_store=make_spending_store(),
         hobby_store=make_hobby_store(),
         story_store=story_store,
+        preference_store=MagicMock(),
     )
     return SimpleNamespace(deps=deps)
 
@@ -628,6 +631,7 @@ def make_activity_ctx(tmp_path) -> SimpleNamespace:
             spending_store=make_spending_store(),
             hobby_store=make_hobby_store(),
             story_store=make_story_store(),
+            preference_store=MagicMock(),
         )
     )
 

@@ -12,6 +12,7 @@ from livingbot.calendar import Calendar, CalendarStore
 from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block
+from livingbot.preferences import Preferences, PreferenceStore
 from livingbot.relations import Relation
 from livingbot.spending import SpendingStore
 from livingbot.stories import Story, StoryStore
@@ -28,6 +29,7 @@ from livingbot.tools import (
     load_context,
     mark_story_told,
     recall_story,
+    record_preference,
     remove_activity_note,
     remove_item,
     remove_plan,
@@ -71,6 +73,7 @@ class LLMClient:
                 remove_item,
                 search_inventory,
                 add_hobby,
+                record_preference,
                 recall_story,
                 mark_story_told,
                 show_story_image,
@@ -90,6 +93,7 @@ class LLMClient:
         spending_store: SpendingStore,
         hobby_store: HobbyStore,
         story_store: StoryStore,
+        preference_store: PreferenceStore,
         now: datetime,
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
@@ -105,6 +109,7 @@ class LLMClient:
             spending_store=spending_store,
             hobby_store=hobby_store,
             story_store=story_store,
+            preference_store=preference_store,
         )
         parts: list[str] = []
         if photo_hint:
@@ -123,6 +128,7 @@ class LLMClient:
             parts.append(build_mood_block(mood, now))
         parts.append(spending_store.summary() + "\n\n")
         parts.append(_build_inventory_block(await inventory_store.recent()))
+        parts.append(_build_preferences_block(preference_store.load()))
         if relations:
             parts.append(_build_relations_block(relations))
         parts.append(_build_stories_block(await story_store.untold()))
@@ -281,6 +287,21 @@ def _build_inventory_block(items: list[InventoryItem]) -> str:
     return "\n".join(lines) + "\n\n"
 
 
+def _build_preferences_block(preferences: Preferences) -> str:
+    lines = ["Tastes and preferences you have already settled on:"]
+    if preferences.entries:
+        for preference in preferences.entries:
+            lines.append(f"  {preference.topic}: {preference.stance}")
+    else:
+        lines.append("  (you haven't pinned any down yet)")
+    lines.append(
+        "Stay consistent with these — they are yours. When you're asked about "
+        "something not on the list, don't sit on the fence: decide, say which side "
+        "you're on, and record it with record_preference so it sticks."
+    )
+    return "\n".join(lines) + "\n\n"
+
+
 def _build_relations_block(relations: list[Relation]) -> str:
     blocks: list[str] = ["My relationships with the people in this conversation:"]
     for relation in relations:
@@ -300,4 +321,11 @@ def _build_relations_block(relations: list[Relation]) -> str:
                 " (only reference these if they are clearly relevant to what they just said)"
             )
         blocks.append("\n".join(parts))
+    if any(relation.inside_jokes for relation in relations):
+        blocks.append(
+            "Inside jokes are callbacks, not catchphrases. Only bring one up when this "
+            "moment genuinely calls it back, and never work one into a message just to "
+            "use it — repeating the same line over and over is the fastest way to stop "
+            "sounding like a person."
+        )
     return "\n".join(blocks) + "\n\n"
