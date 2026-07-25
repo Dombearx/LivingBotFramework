@@ -3,76 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from livingbot.image import _enhance_prompt, _inject_prompt, generate_image
-
-
-# ---------------------------------------------------------------------------
-# _inject_prompt
-# ---------------------------------------------------------------------------
-
-
-def make_workflow() -> dict:
-    return {
-        "2": {
-            "class_type": "LoraLoader",
-            "inputs": {
-                "strength_model": "__MUGDA_LORA_STRENGTH__",
-                "strength_clip": "__MUGDA_LORA_STRENGTH__",
-            },
-        },
-        "6": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {"text": "__POSITIVE_PROMPT__", "clip": ["2", 1]},
-        },
-        "3": {"class_type": "KSampler", "inputs": {"seed": 0, "steps": 20}},
-    }
-
-
-def test_inject_prompt_replaces_positive_prompt_placeholder() -> None:
-    workflow = make_workflow()
-
-    result = _inject_prompt(workflow, "a sunny park", include_mugda=True)
-
-    assert result["6"]["inputs"]["text"] == "a sunny park"
-
-
-def test_inject_prompt_does_not_mutate_original_workflow() -> None:
-    workflow = make_workflow()
-
-    _inject_prompt(workflow, "a sunny park", include_mugda=True)
-
-    assert workflow["6"]["inputs"]["text"] == "__POSITIVE_PROMPT__"
-
-
-def test_inject_prompt_randomises_seed() -> None:
-    workflow = make_workflow()
-
-    result_a = _inject_prompt(workflow, "prompt", include_mugda=True)
-    result_b = _inject_prompt(workflow, "prompt", include_mugda=True)
-
-    # Two independent runs should (overwhelmingly) produce different seeds
-    assert result_a["3"]["inputs"]["seed"] != result_b["3"]["inputs"]["seed"] or True
-    # More importantly: seed is no longer the placeholder value 0
-    assert isinstance(result_a["3"]["inputs"]["seed"], int)
-
-
-def test_inject_prompt_sets_lora_strength_to_one_when_mugda_included() -> None:
-    workflow = make_workflow()
-
-    result = _inject_prompt(workflow, "prompt", include_mugda=True)
-
-    assert result["2"]["inputs"]["strength_model"] == 1.0
-    assert result["2"]["inputs"]["strength_clip"] == 1.0
-
-
-def test_inject_prompt_sets_lora_strength_to_zero_when_mugda_excluded() -> None:
-    workflow = make_workflow()
-
-    result = _inject_prompt(workflow, "prompt", include_mugda=False)
-
-    assert result["2"]["inputs"]["strength_model"] == 0.0
-    assert result["2"]["inputs"]["strength_clip"] == 0.0
-
+from livingbot.image import (
+    _enhance_prompt,
+    _reference_images,
+    _run_job,
+    generate_image,
+)
 
 # ---------------------------------------------------------------------------
 # _enhance_prompt
@@ -89,7 +25,7 @@ def _make_enhancer_agent(output: str) -> MagicMock:
 async def test_enhance_prompt_without_mugda_sends_only_description(
     mock_build_agent: MagicMock,
 ) -> None:
-    agent = _make_enhancer_agent("tags")
+    agent = _make_enhancer_agent("a scene")
     mock_build_agent.return_value = agent
 
     await _enhance_prompt(
@@ -105,7 +41,7 @@ async def test_enhance_prompt_without_mugda_sends_only_description(
 async def test_enhance_prompt_with_mugda_includes_mugda_in_message(
     mock_build_agent: MagicMock,
 ) -> None:
-    agent = _make_enhancer_agent("tags")
+    agent = _make_enhancer_agent("a scene")
     mock_build_agent.return_value = agent
 
     await _enhance_prompt("at the gym", include_mugda=True, outfit_description="")
@@ -118,7 +54,7 @@ async def test_enhance_prompt_with_mugda_includes_mugda_in_message(
 async def test_enhance_prompt_with_outfit_includes_outfit_in_message(
     mock_build_agent: MagicMock,
 ) -> None:
-    agent = _make_enhancer_agent("tags")
+    agent = _make_enhancer_agent("a scene")
     mock_build_agent.return_value = agent
 
     await _enhance_prompt(
@@ -135,7 +71,7 @@ async def test_enhance_prompt_with_outfit_includes_outfit_in_message(
 async def test_enhance_prompt_without_mugda_ignores_outfit_description(
     mock_build_agent: MagicMock,
 ) -> None:
-    agent = _make_enhancer_agent("tags")
+    agent = _make_enhancer_agent("a scene")
     mock_build_agent.return_value = agent
 
     await _enhance_prompt(
@@ -150,15 +86,13 @@ async def test_enhance_prompt_without_mugda_ignores_outfit_description(
 async def test_enhance_prompt_returns_model_content(
     mock_build_agent: MagicMock,
 ) -> None:
-    mock_build_agent.return_value = _make_enhancer_agent(
-        "a vivid scene | photorealistic, 8k"
-    )
+    mock_build_agent.return_value = _make_enhancer_agent("a vivid ghibli scene")
 
     result = await _enhance_prompt(
         "beach sunset", include_mugda=False, outfit_description=""
     )
 
-    assert result == "a vivid scene | photorealistic, 8k"
+    assert result == "a vivid ghibli scene"
 
 
 @patch("livingbot.image._build_enhancer_agent")
@@ -175,122 +109,163 @@ async def test_enhance_prompt_when_model_returns_empty_output_falls_back_to_desc
 
 
 # ---------------------------------------------------------------------------
+# _reference_images
+# ---------------------------------------------------------------------------
+
+
+@patch("livingbot.image.config.MUGDA_REFERENCE_IMAGE_PATHS")
+def test_reference_images_returns_base64_data_uri_per_configured_path(
+    mock_paths: MagicMock, tmp_path
+) -> None:
+    image_path = tmp_path / "ref.png"
+    image_path.write_bytes(b"fake-png-bytes")
+    mock_paths.__iter__.return_value = iter([image_path])
+
+    result = _reference_images()
+
+    expected = f"data:image/png;base64,{base64.b64encode(b'fake-png-bytes').decode()}"
+    assert result == [expected]
+
+
+# ---------------------------------------------------------------------------
+# _run_job
+# ---------------------------------------------------------------------------
+
+
+def _mock_response(json_data: dict) -> MagicMock:
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = json_data
+    return response
+
+
+async def test_run_job_returns_output_when_job_completes_immediately() -> None:
+    client = AsyncMock()
+    client.post = AsyncMock(
+        return_value=_mock_response(
+            {"id": "job-1", "status": "COMPLETED", "output": {"result": "url"}}
+        )
+    )
+
+    output = await _run_job(client, "https://example.com", "key", {"prompt": "x"})
+
+    assert output == {"result": "url"}
+    client.get.assert_not_called()
+
+
+@patch("livingbot.image.asyncio.sleep", new_callable=AsyncMock)
+async def test_run_job_polls_status_until_completed(
+    mock_sleep: AsyncMock,
+) -> None:
+    client = AsyncMock()
+    client.post = AsyncMock(
+        return_value=_mock_response({"id": "job-2", "status": "IN_QUEUE"})
+    )
+    client.get = AsyncMock(
+        side_effect=[
+            _mock_response({"id": "job-2", "status": "IN_PROGRESS"}),
+            _mock_response(
+                {"id": "job-2", "status": "COMPLETED", "output": {"result": "done"}}
+            ),
+        ]
+    )
+
+    output = await _run_job(client, "https://example.com", "key", {"prompt": "x"})
+
+    assert output == {"result": "done"}
+
+
+async def test_run_job_raises_when_job_fails() -> None:
+    client = AsyncMock()
+    client.post = AsyncMock(
+        return_value=_mock_response({"id": "job-3", "status": "FAILED"})
+    )
+
+    with pytest.raises(RuntimeError, match="FAILED"):
+        await _run_job(client, "https://example.com", "key", {"prompt": "x"})
+
+
+# ---------------------------------------------------------------------------
 # generate_image
 # ---------------------------------------------------------------------------
 
 
-def _make_runpod_responses(
-    job_id: str = "job-42", image_b64: str = ""
-) -> tuple[MagicMock, MagicMock]:
-    submit_resp = MagicMock()
-    submit_resp.raise_for_status = MagicMock()
-    submit_resp.json.return_value = {"id": job_id}
+def _download_client(image_bytes: bytes) -> AsyncMock:
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.content = image_bytes
 
-    poll_resp = MagicMock()
-    poll_resp.raise_for_status = MagicMock()
-    poll_resp.json.return_value = {
-        "status": "COMPLETED",
-        "output": {"images": [image_b64]},
-    }
-
-    return submit_resp, poll_resp
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    return client
 
 
-@patch.dict(
-    "os.environ",
-    {
-        "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
-        "RUNPOD_API_KEY": "key",
-    },
-)
-@patch("livingbot.image._build_enhancer_agent")
+@patch.dict("os.environ", {"RUNPOD_API_KEY": "key"})
 @patch("livingbot.image.httpx.AsyncClient")
-async def test_generate_image_returns_decoded_image_bytes(
+@patch("livingbot.image._run_job")
+@patch("livingbot.image._reference_images", return_value=["data:image/png;base64,AAAA"])
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_with_mugda_calls_selfie_endpoint_with_reference_images(
+    mock_enhance: AsyncMock,
+    mock_reference_images: MagicMock,
+    mock_run_job: AsyncMock,
     mock_httpx_cls: MagicMock,
-    mock_build_agent: MagicMock,
 ) -> None:
-    raw_bytes = b"fake-image-data"
-    image_b64 = base64.b64encode(raw_bytes).decode()
-    submit_resp, poll_resp = _make_runpod_responses(image_b64=image_b64)
+    mock_enhance.return_value = "a sunny gym scene"
+    mock_run_job.return_value = {"result": "https://img.example/out.jpg", "cost": 0.02}
+    mock_httpx_cls.return_value = _download_client(b"image-bytes")
 
-    http_client = AsyncMock()
-    http_client.post = AsyncMock(return_value=submit_resp)
-    http_client.get = AsyncMock(return_value=poll_resp)
-    http_client.__aenter__ = AsyncMock(return_value=http_client)
-    http_client.__aexit__ = AsyncMock(return_value=False)
-    mock_httpx_cls.return_value = http_client
+    await generate_image("at the gym", include_mugda=True)
 
-    mock_build_agent.return_value = _make_enhancer_agent(
-        "enhanced prompt | photorealistic"
-    )
-
-    result = await generate_image("gym selfie", include_mugda=True)
-
-    assert result == raw_bytes
+    call_args = mock_run_job.call_args.args
+    assert call_args[1] == "https://api.runpod.ai/v2/nano-banana-edit"
+    payload = call_args[3]
+    assert payload["images"] == ["data:image/png;base64,AAAA"]
+    assert payload["enable_safety_checker"] is False
+    assert "Studio Ghibli" in payload["prompt"]
+    assert "same woman shown in the reference photos" in payload["prompt"]
+    assert "a sunny gym scene" in payload["prompt"]
 
 
-@patch.dict(
-    "os.environ",
-    {
-        "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
-        "RUNPOD_API_KEY": "key",
-    },
-)
-@patch("livingbot.image._build_enhancer_agent")
+@patch.dict("os.environ", {"RUNPOD_API_KEY": "key"})
 @patch("livingbot.image.httpx.AsyncClient")
-async def test_generate_image_submits_workflow_to_runpod(
+@patch("livingbot.image._run_job")
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_without_mugda_calls_scenery_endpoint_without_images(
+    mock_enhance: AsyncMock,
+    mock_run_job: AsyncMock,
     mock_httpx_cls: MagicMock,
-    mock_build_agent: MagicMock,
 ) -> None:
-    submit_resp, poll_resp = _make_runpod_responses(
-        image_b64=base64.b64encode(b"img").decode()
-    )
+    mock_enhance.return_value = "an empty park path"
+    mock_run_job.return_value = {"result": "https://img.example/out.jpg", "cost": 0.02}
+    mock_httpx_cls.return_value = _download_client(b"image-bytes")
 
-    http_client = AsyncMock()
-    http_client.post = AsyncMock(return_value=submit_resp)
-    http_client.get = AsyncMock(return_value=poll_resp)
-    http_client.__aenter__ = AsyncMock(return_value=http_client)
-    http_client.__aexit__ = AsyncMock(return_value=False)
-    mock_httpx_cls.return_value = http_client
+    await generate_image("a quiet park", include_mugda=False)
 
-    mock_build_agent.return_value = _make_enhancer_agent("scene | tags")
-
-    await generate_image("rainy park", include_mugda=False)
-
-    post_kwargs = http_client.post.call_args.kwargs
-    payload = post_kwargs["json"]
-    assert "workflow" in payload["input"]
+    call_args = mock_run_job.call_args.args
+    assert call_args[1] == "https://api.runpod.ai/v2/qwen-image-t2i"
+    payload = call_args[3]
+    assert "images" not in payload
+    assert payload["seed"] == -1
+    assert payload["enable_safety_checker"] is False
+    assert "same woman shown in the reference photos" not in payload["prompt"]
 
 
-@patch.dict(
-    "os.environ",
-    {
-        "RUNPOD_ENDPOINT_URL": "https://api.runpod.io/v2/ep",
-        "RUNPOD_API_KEY": "key",
-    },
-)
-@patch("livingbot.image._build_enhancer_agent")
+@patch.dict("os.environ", {"RUNPOD_API_KEY": "key"})
 @patch("livingbot.image.httpx.AsyncClient")
-async def test_generate_image_raises_when_job_fails(
+@patch("livingbot.image._run_job")
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_returns_downloaded_image_bytes(
+    mock_enhance: AsyncMock,
+    mock_run_job: AsyncMock,
     mock_httpx_cls: MagicMock,
-    mock_build_agent: MagicMock,
 ) -> None:
-    submit_resp = MagicMock()
-    submit_resp.raise_for_status = MagicMock()
-    submit_resp.json.return_value = {"id": "job-99"}
+    mock_enhance.return_value = "a scene"
+    mock_run_job.return_value = {"result": "https://img.example/out.jpg", "cost": 0.02}
+    mock_httpx_cls.return_value = _download_client(b"final-image-bytes")
 
-    poll_resp = MagicMock()
-    poll_resp.raise_for_status = MagicMock()
-    poll_resp.json.return_value = {"status": "FAILED"}
+    result = await generate_image("a quiet park", include_mugda=False)
 
-    http_client = AsyncMock()
-    http_client.post = AsyncMock(return_value=submit_resp)
-    http_client.get = AsyncMock(return_value=poll_resp)
-    http_client.__aenter__ = AsyncMock(return_value=http_client)
-    http_client.__aexit__ = AsyncMock(return_value=False)
-    mock_httpx_cls.return_value = http_client
-
-    mock_build_agent.return_value = _make_enhancer_agent("scene | tags")
-
-    with pytest.raises(RuntimeError, match="FAILED"):
-        await generate_image("beach", include_mugda=False)
+    assert result == b"final-image-bytes"

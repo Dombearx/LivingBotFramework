@@ -14,6 +14,13 @@ RECENT_HOBBY_WINDOW = timedelta(days=14)
 RECENT_PURCHASE_WINDOW = timedelta(days=7)
 STORY_DATA_PATH = Path("data/stories")
 STORY_IMAGE_PATH = Path("data/story_images")
+# Reference photos of Mugda passed to the image-editing model so generated
+# selfies keep the same face and body build.
+MUGDA_REFERENCE_IMAGE_PATHS = [
+    Path("images/reference/mugda_kowal.jpeg"),
+    Path("images/reference/mugda_łąka.jpeg"),
+    Path("images/reference/mugda_kwiaty.jpeg"),
+]
 SPONTANEOUS_DATA_PATH = Path("data/spontaneous")
 HOME_LOCATION = "home"
 DEFAULT_HOBBIES = ["gym"]
