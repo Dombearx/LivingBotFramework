@@ -20,6 +20,14 @@ GLOBAL_USER_ID = "global"
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
+def _extract_results(response: Any) -> list[dict[str, Any]]:
+    """mem0's search()/get_all() return {"results": [...]} (v1.1+ format)."""
+    return cast(
+        "list[dict[str, Any]]",
+        response.get("results", response) if isinstance(response, dict) else response,
+    )
+
+
 class MemoryStore:
     def __init__(self, memory: Memory) -> None:
         self._memory = memory
@@ -88,7 +96,10 @@ class MemoryStore:
                 loop.run_in_executor(
                     None,
                     functools.partial(
-                        self._memory.search, query, user_id=uid, limit=limit
+                        self._memory.search,
+                        query,
+                        filters={"user_id": uid},
+                        top_k=limit,
                     ),
                 )
                 for uid in banks
@@ -98,7 +109,7 @@ class MemoryStore:
         seen: set[str] = set()
         memories: list[str] = []
         for results in result_lists:
-            for result in results:
+            for result in _extract_results(results):
                 text: str = result["memory"]
                 if text not in seen:
                     seen.add(text)
@@ -108,12 +119,9 @@ class MemoryStore:
     async def all(self, user_id: str) -> list[dict[str, Any]]:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            None, lambda: self._memory.get_all(user_id=user_id)
+            None, lambda: self._memory.get_all(filters={"user_id": user_id})
         )
-        return cast(
-            "list[dict[str, Any]]",
-            result.get("results", result) if isinstance(result, dict) else result,
-        )
+        return _extract_results(result)
 
     async def delete(self, memory_id: str) -> None:
         loop = asyncio.get_event_loop()
