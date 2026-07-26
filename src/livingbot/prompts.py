@@ -208,21 +208,25 @@ Rules:
   joke and makes the bot sound like a broken record.
   When a bit does clear the bar it is an inside joke — do not file it under
   new_most_important_memory instead. Most conversations add none.
-- new_most_important_memory: leave this null unless the excerpt contains a genuinely
-  defining fact or event about this user that outweighs whatever is already stored.
-  Record only something that ACTUALLY HAPPENED and that the user stated as a fact about
-  themselves. Never record:
+- new_most_important_memory: the single most defining thing she knows about this user.
+  Set it when the excerpt contains a concrete event that ACTUALLY HAPPENED to them, or a
+  defining fact about their life, stated by the user themselves. If their record has no
+  memory yet and the excerpt contains such an event, record it. If a memory is already
+  stored, keep it — leave this null unless the new one is clearly more defining.
+  Belongs here: getting into university, winning a tournament, landing or losing a job,
+  a loss they went through, moving to another city — things that already happened to
+  them and would still matter months later.
+  Never record:
     * anything proposed, suggested, invited, planned or hypothetical — asking "want to
       play X?" is not playing X, and a plan to do something is not the thing being done;
     * anything the user turned down, dropped, or said they did not want to do. If they
       float an idea and then back out, nothing happened and there is nothing to record;
     * anything the bot said, did, offered or suggested — this field is about the user;
     * a subject they merely talked about. That belongs in new_topics_of_interest.
-  Worked example: the user asks whether they should play a game together and then says he
-  does not feel like it after all. The correct output is null. They did not play it, and
-  writing that they did puts a false memory into her head that she will bring up later.
-  An existing memory stays by default; replace it only when the new one is clearly more
-  defining than what is already there. Max 200 characters.
+  Worked example of that last trap: the user asks whether they should play a game
+  together and then says he does not feel like it after all. The correct output is null.
+  They did not play it, and writing that they did puts a false memory into her head that
+  she will bring up later as if it were real. Max 200 characters.
 - new_topics_of_interest: subjects this user genuinely cares about, evidenced in this
   excerpt and not already in their list. Usually empty.
 Return only valid JSON matching the patch schema. No extra text.\

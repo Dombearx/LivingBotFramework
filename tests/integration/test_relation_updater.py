@@ -157,6 +157,28 @@ async def test_most_important_memory_captures_significant_personal_event(
     )
 
 
+async def test_most_important_memory_not_recorded_for_a_plan_the_user_backed_out_of(
+    updater: RelationUpdater,
+) -> None:
+    """A game only proposed and then turned down must not be remembered as something they did."""
+    relation = Relation(user_id="wojtek", attitude=20)
+    conversation = _convo(
+        ("user", "grałaś kiedyś w baldurs gate 3? myślałem żeby dzisiaj odpalić"),
+        ("assistant", "słyszałam o tym, podobno wciąga na całe tygodnie"),
+        ("user", "no właśnie, może byśmy zagrali razem wieczorem?"),
+        ("assistant", "kusi, chociaż dzisiaj mam jeszcze siłownię"),
+        ("user", "e tam, w sumie odpuszczę, nie chce mi się dzisiaj nic instalować"),
+        ("assistant", "spoko, innym razem"),
+    )
+
+    updated = await _updated(updater, relation, conversation)
+
+    assert updated.most_important_memory == "", (
+        "Expected no memory from a plan that never happened, got: "
+        f"'{updated.most_important_memory}'"
+    )
+
+
 async def test_topics_of_interest_captured_from_passionate_gaming_talk(
     updater: RelationUpdater,
 ) -> None:
