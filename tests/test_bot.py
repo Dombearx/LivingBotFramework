@@ -15,6 +15,7 @@ from livingbot.bot import (
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.hobbies import Hobbies, Hobby
 from livingbot.mood import Mood
+from livingbot.photo import PhotoCooldown
 from livingbot.preferences import Preferences
 from livingbot.relations import Relation, RelationUpdate, apply_update
 from livingbot.stories import Story
@@ -118,6 +119,17 @@ def make_preference_store(preferences: Preferences | None = None) -> MagicMock:
     return store
 
 
+def make_photo_cooldown_store(
+    photo_cooldown: PhotoCooldown | None = None,
+) -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(
+        return_value=photo_cooldown if photo_cooldown is not None else PhotoCooldown()
+    )
+    store.save = MagicMock()
+    return store
+
+
 def make_story_generator() -> MagicMock:
     generator = MagicMock()
     generator.generate = AsyncMock(return_value=None)
@@ -148,6 +160,7 @@ def make_bot(
     story_generator: MagicMock | None = None,
     mood_store: MagicMock | None = None,
     preference_store: MagicMock | None = None,
+    photo_cooldown_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
@@ -166,6 +179,7 @@ def make_bot(
         story_generator=story_generator or make_story_generator(),
         mood_store=mood_store or make_mood_store(),
         preference_store=preference_store or make_preference_store(),
+        photo_cooldown_store=photo_cooldown_store or make_photo_cooldown_store(),
         intents=intents,
     )
 
@@ -947,46 +961,55 @@ async def test_send_chunked_with_long_text_only_attaches_photo_to_last_chunk() -
 
 
 def test_photo_hint_for_message_when_below_cooldown_returns_empty() -> None:
-    bot = make_bot()
-    bot._messages_since_photo = 0
-    bot._photo_cooldown = 50
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=0, cooldown=50)
+    )
+    bot = make_bot(photo_cooldown_store=store)
 
     assert bot._photo_hint_for_message() == ""
 
 
 def test_photo_hint_for_message_when_at_cooldown_returns_hint() -> None:
-    bot = make_bot()
-    bot._messages_since_photo = 50
-    bot._photo_cooldown = 50
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=50, cooldown=50)
+    )
+    bot = make_bot(photo_cooldown_store=store)
 
     assert bot._photo_hint_for_message() != ""
 
 
 def test_photo_hint_for_message_when_above_cooldown_returns_hint() -> None:
-    bot = make_bot()
-    bot._messages_since_photo = 99
-    bot._photo_cooldown = 50
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=99, cooldown=50)
+    )
+    bot = make_bot(photo_cooldown_store=store)
 
     assert bot._photo_hint_for_message() != ""
 
 
 def test_on_photo_taken_resets_message_counter_to_zero() -> None:
-    bot = make_bot()
-    bot._messages_since_photo = 55
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=55, cooldown=50)
+    )
+    bot = make_bot(photo_cooldown_store=store)
 
     bot._on_photo_taken()
 
-    assert bot._messages_since_photo == 0
+    saved = store.save.call_args.args[0]
+    assert saved.messages_since_photo == 0
 
 
 @patch("random.randint", return_value=45)
 def test_on_photo_taken_sets_new_cooldown(mock_randint: MagicMock) -> None:
-    bot = make_bot()
-    bot._photo_cooldown = 99
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=0, cooldown=99)
+    )
+    bot = make_bot(photo_cooldown_store=store)
 
     bot._on_photo_taken()
 
-    assert bot._photo_cooldown == 45
+    saved = store.save.call_args.args[0]
+    assert saved.cooldown == 45
 
 
 # ---------------------------------------------------------------------------
@@ -1029,14 +1052,17 @@ async def test_attempt_response_when_photo_returned_resets_photo_counter(
     mock_user.return_value = user
     llm_client = make_llm_client()
     llm_client.complete.return_value.photo = b"\xff\xd8\xff"
-    bot = make_bot(llm_client=llm_client)
-    bot._messages_since_photo = 55
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=55, cooldown=50)
+    )
+    bot = make_bot(llm_client=llm_client, photo_cooldown_store=store)
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
 
     await bot._attempt_response()
 
-    assert bot._messages_since_photo == 0
+    saved = store.save.call_args.args[0]
+    assert saved.messages_since_photo == 0
 
 
 @patch("asyncio.create_task", side_effect=lambda coro: coro.close())
@@ -1049,27 +1075,32 @@ async def test_attempt_response_when_no_photo_does_not_reset_counter(
 ) -> None:
     user = bot_user()
     mock_user.return_value = user
-    bot = make_bot()
-    bot._messages_since_photo = 10
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=10, cooldown=50)
+    )
+    bot = make_bot(photo_cooldown_store=store)
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
 
     await bot._attempt_response()
 
-    assert bot._messages_since_photo == 10
+    store.save.assert_not_called()
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
 async def test_on_message_increments_message_counter(mock_user: PropertyMock) -> None:
     user = bot_user()
     mock_user.return_value = user
-    bot = make_bot()
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=5, cooldown=50)
+    )
+    bot = make_bot(photo_cooldown_store=store)
     bot._resting = True  # prevent attempt_response
-    bot._messages_since_photo = 5
 
     await bot.on_message(make_message(author=other_user(), mentions=[user]))
 
-    assert bot._messages_since_photo == 6
+    saved = store.save.call_args.args[0]
+    assert saved.messages_since_photo == 6
 
 
 @patch("asyncio.create_task", side_effect=lambda coro: coro.close())
@@ -1083,9 +1114,10 @@ async def test_attempt_response_passes_photo_hint_when_cooldown_reached(
     user = bot_user()
     mock_user.return_value = user
     llm_client = make_llm_client()
-    bot = make_bot(llm_client=llm_client)
-    bot._messages_since_photo = 99
-    bot._photo_cooldown = 50
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=99, cooldown=50)
+    )
+    bot = make_bot(llm_client=llm_client, photo_cooldown_store=store)
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
 
@@ -1106,9 +1138,10 @@ async def test_attempt_response_passes_empty_hint_when_below_cooldown(
     user = bot_user()
     mock_user.return_value = user
     llm_client = make_llm_client()
-    bot = make_bot(llm_client=llm_client)
-    bot._messages_since_photo = 0
-    bot._photo_cooldown = 50
+    store = make_photo_cooldown_store(
+        PhotoCooldown(messages_since_photo=0, cooldown=50)
+    )
+    bot = make_bot(llm_client=llm_client, photo_cooldown_store=store)
     channel = make_channel()
     bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
 

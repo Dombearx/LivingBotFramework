@@ -23,6 +23,7 @@ MUGDA_REFERENCE_IMAGE_PATHS = [
     Path("images/reference/mugda_kwiaty.jpeg"),
 ]
 SPONTANEOUS_DATA_PATH = Path("data/spontaneous")
+PHOTO_COOLDOWN_DATA_PATH = Path("data/photo_cooldown")
 HOME_LOCATION = "home"
 DEFAULT_HOBBIES = ["gym"]
 LIFE_LOOP_INTERVAL_SECONDS = 3600
