@@ -29,6 +29,7 @@ from livingbot.mood import (
     refresh_mood,
 )
 from livingbot.observability import configure_logfire
+from livingbot.photo import PhotoCooldown, PhotoCooldownStore
 from livingbot.preferences import PreferenceStore
 from livingbot.queue import MessageQueue
 from livingbot.relations import (
@@ -131,6 +132,7 @@ class LivingBot(discord.Client):
         story_generator: StoryGenerator,
         mood_store: MoodStore,
         preference_store: PreferenceStore,
+        photo_cooldown_store: PhotoCooldownStore,
         spontaneous_store: SpontaneousStore | None = None,
         spontaneous_messenger: SpontaneousMessenger | None = None,
         **kwargs: Any,
@@ -155,12 +157,9 @@ class LivingBot(discord.Client):
         self._story_generator = story_generator
         self._mood_store = mood_store
         self._preference_store = preference_store
+        self._photo_cooldown_store = photo_cooldown_store
         self._spontaneous_store = spontaneous_store
         self._spontaneous_messenger = spontaneous_messenger
-        self._messages_since_photo: int = 0
-        self._photo_cooldown: int = random.randint(
-            config.PHOTO_COOLDOWN_MIN, config.PHOTO_COOLDOWN_MAX
-        )
 
     @property
     def memory_store(self) -> MemoryStore:
@@ -224,11 +223,11 @@ class LivingBot(discord.Client):
 
     @property
     def messages_since_photo(self) -> int:
-        return self._messages_since_photo
+        return self._photo_cooldown_store.load().messages_since_photo
 
     @property
     def photo_cooldown(self) -> int:
-        return self._photo_cooldown
+        return self._photo_cooldown_store.load().cooldown
 
     async def setup_hook(self) -> None:
         self.loop.create_task(self._life_loop())
@@ -448,7 +447,9 @@ class LivingBot(discord.Client):
             channel_id=message.channel.id,
             message_id=message.id,
         ):
-            self._messages_since_photo += 1
+            photo_cooldown = self._photo_cooldown_store.load()
+            photo_cooldown.messages_since_photo += 1
+            self._photo_cooldown_store.save(photo_cooldown)
             self._queue.add(message)
 
             async with self._response_lock:
@@ -463,15 +464,13 @@ class LivingBot(discord.Client):
                     asyncio.create_task(self._rest_and_respond())
 
     def _photo_hint_for_message(self) -> str:
-        if self._messages_since_photo >= self._photo_cooldown:
+        photo_cooldown = self._photo_cooldown_store.load()
+        if photo_cooldown.messages_since_photo >= photo_cooldown.cooldown:
             return prompts.PHOTO_HINT
         return ""
 
     def _on_photo_taken(self) -> None:
-        self._messages_since_photo = 0
-        self._photo_cooldown = random.randint(
-            config.PHOTO_COOLDOWN_MIN, config.PHOTO_COOLDOWN_MAX
-        )
+        self._photo_cooldown_store.save(PhotoCooldown())
 
     def _onboarding_active(self) -> bool:
         join_times = [
@@ -692,6 +691,7 @@ def build() -> LivingBot:
     story_generator = StoryGenerator.create()
     mood_store = MoodStore(config.MOOD_DATA_PATH)
     preference_store = PreferenceStore(config.PREFERENCE_DATA_PATH)
+    photo_cooldown_store = PhotoCooldownStore(config.PHOTO_COOLDOWN_DATA_PATH)
     spontaneous_store = SpontaneousStore(config.SPONTANEOUS_DATA_PATH)
     spontaneous_messenger = SpontaneousMessenger.create()
     return LivingBot(
@@ -709,6 +709,7 @@ def build() -> LivingBot:
         story_generator=story_generator,
         mood_store=mood_store,
         preference_store=preference_store,
+        photo_cooldown_store=photo_cooldown_store,
         spontaneous_store=spontaneous_store,
         spontaneous_messenger=spontaneous_messenger,
         intents=intents,
