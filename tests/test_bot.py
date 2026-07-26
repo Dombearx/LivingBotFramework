@@ -15,7 +15,8 @@ from livingbot.bot import (
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.hobbies import Hobbies, Hobby
 from livingbot.mood import Mood
-from livingbot.relations import Relation
+from livingbot.preferences import Preferences
+from livingbot.relations import Relation, RelationUpdate, apply_update
 from livingbot.stories import Story
 
 # A fixed afternoon moment: outside the sleep window and with no elapsed time
@@ -56,7 +57,9 @@ def make_relation_store() -> MagicMock:
 
 def make_relation_updater() -> MagicMock:
     updater = MagicMock()
-    updater.update = AsyncMock(return_value=Relation(user_id="123"))
+    updater.update = AsyncMock(
+        return_value=RelationUpdate(attitude_delta=0, reason="nothing notable")
+    )
     return updater
 
 
@@ -102,6 +105,15 @@ def make_mood_store(mood: Mood | None = None) -> MagicMock:
 def make_hobby_store(hobbies: Hobbies | None = None) -> MagicMock:
     store = MagicMock()
     store.load = MagicMock(return_value=hobbies if hobbies is not None else Hobbies())
+    store.save = MagicMock()
+    return store
+
+
+def make_preference_store(preferences: Preferences | None = None) -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(
+        return_value=preferences if preferences is not None else Preferences()
+    )
     store.save = MagicMock()
     return store
 
@@ -153,7 +165,7 @@ def make_bot(
         story_store=story_store or make_story_store(),
         story_generator=story_generator or make_story_generator(),
         mood_store=mood_store or make_mood_store(),
-        preference_store=preference_store or MagicMock(),
+        preference_store=preference_store or make_preference_store(),
         intents=intents,
     )
 
@@ -742,11 +754,11 @@ async def test_update_relations_calls_updater_and_saves_for_each_relation(
     mock_user.return_value = user
     relation_a = Relation(user_id="aaa", attitude=10)
     relation_b = Relation(user_id="bbb", attitude=-5)
-    updated_a = Relation(user_id="aaa", attitude=20)
-    updated_b = Relation(user_id="bbb", attitude=-10)
+    update_a = RelationUpdate(attitude_delta=2, reason="asked about her training")
+    update_b = RelationUpdate(attitude_delta=-3, reason="called her useless")
 
     relation_updater = make_relation_updater()
-    relation_updater.update = AsyncMock(side_effect=[updated_a, updated_b])
+    relation_updater.update = AsyncMock(side_effect=[update_a, update_b])
     relation_store = make_relation_store()
     bot = make_bot(relation_store=relation_store, relation_updater=relation_updater)
     msg = make_message(author=other_user(), mentions=[user])
@@ -754,8 +766,8 @@ async def test_update_relations_calls_updater_and_saves_for_each_relation(
     await bot._update_relations([relation_a, relation_b], [msg], "bot reply")
 
     assert relation_updater.update.call_count == 2
-    relation_store.save.assert_any_call(updated_a)
-    relation_store.save.assert_any_call(updated_b)
+    relation_store.save.assert_any_call(apply_update(relation_a, update_a))
+    relation_store.save.assert_any_call(apply_update(relation_b, update_b))
 
 
 @patch("random.random", return_value=0.0)

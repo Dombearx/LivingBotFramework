@@ -31,7 +31,12 @@ from livingbot.mood import (
 from livingbot.observability import configure_logfire
 from livingbot.preferences import PreferenceStore
 from livingbot.queue import MessageQueue
-from livingbot.relations import Relation, RelationStore, RelationUpdater
+from livingbot.relations import (
+    Relation,
+    RelationStore,
+    RelationUpdater,
+    apply_update,
+)
 from livingbot.spending import SpendingStore
 from livingbot.image import generate_image
 from livingbot.spontaneous import SpontaneousMessenger, SpontaneousStore
@@ -328,7 +333,7 @@ class LivingBot(discord.Client):
                 "People you talk to here, in case you want to ask one of them something:"
             )
             for relation in relations:
-                details = [f"attitude {relation.attitude}/100"]
+                details = [f"attitude {round(relation.attitude)}/100"]
                 if relation.topics_of_interest:
                     details.append("into " + ", ".join(relation.topics_of_interest))
                 if relation.inside_jokes:
@@ -585,18 +590,43 @@ class LivingBot(discord.Client):
             {"role": "user", "content": format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
+        own_interests = [hobby.name for hobby in self._hobby_store.load().entries] + [
+            f"{preference.topic}: {preference.stance}"
+            for preference in self._preference_store.load().entries
+        ]
         for relation in relations:
-            updated = await self._relation_updater.update(relation, conversation)
-            self._relation_store.save(updated)
-            logger.debug("Updated relation for user_id=%s", relation.user_id)
-            delta = updated.attitude - relation.attitude
-            if delta != 0:
-                async with self._state_lock:
-                    mood = apply_interaction_delta(self._mood_store.load(), delta)
-                    self._mood_store.save(mood)
-                logger.debug(
-                    "Mood adjusted by interaction delta=%d: %.1f", delta, mood.value
+            with logfire.span("update_relation", user_id=relation.user_id) as span:
+                update = await self._relation_updater.update(
+                    relation, conversation, own_interests
                 )
+                if update is None:
+                    continue
+                updated = apply_update(relation, update)
+                self._relation_store.save(updated)
+                span.set_attribute("attitude_delta", update.attitude_delta)
+                span.set_attribute("attitude", updated.attitude)
+                span.set_attribute("reason", update.reason)
+                logger.debug(
+                    "Updated relation for user_id=%s: attitude %.1f -> %.1f (%+d: %s)",
+                    relation.user_id,
+                    relation.attitude,
+                    updated.attitude,
+                    update.attitude_delta,
+                    update.reason,
+                )
+                # Mood reacts to the moment, so it gets the raw judged delta rather
+                # than the deliberately slow change actually applied to attitude.
+                if update.attitude_delta != 0:
+                    async with self._state_lock:
+                        mood = apply_interaction_delta(
+                            self._mood_store.load(), update.attitude_delta
+                        )
+                        self._mood_store.save(mood)
+                    logger.debug(
+                        "Mood adjusted by interaction delta=%d: %.1f",
+                        update.attitude_delta,
+                        mood.value,
+                    )
 
     async def _rest_and_respond(self) -> None:
         while True:

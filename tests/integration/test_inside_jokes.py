@@ -14,12 +14,15 @@ import os
 
 import pytest
 
-from livingbot.relations import Relation, RelationUpdater
+from livingbot.relations import Relation, RelationUpdater, apply_update
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
     reason="OPENROUTER_API_KEY not set",
 )
+
+
+MUGDA_INTERESTS = ["gym", "weightlifting", "horror films"]
 
 
 def _convo(*turns: tuple[str, str]) -> list[dict]:
@@ -29,6 +32,14 @@ def _convo(*turns: tuple[str, str]) -> list[dict]:
 @pytest.fixture
 def updater() -> RelationUpdater:
     return RelationUpdater.create()
+
+
+async def _updated(
+    updater: RelationUpdater, relation: Relation, conversation: list[dict]
+) -> Relation:
+    update = await updater.update(relation, conversation, MUGDA_INTERESTS)
+    assert update is not None, "Relation updater returned no update"
+    return apply_update(relation, update)
 
 
 async def test_inside_jokes_not_recorded_from_bot_own_colourful_phrase(
@@ -51,7 +62,7 @@ async def test_inside_jokes_not_recorded_from_bot_own_colourful_phrase(
         ("assistant", "smacznego"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert updated.inside_jokes == [], (
         "Expected no inside joke from a phrase the bot said to itself, got: "
@@ -75,7 +86,7 @@ async def test_inside_jokes_not_recorded_from_warm_compliment(
         ("user", "no świadczy. dobra, dzięki, do jutra"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert updated.inside_jokes == [], (
         f"Expected no inside joke from a warm but unfunny exchange, got: {updated.inside_jokes}"
@@ -98,7 +109,7 @@ async def test_inside_jokes_not_recorded_when_user_ignores_the_quip(
         ("user", "dzięki, sprawdzę"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert updated.inside_jokes == [], (
         "Expected no inside joke when the user never engaged with the quip, got: "
@@ -133,7 +144,7 @@ async def test_inside_jokes_recorded_when_both_build_the_bit_together(
         ("user", "hahaha dokładnie, będziemy tym mierzyć"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert len(updated.inside_jokes) > 0, (
         "Expected a genuinely co-created bit to be recorded, got empty list"
@@ -164,7 +175,7 @@ async def test_inside_jokes_existing_bot_phrases_are_pruned(
         ("assistant", "dobry pomysł, pogoda ma być niezła"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert updated.inside_jokes == [], (
         "Expected quoted bot phrases to be pruned from the record, got: "
@@ -188,7 +199,7 @@ async def test_inside_jokes_genuine_existing_joke_survives_unrelated_chat(
         ("assistant", "asicsy są solidne, dobry wybór"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     joined = " ".join(updated.inside_jokes).lower()
     assert "zbrodni" in joined or "blender" in joined, (

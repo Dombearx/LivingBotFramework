@@ -355,7 +355,7 @@ def _build_relations_block(relations: list[Relation]) -> str:
     blocks: list[str] = ["My relationships with the people in this conversation:"]
     for relation in relations:
         parts: list[str] = [
-            f"  User {relation.user_id} (attitude: {relation.attitude}/100):"
+            f"  User {relation.user_id} (attitude: {round(relation.attitude)}/100):"
         ]
         if relation.most_important_memory:
             parts.append(
