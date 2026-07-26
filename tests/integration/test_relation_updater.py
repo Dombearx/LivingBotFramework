@@ -10,12 +10,15 @@ import os
 
 import pytest
 
-from livingbot.relations import Relation, RelationUpdater
+from livingbot.relations import Relation, RelationUpdater, apply_update
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
     reason="OPENROUTER_API_KEY not set",
 )
+
+
+MUGDA_INTERESTS = ["gym", "weightlifting", "horror films"]
 
 
 def _convo(*turns: tuple[str, str]) -> list[dict]:
@@ -25,6 +28,14 @@ def _convo(*turns: tuple[str, str]) -> list[dict]:
 @pytest.fixture
 def updater() -> RelationUpdater:
     return RelationUpdater.create()
+
+
+async def _updated(
+    updater: RelationUpdater, relation: Relation, conversation: list[dict]
+) -> Relation:
+    update = await updater.update(relation, conversation, MUGDA_INTERESTS)
+    assert update is not None, "Relation updater returned no update"
+    return apply_update(relation, update)
 
 
 async def test_attitude_increases_after_warm_friendly_exchange(
@@ -46,7 +57,7 @@ async def test_attitude_increases_after_warm_friendly_exchange(
         ("user", "nie przesadzam! następnym razem stawiam wirtualną kawę"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert updated.attitude > 0, (
         f"Expected positive attitude after warm exchange, got {updated.attitude}"
@@ -72,7 +83,7 @@ async def test_attitude_decreases_after_hostile_confrontation(
         ("user", "wszystko. dosłownie wszystko co piszesz to bzdury"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert updated.attitude < 20, (
         f"Expected attitude to drop after hostility, got {updated.attitude} (was 20)"
@@ -102,7 +113,7 @@ async def test_inside_joke_is_added_after_shared_funny_moment(
         ),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert len(updated.inside_jokes) > 0, (
         f"Expected inside joke to be recorded, got empty list. attitude={updated.attitude}"
@@ -132,7 +143,7 @@ async def test_most_important_memory_captures_significant_personal_event(
         ),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert updated.most_important_memory != "", (
         "Expected most_important_memory to be set, got empty string"
@@ -143,6 +154,28 @@ async def test_most_important_memory_captures_significant_personal_event(
         for word in ["studia", "wrocław", "pwr", "informatyk", "dostał"]
     ), (
         f"Expected memory about university admission, got: '{updated.most_important_memory}'"
+    )
+
+
+async def test_most_important_memory_not_recorded_for_a_plan_the_user_backed_out_of(
+    updater: RelationUpdater,
+) -> None:
+    """A game only proposed and then turned down must not be remembered as something they did."""
+    relation = Relation(user_id="wojtek", attitude=20)
+    conversation = _convo(
+        ("user", "grałaś kiedyś w baldurs gate 3? myślałem żeby dzisiaj odpalić"),
+        ("assistant", "słyszałam o tym, podobno wciąga na całe tygodnie"),
+        ("user", "no właśnie, może byśmy zagrali razem wieczorem?"),
+        ("assistant", "kusi, chociaż dzisiaj mam jeszcze siłownię"),
+        ("user", "e tam, w sumie odpuszczę, nie chce mi się dzisiaj nic instalować"),
+        ("assistant", "spoko, innym razem"),
+    )
+
+    updated = await _updated(updater, relation, conversation)
+
+    assert updated.most_important_memory == "", (
+        "Expected no memory from a plan that never happened, got: "
+        f"'{updated.most_important_memory}'"
     )
 
 
@@ -173,7 +206,7 @@ async def test_topics_of_interest_captured_from_passionate_gaming_talk(
         ),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert len(updated.topics_of_interest) > 0, (
         "Expected topics_of_interest to be set, got empty list"
@@ -198,10 +231,10 @@ async def test_relation_stays_stable_after_short_neutral_small_talk(
         ("assistant", "nara!"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
-    assert abs(updated.attitude - 5) <= 15, (
-        f"Expected attitude to stay near 5 after neutral chat, got {updated.attitude}"
+    assert abs(updated.attitude - 5) <= 0.5, (
+        f"Expected attitude to stay at 5 after neutral chat, got {updated.attitude}"
     )
     assert (
         updated.topics_of_interest == ["muzyka"]
@@ -237,7 +270,7 @@ async def test_multiple_fields_update_after_rich_conversation(
         ("assistant", "nie ma za co, teraz widzę cię z lepszej strony"),
     )
 
-    updated = await updater.update(relation, conversation)
+    updated = await _updated(updater, relation, conversation)
 
     assert updated.attitude > -10, (
         f"Expected attitude to improve after apology and positive conversation, got {updated.attitude}"

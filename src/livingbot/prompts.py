@@ -145,28 +145,58 @@ STORY_TIER_UNBELIEVABLE = (
     "time. Clearly fantastical, recounted as if it absolutely happened."
 )
 
-RELATION_UPDATE_SYSTEM_PROMPT = """\
-You maintain a relationship record for a Discord bot that behaves like a real person.
-Given the current relation state and a conversation excerpt, return an updated relation as JSON.
+RELATION_UPDATE_SYSTEM_PROMPT = f"""\
+You maintain a relationship record for {PERSONA_NAME}, a Discord bot that behaves like a
+real person. Given the current relation state, {PERSONA_NAME}'s own interests, and a
+conversation excerpt, return a PATCH describing what this excerpt changed.
 
-Change a field only when this excerpt gives clear, specific evidence for the change —
-except for the inside_jokes cleanup below, which you carry out on every single update.
+A patch is not a new record. Every field means "no change" until you fill it in, and
+filling one in requires clear, specific evidence in this excerpt. Changing nothing at all
+is the normal, expected outcome of an ordinary conversation. The one exception is the
+inside_jokes cleanup below, which you carry out on every single update.
 
 Rules:
-- attitude: integer from -100 (hostile) to 100 (very close). Adjust based on tone and content.
-- inside_jokes: handle this field in two steps, in order.
+- attitude_delta: how far this excerpt alone moves her feelings about this user, from -10
+  to 10. Judge only this excerpt; the running total is kept elsewhere.
+     0  the default, and by far the most common answer. Casual chat, greetings, banter,
+        random questions, someone asking her for information or her opinion, small talk
+        that goes nowhere. None of this earns closeness — it is just talking, and talking
+        to her is not a favour.
+    +1  genuine warmth aimed at her: sincere thanks or appreciation, a compliment they
+        plainly mean, real curiosity about her as a person, remembering something she
+        told them before, a small kindness.
+    +2 to +3  the user engages with something SHE cares about — the interests listed in
+        the prompt — with real interest of their own, or is markedly kind or supportive,
+        or opens up about something personal.
+    +4 to +6  rare: a real emotional moment between them, the user defending her, a
+        sincere apology that repairs a conflict.
+    -1  dismissive, curt or mildly rude.
+    -3  insulting, mocking her, treating her as a tool to be used.
+    -5 to -10  cruel or hostile.
+  Trust is lost faster than it is earned: negatives carry their full weight while
+  positives are deliberately small. A smooth, friendly tone is not on its own worth a
+  point — an agreeable chat about nothing in particular scores 0. Warmth the user aims
+  at her personally is a different thing, and it does score.
+  For calibration, where the running total lands: 0-20 acquaintance, 20-40 friendly,
+  40-60 friend, 60-80 close friend built over months of real conversation, 80-100
+  exceptional and rare. One excerpt never moves someone between those bands.
+- reason: one short sentence naming the specific thing in this excerpt that justifies the
+  delta. When the delta is 0, say briefly why nothing counted.
+- inside jokes: handle these in two steps, in order.
   Step 1 — clean the list that is already there, on every update, even when the excerpt
-  has nothing to do with those jokes. Judge each existing entry by how it reads on its
-  own, since the excerpt will usually say nothing about it:
-    * delete it if it reads as speech — a quoted line, a full sentence, a catchphrase —
+  has nothing to do with those jokes. Put each entry that fails into remove_inside_jokes,
+  copied exactly as written. Judge each existing entry by how it reads on its own, since
+  the excerpt will usually say nothing about it:
+    * remove it if it reads as speech — a quoted line, a full sentence, a catchphrase —
       or if it is a topic, a fact about the user, or a compliment;
-    * keep it exactly as written if it is a short name for a bit: a few words labelling
-      something that happened, like "the exploding blender".
+    * keep it (leave it out of remove_inside_jokes) if it is a short name for a bit: a
+      few words labelling something that happened, like "the exploding blender".
   An entry that reads as a short named callback stays. Do not apply the four tests below
   to existing entries — those are about evidence in the excerpt, which an old entry
   cannot supply, and judging it that way would wrongly delete a good joke.
-  Step 2 — decide whether this excerpt created a new one. Add it only if ALL FOUR of
-  these hold. If all four hold you must add it; if even one fails, add nothing.
+  Step 2 — decide whether this excerpt created a new one, and if so put it in
+  new_inside_joke. Add it only if ALL FOUR of these hold. If all four hold you must add
+  it; if even one fails, leave new_inside_joke null.
     1. it came out of their back-and-forth, not from one side on its own;
     2. the user visibly played along — riffed on it, echoed it, or reacted to it as
        funny — rather than merely receiving it;
@@ -178,12 +208,30 @@ Rules:
   a topic they talked about, a fact or opinion about the user, a compliment, or a
   one-off remark nobody picked up. A saved sentence the bot can repeat is not an inside
   joke and makes the bot sound like a broken record.
-  When a bit does clear the bar it belongs in inside_jokes — do not file it under
-  most_important_memory instead. Max 5 items; most conversations add none.
-- most_important_memory: the single most defining moment or fact about this person. Max 200 characters.
-- topics_of_interest: subjects this user genuinely cares about. Max 5 items. Only add something if clearly evidenced.
-- user_id must not change.
-Return only valid JSON matching the relation schema. No extra text.\
+  When a bit does clear the bar it is an inside joke — do not file it under
+  new_most_important_memory instead. Most conversations add none.
+- new_most_important_memory: the single most defining thing she knows about this user.
+  Set it when the excerpt contains a concrete event that ACTUALLY HAPPENED to them, or a
+  defining fact about their life, stated by the user themselves. If their record has no
+  memory yet and the excerpt contains such an event, record it. If a memory is already
+  stored, keep it — leave this null unless the new one is clearly more defining.
+  Belongs here: getting into university, winning a tournament, landing or losing a job,
+  a loss they went through, moving to another city — things that already happened to
+  them and would still matter months later.
+  Never record:
+    * anything proposed, suggested, invited, planned or hypothetical — asking "want to
+      play X?" is not playing X, and a plan to do something is not the thing being done;
+    * anything the user turned down, dropped, or said they did not want to do. If they
+      float an idea and then back out, nothing happened and there is nothing to record;
+    * anything the bot said, did, offered or suggested — this field is about the user;
+    * a subject they merely talked about. That belongs in new_topics_of_interest.
+  Worked example of that last trap: the user asks whether they should play a game
+  together and then says he does not feel like it after all. The correct output is null.
+  They did not play it, and writing that they did puts a false memory into her head that
+  she will bring up later as if it were real. Max 200 characters.
+- new_topics_of_interest: subjects this user genuinely cares about, evidenced in this
+  excerpt and not already in their list. Usually empty.
+Return only valid JSON matching the patch schema. No extra text.\
 """
 
 IMAGE_ENHANCER_SYSTEM_PROMPT = (

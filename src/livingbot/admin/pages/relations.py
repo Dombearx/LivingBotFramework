@@ -28,9 +28,13 @@ def register(context: AdminContext) -> None:
                             ui.label(f"User {relation.user_id}").classes(
                                 "font-semibold"
                             )
-                            ui.label(f"Attitude: {relation.attitude}/100").classes(
+                            ui.label(f"Attitude: {relation.attitude:.1f}/100").classes(
                                 "text-sm text-gray-500"
                             )
+                            if relation.last_attitude_reason:
+                                ui.label(
+                                    f"Last change: {relation.last_attitude_reason}"
+                                ).classes("text-xs text-gray-400")
                             if relation.most_important_memory:
                                 ui.label(relation.most_important_memory).classes(
                                     "text-sm text-gray-500"
@@ -81,7 +85,7 @@ def register(context: AdminContext) -> None:
                         try:
                             saved = relation.model_copy(
                                 update={
-                                    "attitude": int(attitude.value or 0),
+                                    "attitude": float(attitude.value or 0),
                                     "most_important_memory": memory.value.strip(),
                                     "inside_jokes": joke_lines,
                                     "topics_of_interest": topic_lines,
