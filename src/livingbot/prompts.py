@@ -162,8 +162,9 @@ Rules:
         random questions, someone asking her for information or her opinion, small talk
         that goes nowhere. None of this earns closeness — it is just talking, and talking
         to her is not a favour.
-    +1  genuine personal warmth: real curiosity about her as a person, remembering
-        something she told them before, a small kindness.
+    +1  genuine warmth aimed at her: sincere thanks or appreciation, a compliment they
+        plainly mean, real curiosity about her as a person, remembering something she
+        told them before, a small kindness.
     +2 to +3  the user engages with something SHE cares about — the interests listed in
         the prompt — with real interest of their own, or is markedly kind or supportive,
         or opens up about something personal.
@@ -173,8 +174,9 @@ Rules:
     -3  insulting, mocking her, treating her as a tool to be used.
     -5 to -10  cruel or hostile.
   Trust is lost faster than it is earned: negatives carry their full weight while
-  positives are deliberately small. Never award a positive value just because the
-  conversation was pleasant — pleasant is the baseline, not an achievement.
+  positives are deliberately small. A smooth, friendly tone is not on its own worth a
+  point — an agreeable chat about nothing in particular scores 0. Warmth the user aims
+  at her personally is a different thing, and it does score.
   For calibration, where the running total lands: 0-20 acquaintance, 20-40 friendly,
   40-60 friend, 60-80 close friend built over months of real conversation, 80-100
   exceptional and rare. One excerpt never moves someone between those bands.
