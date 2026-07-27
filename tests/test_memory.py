@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from livingbot.memory import MemoryStore
+from livingbot.prompts import PERSONA_NAME
 
 # ---------------------------------------------------------------------------
 # MemoryStore.create
@@ -20,6 +21,30 @@ def test_create_points_embedder_at_openrouter_with_the_router_key(
         config["embedder"]["config"]["openai_base_url"]
         == "https://openrouter.ai/api/v1"
     )
+
+
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-router-key"})
+@patch("livingbot.memory.Memory")
+def test_create_tells_the_extractor_the_assistant_role_is_the_persona(
+    mock_memory_cls: MagicMock, tmp_path
+) -> None:
+    MemoryStore.create(tmp_path)
+
+    config = mock_memory_cls.from_config.call_args.args[0]
+    assert PERSONA_NAME in config["custom_instructions"]
+    assert "'Assistant'" in config["custom_instructions"]
+
+
+@patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-router-key"})
+@patch("livingbot.memory.Memory")
+def test_create_tells_the_extractor_to_use_the_discord_display_name(
+    mock_memory_cls: MagicMock, tmp_path
+) -> None:
+    MemoryStore.create(tmp_path)
+
+    config = mock_memory_cls.from_config.call_args.args[0]
+    assert "display name" in config["custom_instructions"]
+    assert "'User'" in config["custom_instructions"]
 
 
 @patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-router-key"})
