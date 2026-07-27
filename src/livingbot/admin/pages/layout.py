@@ -15,7 +15,6 @@ NAV: list[tuple[str, str]] = [
     ("/mood", "Mood"),
     ("/preferences", "Preferences"),
     ("/relations", "Relations"),
-    ("/spontaneous", "Spontaneous"),
     ("/tools", "Tools"),
 ]
 

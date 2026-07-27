@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from nicegui import app, ui
@@ -5,19 +6,65 @@ from nicegui import app, ui
 from livingbot import config
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
+from livingbot.spontaneous import SpontaneousStore
 from livingbot.stories import Story
 
 _STATIC_PREFIX = "/story_images"
+_TIME_FORMAT = "%H:%M"
+
+
+def _open_image_preview(image_url: str) -> None:
+    with ui.dialog() as dialog, ui.card().classes("p-0"):
+        ui.image(image_url).classes("max-w-[90vw] max-h-[90vh]")
+    dialog.open()
+
+
+def _spontaneous_post_card(spontaneous_store: SpontaneousStore | None) -> None:
+    with ui.card().classes("w-full"):
+        ui.label("Next spontaneous post").classes("text-lg font-semibold")
+        if spontaneous_store is None:
+            ui.label("Not configured")
+            return
+
+        state = spontaneous_store.load()
+        with ui.row().classes("items-start gap-4"):
+            date_picker = ui.date(
+                value=state.next_post_at.date().isoformat()
+                if state.next_post_at
+                else None
+            )
+            time_picker = ui.time(
+                value=state.next_post_at.strftime(_TIME_FORMAT)
+                if state.next_post_at
+                else None
+            )
+
+        def _save() -> None:
+            if not date_picker.value or not time_picker.value:
+                ui.notify("Pick a date and time", color="negative")
+                return
+            parsed = datetime.strptime(
+                f"{date_picker.value} {time_picker.value}", f"%Y-%m-%d {_TIME_FORMAT}"
+            )
+            current = spontaneous_store.load()
+            current.next_post_at = parsed
+            spontaneous_store.save(current)
+            ui.notify("Saved")
+
+        ui.button("Save", on_click=_save)
 
 
 def register(context: AdminContext) -> None:
     store = context.story_store
+    spontaneous_store = context.spontaneous_store
     config.STORY_IMAGE_PATH.mkdir(parents=True, exist_ok=True)
     app.add_static_files(_STATIC_PREFIX, str(config.STORY_IMAGE_PATH))
 
     @ui.page("/stories")
     async def stories() -> None:
         with page_layout("Stories"):
+            _spontaneous_post_card(spontaneous_store)
+
             search_box = ui.input("Semantic search (blank lists all)").classes("w-full")
             search_box.on("keydown.enter", lambda: story_list.refresh())
             with ui.row():
@@ -53,9 +100,13 @@ def register(context: AdminContext) -> None:
                                 "text-xs text-gray-400"
                             )
                             if story.image_path:
-                                ui.image(
+                                image_url = (
                                     f"{_STATIC_PREFIX}/{Path(story.image_path).name}"
-                                ).classes("w-64")
+                                )
+                                ui.image(image_url).classes("w-64 cursor-pointer").on(
+                                    "click",
+                                    lambda url=image_url: _open_image_preview(url),
+                                )
                         with ui.column():
                             ui.button(
                                 icon="edit", on_click=lambda s=story: _open_editor(s)

@@ -15,7 +15,6 @@ from livingbot.admin.pages import (
     queue,
     relations,
     spending,
-    spontaneous,
     stories,
     tools,
 )
@@ -44,7 +43,6 @@ def run() -> None:
         mood,
         preferences,
         relations,
-        spontaneous,
         tools,
     ):
         page.register(context)
