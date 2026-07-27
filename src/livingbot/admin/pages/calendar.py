@@ -2,6 +2,7 @@ from datetime import datetime
 
 from nicegui import ui
 
+from livingbot import clock
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
 from livingbot.calendar import PlanEntry
@@ -19,9 +20,28 @@ def register(context: AdminContext) -> None:
             ui.label(f"Home location: {calendar.home_location}")
             ui.button("Add entry", icon="add", on_click=lambda: _open_editor(None))
 
+            with ui.row().classes("w-full items-center gap-4"):
+                future_only = ui.checkbox(
+                    "Only future events", on_change=lambda: entry_list.refresh()
+                )
+                search = ui.input(
+                    "Search activity or location",
+                    on_change=lambda: entry_list.refresh(),
+                ).classes("w-64")
+
             @ui.refreshable
             def entry_list() -> None:
                 entries = sorted(store.load().entries, key=lambda e: e.start)
+                if future_only.value:
+                    now = clock.now()
+                    entries = [e for e in entries if e.end >= now]
+                query = search.value.strip().lower()
+                if query:
+                    entries = [
+                        e
+                        for e in entries
+                        if query in e.activity.lower() or query in e.location.lower()
+                    ]
                 if not entries:
                     ui.label("No calendar entries.")
                     return
