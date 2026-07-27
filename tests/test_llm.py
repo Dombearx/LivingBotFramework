@@ -6,7 +6,9 @@ from livingbot.hobbies import Hobby, Hobbies
 from livingbot.inventory import InventoryItem
 from livingbot.llm import (
     _build_calendar_block,
+    _build_history_block,
     _build_inventory_block,
+    _build_new_messages_block,
     _build_recent_block,
     _build_stories_block,
 )
@@ -157,3 +159,17 @@ def test_build_recent_block_sorts_entries_newest_first() -> None:
     lines = block.strip().splitlines()
     assert "sukienka" in lines[1]
     assert "pottery" in lines[2]
+
+
+def test_build_history_block_labels_it_as_earlier_conversation() -> None:
+    block = _build_history_block(["[id:1] alice: hey", "[id:2] bob: yo"])
+
+    assert block.startswith("Earlier in the conversation:\n")
+    assert "[id:1] alice: hey" in block
+    assert "[id:2] bob: yo" in block
+
+
+def test_build_new_messages_block_labels_messages_to_respond_to() -> None:
+    block = _build_new_messages_block(["[id:3] alice: are you there?"])
+
+    assert block == "New message(s) to respond to:\n[id:3] alice: are you there?"

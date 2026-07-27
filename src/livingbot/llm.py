@@ -101,6 +101,7 @@ class LLMClient:
         photo_hint: str = "",
         images: list[BinaryContent] | None = None,
         waiting_since: datetime | None = None,
+        history: list[str] | None = None,
     ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
@@ -139,7 +140,9 @@ class LLMClient:
         if memories:
             memory_block = "\n".join(f"- {m}" for m in memories)
             parts.append(f"What I remember:\n{memory_block}\n\n")
-        parts.append("\n".join(user_messages))
+        if history:
+            parts.append(_build_history_block(history))
+        parts.append(_build_new_messages_block(user_messages))
         prompt: list[UserContent] = ["".join(parts), *(images or [])]
         run_result = await self._agent.run(prompt, deps=deps)
         return LLMResult(run_result, deps)
@@ -378,3 +381,13 @@ def _build_relations_block(relations: list[Relation]) -> str:
             "sounding like a person."
         )
     return "\n".join(blocks) + "\n\n"
+
+
+def _build_history_block(history: list[str]) -> str:
+    history_text = "\n".join(history)
+    return f"Earlier in the conversation:\n{history_text}\n\n"
+
+
+def _build_new_messages_block(user_messages: list[str]) -> str:
+    messages_text = "\n".join(user_messages)
+    return f"New message(s) to respond to:\n{messages_text}"
