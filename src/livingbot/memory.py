@@ -26,12 +26,19 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # like "Assistant stated a preference for...". `custom_instructions` is
 # mem0's own supported hook for this — its prompt explicitly gives it
 # "highest priority" — rather than us overriding the whole extraction prompt.
+# Each "user" message's content is already prefixed with the speaker's Discord
+# display name (see tools.format_message, e.g. "Kuba: ..."), so the extractor
+# has what it needs to name the user too, once told to use it.
 _CUSTOM_FACT_EXTRACTION_INSTRUCTIONS = (
     f"The 'assistant' role in this conversation is {PERSONA_NAME}, a Discord "
     "persona with her own opinions, tastes, and daily life — not a generic AI "
     f"assistant. When a fact comes from her own messages, attribute it to "
     f'{PERSONA_NAME} by name (e.g. "{PERSONA_NAME} prefers GPT-4o because...") '
-    "instead of writing 'Assistant' or 'the assistant'."
+    "instead of writing 'Assistant' or 'the assistant'. "
+    "Each 'user' message starts with the speaker's Discord display name "
+    "followed by a colon, e.g. 'Kuba: ...'. Use that display name to "
+    'attribute facts (e.g. "Kuba prefers dark chocolate") instead of the '
+    "generic word 'User'."
 )
 
 
