@@ -525,7 +525,41 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         photo_hint=ANY,
         images=[],
         waiting_since=ANY,
+        history=[],
     )
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_includes_recent_channel_history_oldest_first(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client)
+    channel = make_channel()
+    newer = make_message(author=other_user(), channel=channel)
+    newer.content = "newer"
+    older = make_message(author=other_user(), channel=channel)
+    older.content = "older"
+
+    async def fake_history(limit: int, before: discord.Object):
+        for msg in [newer, older]:
+            yield msg
+
+    channel.history = MagicMock(side_effect=fake_history)
+    queued = make_message(author=other_user(), mentions=[user], channel=channel)
+    bot._queue.add(queued)
+
+    await bot._attempt_response()
+
+    channel.history.assert_called_once_with(
+        limit=config.CHANNEL_HISTORY_LIMIT, before=discord.Object(id=queued.id)
+    )
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["history"] == [format_message(older), format_message(newer)]
 
 
 @patch("asyncio.create_task", side_effect=lambda coro: coro.close())

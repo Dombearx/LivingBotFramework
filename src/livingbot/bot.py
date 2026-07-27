@@ -521,6 +521,14 @@ class LivingBot(discord.Client):
                     message_count=len(messages),
                 ) as span:
                     formatted = [format_message(m) for m in messages]
+                    history = [
+                        format_message(m)
+                        async for m in channel.history(
+                            limit=config.CHANNEL_HISTORY_LIMIT,
+                            before=discord.Object(id=messages[0].id),
+                        )
+                    ]
+                    history.reverse()
                     images: list[BinaryContent] = []
                     for m in messages:
                         images.extend(await extract_images(m))
@@ -553,6 +561,7 @@ class LivingBot(discord.Client):
                         waiting_since=min(
                             clock.to_local(m.created_at) for m in messages
                         ),
+                        history=history,
                     )
                     span.set_attribute("photo", result.photo is not None)
                     if result.photo is not None:
