@@ -9,6 +9,8 @@ from typing import Any, cast
 import logfire
 from mem0 import Memory
 
+from livingbot.prompts import PERSONA_NAME
+
 logger = logging.getLogger(__name__)
 
 GLOBAL_USER_ID = "global"
@@ -18,6 +20,19 @@ GLOBAL_USER_ID = "global"
 # OpenRouter explicitly here — OpenRouter proxies OpenAI's embeddings API too,
 # so no separate OPENAI_API_KEY is needed.
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+# mem0's built-in fact-extraction prompt (ADDITIVE_EXTRACTION_PROMPT) has no
+# notion of who "assistant" is, so it defaults to writing extracted facts
+# like "Assistant stated a preference for...". `custom_instructions` is
+# mem0's own supported hook for this — its prompt explicitly gives it
+# "highest priority" — rather than us overriding the whole extraction prompt.
+_CUSTOM_FACT_EXTRACTION_INSTRUCTIONS = (
+    f"The 'assistant' role in this conversation is {PERSONA_NAME}, a Discord "
+    "persona with her own opinions, tastes, and daily life — not a generic AI "
+    f"assistant. When a fact comes from her own messages, attribute it to "
+    f'{PERSONA_NAME} by name (e.g. "{PERSONA_NAME} prefers GPT-4o because...") '
+    "instead of writing 'Assistant' or 'the assistant'."
+)
 
 
 def _extract_results(response: Any) -> list[dict[str, Any]]:
@@ -36,6 +51,7 @@ class MemoryStore:
     def create(cls, data_path: Path) -> "MemoryStore":
         data_path.mkdir(parents=True, exist_ok=True)
         config = {
+            "custom_instructions": _CUSTOM_FACT_EXTRACTION_INSTRUCTIONS,
             "vector_store": {
                 "provider": "chroma",
                 "config": {
