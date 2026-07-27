@@ -24,6 +24,7 @@ def register(context: AdminContext) -> None:
                 _calendar_card(context, now)
                 _hobbies_card(context)
                 _spending_card(context)
+                _spontaneous_card(context, now)
 
             await _counts_card(context)
 
@@ -96,6 +97,24 @@ def _spending_card(context: AdminContext) -> None:
     with _card("Spending"):
         ui.label(f"Points available: {state.points_available}")
         ui.label(f"Purchases this week: {len(state.purchases)}")
+
+
+def _spontaneous_card(context: AdminContext, now: datetime) -> None:
+    with _card("Spontaneous"):
+        if context.spontaneous_store is None:
+            ui.label("Not configured")
+            return
+        next_post_at = context.spontaneous_store.load().next_post_at
+        if next_post_at is None:
+            ui.label("Next post: not scheduled yet")
+            return
+        ui.label(f"Next post: {next_post_at:%Y-%m-%d %H:%M}")
+        delta = next_post_at - now
+        if delta.total_seconds() <= 0:
+            ui.label("Due now").classes("text-sm text-gray-500")
+        else:
+            hours = delta.total_seconds() / 3600
+            ui.label(f"In ~{hours:.1f}h").classes("text-sm text-gray-500")
 
 
 async def _counts_card(context: AdminContext) -> None:
