@@ -100,7 +100,8 @@ async def test_add_commitment_called_when_she_promises_to_show_something_later(
     she's back at her computer, which she must remember to actually do."""
     user_messages = [
         "[id:2000] [2026-06-03 14:30:00] Hardik: <@999> wspominałaś, że masz swoją "
-        "postać w baldurze już zrobioną. podeślesz zdjęcie jak ona wygląda?"
+        "postać w baldurze już zrobioną. wiem że nie jesteś teraz przy kompie, ale "
+        "podeślesz mi screena później jak już przy nim siądziesz? bardzo chcę zobaczyć"
     ]
 
     result = await _respond(

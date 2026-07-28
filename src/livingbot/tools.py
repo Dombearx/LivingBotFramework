@@ -333,13 +333,17 @@ async def add_commitment(
     description: str,
     due_hint: str,
 ) -> str:
-    """Record a concrete promise you just made to a SPECIFIC person about something
-    you will do or share LATER, not right now. Only call this when you used clear
-    future-promise language addressed to them — e.g. "I'll show you once I'm at my
-    computer" / "pokażę ci jak będę przy kompie" or "I'll send it to you tomorrow".
-    Do NOT call this for: anything you already did or said in this same reply; a vague
-    maybe ("sometime", "kiedyś", "we should really..."); an idea still being floated
-    that nobody has actually committed to; or something someone else promised to you.
+    """Record a concrete promise YOU just made to a SPECIFIC person about something
+    YOU will do or share LATER, not right now. Only call this when YOU yourself used
+    clear future-promise language addressed to them — e.g. "I'll show you once I'm at
+    my computer" / "pokażę ci jak będę przy kompie" or "I'll send it to you tomorrow".
+    This tool tracks only what you owe other people. If THEY are the one saying they
+    will do or send something, record nothing at all — "podeślę ci jutro zdjęcia" said
+    by them is their promise, not yours, and calling this tool would make you chase
+    them for something you never owed.
+    Do NOT call this either for: anything you already did or said in this same reply; a
+    vague maybe ("sometime", "kiedyś", "we should really..."); or an idea still being
+    floated that nobody has actually committed to.
     When in doubt, don't record it — most conversations make no promise worth tracking.
     user_id: the Discord id of the person you promised.
     description: what you promised, in a few words, e.g. "show a screenshot of my BG3

@@ -135,9 +135,9 @@ async def test_follow_up_message_pings_the_person_it_was_promised_to(
     """A follow-up nobody is pinged by will not reach the person who was waiting."""
     context = _context(
         "You are at home with nothing scheduled.",
-        "6 hours ago",
-        "show a screenshot of my Baldur's Gate character",
-        "next time I'm at my computer",
+        "2 days ago",
+        "send the link to that gym playlist",
+        "soon",
     )
 
     decision = await _decide(composer, context)

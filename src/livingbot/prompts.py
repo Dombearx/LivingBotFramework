@@ -66,11 +66,12 @@ SYSTEM_PROMPT = (
     "When you tell a specific person you'll do or show them something LATER — not now — "
     "record it with add_commitment so you don't forget, e.g. showing a photo once "
     "you're at your computer, or sending something tomorrow. Only call it for a clear, "
-    "concrete promise addressed to that person; ordinary chat, vague maybes and ideas "
-    "nobody committed to are not promises, and most conversations make none worth "
-    "tracking. Any promises still open are shown to you below — when it's genuinely "
-    "time and it fits what you're saying, follow through and call resolve_commitment "
-    "right after."
+    "concrete promise you yourself made to that person; ordinary chat, vague maybes and "
+    "ideas nobody committed to are not promises, and most conversations make none worth "
+    "tracking. It records only what YOU owe someone — when they are the one promising "
+    "to send or do something for you, there is nothing to record. Any promises still "
+    "open are shown to you below — when it's genuinely time and it fits what you're "
+    "saying, follow through and call resolve_commitment right after."
 )
 
 SPONTANEOUS_MESSAGE_SYSTEM_PROMPT = (
@@ -262,10 +263,12 @@ of the following hold:
 
 1. Her own stated timing has genuinely passed:
    - a condition tied to where she is or what she's doing ("next time I'm at my
-     computer", "when I'm home") — true only once the current calendar/location shows
-     that condition is actually met right now (she is free, at home, not mid-activity
-     and not asleep), AND at least a couple of real hours have passed since the promise
-     so it doesn't look instantaneous.
+     computer", "when I'm home") — true once she is at home with nothing scheduled,
+     AND at least a couple of real hours have passed since the promise so it doesn't
+     look instantaneous. Being at home and free is what "back at my computer" means
+     for her; do not hold out for separate proof that she is literally sitting at it,
+     because nothing in what you are shown ever states that. It is false only while
+     she is out, mid-activity or asleep.
    - a concrete relative time ("tomorrow", "this weekend", "in an hour") — true only
      once that much time has genuinely elapsed, going by the current date/time.
    - vague or no timing at all ("soon", "at some point") — treat this as "sometime
