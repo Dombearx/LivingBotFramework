@@ -12,6 +12,7 @@ NAV: list[tuple[str, str]] = [
     ("/calendar", "Calendar"),
     ("/hobbies", "Hobbies"),
     ("/spending", "Spending"),
+    ("/promises", "Promises"),
     ("/mood", "Mood"),
     ("/preferences", "Preferences"),
     ("/relations", "Relations"),
