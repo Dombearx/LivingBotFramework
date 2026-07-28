@@ -6,7 +6,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
 
-from livingbot import config
+from livingbot import config, prompts
 from livingbot.bot import (
     LivingBot,
     _pick_story_slot,
@@ -15,7 +15,7 @@ from livingbot.bot import (
     format_message,
 )
 from livingbot.calendar import Calendar, PlanEntry
-from livingbot.commitment_followup import CommitmentFollowUpDecision
+from livingbot.commitment_timing import CommitmentTimingDecision
 from livingbot.commitments import Commitment, Commitments
 from livingbot.hobbies import Hobbies, Hobby
 from livingbot.mood import Mood
@@ -156,10 +156,10 @@ def make_commitment_store(commitments: Commitments | None = None) -> MagicMock:
     return store
 
 
-def make_commitment_followup() -> MagicMock:
-    composer = MagicMock()
-    composer.decide = AsyncMock(return_value=None)
-    return composer
+def make_commitment_timing_judge() -> MagicMock:
+    judge = MagicMock()
+    judge.decide = AsyncMock(return_value=None)
+    return judge
 
 
 def make_bot(
@@ -179,7 +179,7 @@ def make_bot(
     preference_store: MagicMock | None = None,
     photo_cooldown_store: MagicMock | None = None,
     commitment_store: MagicMock | None = None,
-    commitment_followup: MagicMock | None = None,
+    commitment_timing_judge: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
@@ -200,7 +200,8 @@ def make_bot(
         preference_store=preference_store or make_preference_store(),
         photo_cooldown_store=photo_cooldown_store or make_photo_cooldown_store(),
         commitment_store=commitment_store or make_commitment_store(),
-        commitment_followup=commitment_followup or make_commitment_followup(),
+        commitment_timing_judge=commitment_timing_judge
+        or make_commitment_timing_judge(),
         intents=intents,
     )
 
@@ -1436,37 +1437,33 @@ def make_commitment(
     )
 
 
-def make_followup_decision(
+def make_timing_decision(
     should_follow_up: bool = True,
-    message: str | None = "hej, mam ten screen",
-    already_handled: bool = False,
     retry_in_hours: float | None = None,
-) -> CommitmentFollowUpDecision:
-    return CommitmentFollowUpDecision(
+) -> CommitmentTimingDecision:
+    return CommitmentTimingDecision(
         should_follow_up=should_follow_up,
         reason="conditions met",
-        message=message,
-        already_handled=already_handled,
         retry_in_hours=retry_in_hours,
     )
 
 
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_asleep_does_not_consult_the_composer(
+async def test_maybe_follow_up_when_asleep_does_not_consult_the_timing_judge(
     mock_clock: MagicMock,
 ) -> None:
     mock_clock.now.return_value = ASLEEP_NOW
-    composer = make_commitment_followup()
+    judge = make_commitment_timing_judge()
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(entries=[make_commitment()])
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
     )
 
     await bot._maybe_follow_up_on_commitments()
 
-    composer.decide.assert_not_called()
+    judge.decide.assert_not_called()
 
 
 @patch("livingbot.bot.clock")
@@ -1474,19 +1471,19 @@ async def test_maybe_follow_up_skips_already_nudged_commitment(
     mock_clock: MagicMock,
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
-    composer = make_commitment_followup()
+    judge = make_commitment_timing_judge()
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(
                 entries=[make_commitment(nudged_at=datetime(2026, 6, 24, 13, 0))]
             )
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
     )
 
     await bot._maybe_follow_up_on_commitments()
 
-    composer.decide.assert_not_called()
+    judge.decide.assert_not_called()
 
 
 @patch("livingbot.bot.clock")
@@ -1494,36 +1491,34 @@ async def test_maybe_follow_up_skips_fulfilled_commitment(
     mock_clock: MagicMock,
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
-    composer = make_commitment_followup()
+    judge = make_commitment_timing_judge()
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(entries=[make_commitment(status="fulfilled")])
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
     )
 
     await bot._maybe_follow_up_on_commitments()
 
-    composer.decide.assert_not_called()
+    judge.decide.assert_not_called()
 
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_composer_declines_sends_nothing(
+async def test_maybe_follow_up_when_judge_declines_sends_nothing(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     channel = make_messageable_channel()
     mock_get_channel.return_value = channel
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(
-        return_value=make_followup_decision(should_follow_up=False, message=None)
-    )
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision(should_follow_up=False))
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(entries=[make_commitment()])
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
     )
 
     await bot._maybe_follow_up_on_commitments()
@@ -1533,17 +1528,15 @@ async def test_maybe_follow_up_when_composer_declines_sends_nothing(
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_composer_declines_does_not_mark_nudged(
+async def test_maybe_follow_up_when_judge_declines_does_not_mark_nudged(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     mock_get_channel.return_value = make_messageable_channel()
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(
-        return_value=make_followup_decision(should_follow_up=False, message=None)
-    )
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision(should_follow_up=False))
     store = make_commitment_store(Commitments(entries=[make_commitment()]))
-    bot = make_bot(commitment_store=store, commitment_followup=composer)
+    bot = make_bot(commitment_store=store, commitment_timing_judge=judge)
 
     await bot._maybe_follow_up_on_commitments()
 
@@ -1553,19 +1546,17 @@ async def test_maybe_follow_up_when_composer_declines_does_not_mark_nudged(
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_composer_declines_defers_by_its_estimate(
+async def test_maybe_follow_up_when_judge_declines_defers_by_its_estimate(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     mock_get_channel.return_value = make_messageable_channel()
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(
-        return_value=make_followup_decision(
-            should_follow_up=False, message=None, retry_in_hours=4.0
-        )
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(
+        return_value=make_timing_decision(should_follow_up=False, retry_in_hours=4.0)
     )
     store = make_commitment_store(Commitments(entries=[make_commitment()]))
-    bot = make_bot(commitment_store=store, commitment_followup=composer)
+    bot = make_bot(commitment_store=store, commitment_timing_judge=judge)
 
     await bot._maybe_follow_up_on_commitments()
 
@@ -1575,17 +1566,15 @@ async def test_maybe_follow_up_when_composer_declines_defers_by_its_estimate(
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_composer_gives_no_estimate_defers_by_default(
+async def test_maybe_follow_up_when_judge_gives_no_estimate_defers_by_default(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     mock_get_channel.return_value = make_messageable_channel()
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(
-        return_value=make_followup_decision(should_follow_up=False, message=None)
-    )
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision(should_follow_up=False))
     store = make_commitment_store(Commitments(entries=[make_commitment()]))
-    bot = make_bot(commitment_store=store, commitment_followup=composer)
+    bot = make_bot(commitment_store=store, commitment_timing_judge=judge)
 
     await bot._maybe_follow_up_on_commitments()
 
@@ -1602,90 +1591,42 @@ async def test_maybe_follow_up_skips_commitment_still_inside_its_wait(
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     mock_get_channel.return_value = make_messageable_channel()
-    composer = make_commitment_followup()
+    judge = make_commitment_timing_judge()
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(
                 entries=[make_commitment(check_after=AWAKE_NOW + timedelta(hours=2))]
             )
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
     )
 
     await bot._maybe_follow_up_on_commitments()
 
-    composer.decide.assert_not_called()
+    judge.decide.assert_not_called()
 
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_consults_composer_once_the_wait_has_passed(
+async def test_maybe_follow_up_consults_timing_judge_once_the_wait_has_passed(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     mock_get_channel.return_value = make_messageable_channel()
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(return_value=make_followup_decision())
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision())
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(
                 entries=[make_commitment(check_after=AWAKE_NOW - timedelta(minutes=1))]
             )
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
     )
 
     await bot._maybe_follow_up_on_commitments()
 
-    composer.decide.assert_called_once()
-
-
-@patch.object(LivingBot, "get_channel")
-@patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_already_handled_marks_it_fulfilled(
-    mock_clock: MagicMock, mock_get_channel: MagicMock
-) -> None:
-    mock_clock.now.return_value = AWAKE_NOW
-    mock_get_channel.return_value = make_messageable_channel()
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(
-        return_value=make_followup_decision(
-            should_follow_up=False, message=None, already_handled=True
-        )
-    )
-    store = make_commitment_store(Commitments(entries=[make_commitment()]))
-    bot = make_bot(commitment_store=store, commitment_followup=composer)
-
-    await bot._maybe_follow_up_on_commitments()
-
-    saved = store.save.call_args.args[0]
-    assert saved.entries[0].status == "fulfilled"
-
-
-@patch.object(LivingBot, "get_channel")
-@patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_already_handled_sends_nothing(
-    mock_clock: MagicMock, mock_get_channel: MagicMock
-) -> None:
-    mock_clock.now.return_value = AWAKE_NOW
-    channel = make_messageable_channel()
-    mock_get_channel.return_value = channel
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(
-        return_value=make_followup_decision(
-            should_follow_up=True, message="hej", already_handled=True
-        )
-    )
-    bot = make_bot(
-        commitment_store=make_commitment_store(
-            Commitments(entries=[make_commitment()])
-        ),
-        commitment_followup=composer,
-    )
-
-    await bot._maybe_follow_up_on_commitments()
-
-    channel.send.assert_not_called()
+    judge.decide.assert_called_once()
 
 
 @patch.object(LivingBot, "get_channel")
@@ -1696,13 +1637,15 @@ async def test_maybe_follow_up_sends_at_most_one_message_per_waking(
     mock_clock.now.return_value = AWAKE_NOW
     channel = make_messageable_channel()
     mock_get_channel.return_value = channel
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(return_value=make_followup_decision())
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision())
+    llm_client = make_llm_client("hej, mam ten screen")
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(entries=[make_commitment(), make_commitment()])
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
+        llm_client=llm_client,
     )
 
     await bot._maybe_follow_up_on_commitments()
@@ -1761,12 +1704,12 @@ async def test_retire_stale_commitments_keeps_a_recent_promise(
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_does_not_consult_composer_for_a_retired_promise(
+async def test_maybe_follow_up_does_not_consult_timing_judge_for_a_retired_promise(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     mock_get_channel.return_value = make_messageable_channel()
-    composer = make_commitment_followup()
+    judge = make_commitment_timing_judge()
     store = make_commitment_store(
         Commitments(
             entries=[
@@ -1778,28 +1721,30 @@ async def test_maybe_follow_up_does_not_consult_composer_for_a_retired_promise(
             ]
         )
     )
-    bot = make_bot(commitment_store=store, commitment_followup=composer)
+    bot = make_bot(commitment_store=store, commitment_timing_judge=judge)
 
     await bot._maybe_follow_up_on_commitments()
 
-    composer.decide.assert_not_called()
+    judge.decide.assert_not_called()
 
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_composer_agrees_sends_the_message(
+async def test_maybe_follow_up_when_judge_agrees_sends_the_main_agents_message(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     channel = make_messageable_channel()
     mock_get_channel.return_value = channel
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(return_value=make_followup_decision())
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision())
+    llm_client = make_llm_client("hej, mam ten screen")
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(entries=[make_commitment()])
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
+        llm_client=llm_client,
     )
 
     await bot._maybe_follow_up_on_commitments()
@@ -1809,16 +1754,70 @@ async def test_maybe_follow_up_when_composer_agrees_sends_the_message(
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
+async def test_maybe_follow_up_when_judge_agrees_hands_off_to_the_main_agent(
+    mock_clock: MagicMock, mock_get_channel: MagicMock
+) -> None:
+    mock_clock.now.return_value = AWAKE_NOW
+    mock_get_channel.return_value = make_messageable_channel()
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision())
+    commitment = make_commitment()
+    llm_client = make_llm_client()
+    bot = make_bot(
+        commitment_store=make_commitment_store(Commitments(entries=[commitment])),
+        commitment_timing_judge=judge,
+        llm_client=llm_client,
+    )
+
+    await bot._maybe_follow_up_on_commitments()
+
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["commitments"] == [commitment]
+    assert call_kwargs["trigger"] == prompts.COMMITMENT_TRIGGER_MESSAGE
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_follow_up_preserves_fulfilled_status_set_during_the_run(
+    mock_clock: MagicMock, mock_get_channel: MagicMock
+) -> None:
+    """The main agent may call resolve_commitment itself while handling this; the
+    bookkeeping afterwards must not clobber that back to open."""
+    mock_clock.now.return_value = AWAKE_NOW
+    mock_get_channel.return_value = make_messageable_channel()
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision())
+    commitment = make_commitment()
+    store = make_commitment_store(Commitments(entries=[commitment]))
+    llm_client = make_llm_client()
+
+    async def fake_complete(*args, **kwargs):
+        commitment.status = "fulfilled"
+        return llm_client.complete.return_value
+
+    llm_client.complete = AsyncMock(side_effect=fake_complete)
+    bot = make_bot(
+        commitment_store=store, commitment_timing_judge=judge, llm_client=llm_client
+    )
+
+    await bot._maybe_follow_up_on_commitments()
+
+    saved = store.save.call_args.args[0]
+    assert saved.entries[0].status == "fulfilled"
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
 async def test_maybe_follow_up_after_sending_marks_commitment_nudged(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
     mock_get_channel.return_value = make_messageable_channel()
-    composer = make_commitment_followup()
-    composer.decide = AsyncMock(return_value=make_followup_decision())
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision())
     commitment = make_commitment()
     store = make_commitment_store(Commitments(entries=[commitment]))
-    bot = make_bot(commitment_store=store, commitment_followup=composer)
+    bot = make_bot(commitment_store=store, commitment_timing_judge=judge)
 
     await bot._maybe_follow_up_on_commitments()
 
@@ -1828,31 +1827,31 @@ async def test_maybe_follow_up_after_sending_marks_commitment_nudged(
 
 @patch.object(LivingBot, "get_channel", return_value=None)
 @patch("livingbot.bot.clock")
-async def test_maybe_follow_up_when_channel_unavailable_does_not_consult_composer(
+async def test_maybe_follow_up_when_channel_unavailable_does_not_consult_timing_judge(
     mock_clock: MagicMock, mock_get_channel: MagicMock
 ) -> None:
     mock_clock.now.return_value = AWAKE_NOW
-    composer = make_commitment_followup()
+    judge = make_commitment_timing_judge()
     bot = make_bot(
         commitment_store=make_commitment_store(
             Commitments(entries=[make_commitment()])
         ),
-        commitment_followup=composer,
+        commitment_timing_judge=judge,
     )
 
     await bot._maybe_follow_up_on_commitments()
 
-    composer.decide.assert_not_called()
+    judge.decide.assert_not_called()
 
 
 @patch("livingbot.bot.clock")
-def test_build_commitment_followup_context_states_promise_and_timing_hint(
+def test_build_commitment_timing_context_states_promise_and_timing_hint(
     mock_clock: MagicMock,
 ) -> None:
     bot = make_bot(mood_store=make_mood_store(Mood(value=60.0)))
     commitment = make_commitment()
 
-    context = bot._build_commitment_followup_context(commitment, AWAKE_NOW, [])
+    context = bot._build_commitment_timing_context(commitment, AWAKE_NOW, [])
 
     assert "show a screenshot of my BG3 character" in context
     assert "next time I'm at my computer" in context
@@ -1860,7 +1859,7 @@ def test_build_commitment_followup_context_states_promise_and_timing_hint(
 
 
 @patch("livingbot.bot.clock")
-def test_build_commitment_followup_context_reports_being_free_at_home(
+def test_build_commitment_timing_context_reports_being_free_at_home(
     mock_clock: MagicMock,
 ) -> None:
     bot = make_bot(
@@ -1868,13 +1867,13 @@ def test_build_commitment_followup_context_reports_being_free_at_home(
         mood_store=make_mood_store(Mood(value=60.0)),
     )
 
-    context = bot._build_commitment_followup_context(make_commitment(), AWAKE_NOW, [])
+    context = bot._build_commitment_timing_context(make_commitment(), AWAKE_NOW, [])
 
     assert "You are at home with nothing scheduled." in context
 
 
 @patch("livingbot.bot.clock")
-def test_build_commitment_followup_context_reports_a_current_activity(
+def test_build_commitment_timing_context_reports_a_current_activity(
     mock_clock: MagicMock,
 ) -> None:
     ongoing = PlanEntry(
@@ -1890,18 +1889,18 @@ def test_build_commitment_followup_context_reports_a_current_activity(
         mood_store=make_mood_store(Mood(value=60.0)),
     )
 
-    context = bot._build_commitment_followup_context(make_commitment(), AWAKE_NOW, [])
+    context = bot._build_commitment_timing_context(make_commitment(), AWAKE_NOW, [])
 
     assert "You are at gym, busy with gym session until 16:00." in context
 
 
 @patch("livingbot.bot.clock")
-def test_build_commitment_followup_context_includes_recent_channel_messages(
+def test_build_commitment_timing_context_includes_recent_channel_messages(
     mock_clock: MagicMock,
 ) -> None:
     bot = make_bot(mood_store=make_mood_store(Mood(value=60.0)))
 
-    context = bot._build_commitment_followup_context(
+    context = bot._build_commitment_timing_context(
         make_commitment(), AWAKE_NOW, ["[id:1] [2026-06-24 14:00:00] Hardik: no i jak?"]
     )
 
@@ -1909,11 +1908,11 @@ def test_build_commitment_followup_context_includes_recent_channel_messages(
 
 
 @patch("livingbot.bot.clock")
-def test_build_commitment_followup_context_when_channel_silent_says_so(
+def test_build_commitment_timing_context_when_channel_silent_says_so(
     mock_clock: MagicMock,
 ) -> None:
     bot = make_bot(mood_store=make_mood_store(Mood(value=60.0)))
 
-    context = bot._build_commitment_followup_context(make_commitment(), AWAKE_NOW, [])
+    context = bot._build_commitment_timing_context(make_commitment(), AWAKE_NOW, [])
 
     assert "Nothing has been said in that channel since she promised it" in context

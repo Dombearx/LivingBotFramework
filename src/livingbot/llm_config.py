@@ -11,12 +11,11 @@ WEEK_PLANNER_MODEL = "openai/gpt-5-nano"
 STORY_GENERATOR_MODEL = "openai/gpt-5-nano"
 RELATION_UPDATER_MODEL = "openai/gpt-5-nano"
 SPONTANEOUS_MESSENGER_MODEL = "openai/gpt-5-nano"
-# Deciding a follow-up means reading the conversation for whether the promise is
-# already settled, then weighing her stated timing, then estimating the remaining
-# wait. gpt-5-nano fumbled the first of those and chased promises she had already
-# kept, so this judge gets the stronger model. The check_after mechanism keeps it
-# to a handful of calls per promise, so the extra cost is immaterial.
-COMMITMENT_FOLLOWUP_MODEL = "openai/gpt-5.4-mini"
+# This judge only weighs her stated timing ("next time I'm at my computer" vs. how
+# much time has actually passed) and whether interjecting now would read as natural.
+# The check_after mechanism keeps it to a handful of calls per promise, so the extra
+# cost of the stronger model is immaterial.
+COMMITMENT_TIMING_MODEL = "openai/gpt-5.4-mini"
 PROMPT_ENHANCER_MODEL = "openai/gpt-5-nano"
 
 
