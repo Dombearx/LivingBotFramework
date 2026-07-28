@@ -253,38 +253,17 @@ Rules:
 Return only valid JSON matching the patch schema. No extra text.\
 """
 
-COMMITMENT_FOLLOWUP_SYSTEM_PROMPT = f"""\
-You decide whether {PERSONA_NAME}, a Discord bot who lives like a real person, should
-right now proactively message someone about a promise she made earlier — before they've
-asked again. You are given: how long ago she made the promise, what she said about its
-timing in her own words, what the promise was, what she's doing and where she is right
-now, and the recent messages in that channel.
+COMMITMENT_TIMING_SYSTEM_PROMPT = f"""\
+You decide only ONE thing: whether right now is a good moment for {PERSONA_NAME}, a
+Discord bot who lives like a real person, to proactively bring up a promise she made
+earlier — before the other person has asked again. You are given: how long ago she made
+the promise, what she said about its timing in her own words, what the promise was, what
+she's doing and where she is right now, and the recent messages in that channel for
+context. You do not decide what she would say, whether she has already kept the promise,
+or whether it still applies — someone else handles all of that once you say it's time.
 
-Work through the steps below IN ORDER. Step 1 decides most cases on its own, and
-skipping ahead to the timing arithmetic is the single worst mistake you can make here:
-it produces a message that repeats something she already said, or chases something the
-other person explicitly dropped. Either one makes her look like a machine.
-
-STEP 1 — read the recent messages in the channel first, before considering timing at
-all, and ask what has happened to this promise since she made it. Set
-already_handled=true if the conversation shows EITHER of these:
-  (a) she has since done it — the messages contain her delivering the thing, or the
-      other person reacting to having received it ("wygląda świetnie", "thanks!",
-      "got it"). A promise she has already kept must never be followed up on;
-  (b) it no longer applies — the other person said not to bother, called the plan off,
-      found it elsewhere, or they settled it between them.
-When already_handled is true you are finished: leave should_follow_up false and message
-null, and give the reason. Do not go on to weigh timing — the timing is irrelevant to a
-promise that is already settled.
-Worked example: she promised a screenshot "next time I'm at my computer" six hours ago,
-and the recent messages show her posting "w końcu jestem przy kompie, wrzucam screena"
-followed by him replying "wygląda świetnie". The timing condition HAS passed, so the
-tempting answer is should_follow_up=true — and it is wrong. She already did it. The
-correct output is already_handled=true, should_follow_up=false, message null.
-
-STEP 2 — only if the promise is still genuinely outstanding, decide whether to speak up
-now. Default to should_follow_up=false. A real person does not circle back on every
-promise the instant it becomes technically possible — most of the time she simply hasn't
+Default to should_follow_up=false. A real person does not circle back on every promise
+the instant it becomes technically possible — most of the time she simply hasn't
 gotten to it yet, and that is normal, not a failure. Only set should_follow_up=true when
 BOTH of the following hold:
 
@@ -304,23 +283,30 @@ BOTH of the following hold:
    enough time has passed), should_follow_up MUST be false.
 2. Bringing it up now would read as a natural, one-off callback, not nagging, and
    doesn't cut across whatever the channel is in the middle of. You are only ever asked
-   about each promise once, so do not hold back purely out of caution about repetition —
-   but the message still has to sound like an off-the-cuff thing a person says, not an
-   assistant closing a ticket.
+   about each promise once per waking check, so do not hold back purely out of caution
+   about repetition.
 
-If both hold, write message: a short, casual message in her own voice that follows
-through on or naturally brings up the promise, addressed with <@their id>.
+If both hold, set should_follow_up=true and leave retry_in_hours null.
 
-If it is not time yet, leave message null and set retry_in_hours: how many hours should
-pass before this is worth reconsidering. You will not be asked about this promise again
-until then, so estimate the real remaining wait rather than a token delay — count the
-hours until she is awake if she is asleep, until tomorrow if she said tomorrow, until
-she is likely home if she is out. Prefer overshooting a little: being asked again
+If it is not time yet, leave should_follow_up false and set retry_in_hours: how many
+hours should pass before this is worth reconsidering. You will not be asked about this
+promise again until then, so estimate the real remaining wait rather than a token delay —
+count the hours until she is awake if she is asleep, until tomorrow if she said tomorrow,
+until she is likely home if she is out. Prefer overshooting a little: being asked again
 slightly late costs nothing, being asked every hour is pure waste.
 
 reason: one short sentence explaining the decision either way.
 Return only valid JSON matching the schema. No extra text.\
 """
+
+COMMITMENT_TRIGGER_MESSAGE = (
+    "Nobody has just messaged you here — you decided on your own that it's time to "
+    "follow up on the promise above. If it's still outstanding, follow through on it "
+    "now the way you actually would (e.g. attach a photo with take_photo if that's what "
+    "you promised), and call resolve_commitment right after. If the messages above "
+    "already show it was handled or no longer applies, don't repeat yourself — just "
+    "pick up the thread naturally instead."
+)
 
 IMAGE_ENHANCER_SYSTEM_PROMPT = (
     "You are a prompt writer for a Studio Ghibli style anime image generation "

@@ -13,7 +13,7 @@ from pydantic_ai import BinaryContent
 from livingbot import clock, config, prompts
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
-from livingbot.commitment_followup import CommitmentFollowUpComposer
+from livingbot.commitment_timing import CommitmentTimingJudge
 from livingbot.commitments import Commitment, CommitmentStatus, CommitmentStore
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryStore
@@ -136,7 +136,7 @@ class LivingBot(discord.Client):
         preference_store: PreferenceStore,
         photo_cooldown_store: PhotoCooldownStore,
         commitment_store: CommitmentStore,
-        commitment_followup: CommitmentFollowUpComposer,
+        commitment_timing_judge: CommitmentTimingJudge,
         spontaneous_store: SpontaneousStore | None = None,
         spontaneous_messenger: SpontaneousMessenger | None = None,
         **kwargs: Any,
@@ -163,7 +163,7 @@ class LivingBot(discord.Client):
         self._preference_store = preference_store
         self._photo_cooldown_store = photo_cooldown_store
         self._commitment_store = commitment_store
-        self._commitment_followup = commitment_followup
+        self._commitment_timing_judge = commitment_timing_judge
         self._spontaneous_store = spontaneous_store
         self._spontaneous_messenger = spontaneous_messenger
 
@@ -408,8 +408,8 @@ class LivingBot(discord.Client):
             )
         ]
         history.reverse()
-        decision = await self._commitment_followup.decide(
-            self._build_commitment_followup_context(commitment, now, history)
+        decision = await self._commitment_timing_judge.decide(
+            self._build_commitment_timing_context(commitment, now, history)
         )
         if decision is None:
             await self._defer_commitment(
@@ -417,18 +417,7 @@ class LivingBot(discord.Client):
             )
             return False
 
-        if decision.already_handled:
-            await self._save_commitment_outcome(
-                commitment, status="fulfilled", nudged_at=None, check_after=None
-            )
-            logger.info(
-                "Commitment %s already settled in conversation: %s",
-                commitment.id,
-                decision.reason,
-            )
-            return False
-
-        if not decision.should_follow_up or not decision.message:
+        if not decision.should_follow_up:
             retry_hours = (
                 decision.retry_in_hours
                 if decision.retry_in_hours is not None
@@ -443,9 +432,45 @@ class LivingBot(discord.Client):
             )
             return False
 
-        await _send_chunked(channel, decision.message)
+        # It's time — hand the whole thing off to the main chat agent, which has the
+        # tools (take_photo, resolve_commitment), memory and context to actually follow
+        # through, rather than composing the message here.
+        mood = self._mood_store.load()
+        memories = await self._memory_store.retrieve(
+            [(commitment.description, commitment.user_id)]
+        )
+        relation = self._relation_store.load(commitment.user_id)
+        result = await self._llm_client.complete(
+            [],
+            channel,
+            commitment.channel_id,
+            self._calendar_store,
+            self._activity_notes_store,
+            self._inventory_store,
+            self._spending_store,
+            self._hobby_store,
+            self._story_store,
+            self._preference_store,
+            self._commitment_store,
+            now,
+            memories,
+            [relation],
+            mood,
+            history=history,
+            commitments=[commitment],
+            trigger=prompts.COMMITMENT_TRIGGER_MESSAGE,
+        )
+        if result.photo is not None:
+            self._on_photo_taken()
+        await _send_chunked(channel, result.output, photo=result.photo)
+        # The agent may have already called resolve_commitment itself while handling
+        # this; only stamp nudged_at, don't clobber a status it just set to fulfilled.
+        current = next(
+            (c for c in self._commitment_store.load().entries if c.id == commitment.id),
+            commitment,
+        )
         await self._save_commitment_outcome(
-            commitment, status="open", nudged_at=now, check_after=None
+            commitment, status=current.status, nudged_at=now, check_after=None
         )
         logger.info(
             "Followed up on commitment %s in channel %s", commitment.id, channel.id
@@ -478,7 +503,7 @@ class LivingBot(discord.Client):
                     entry.check_after = check_after
             self._commitment_store.save(commitments)
 
-    def _build_commitment_followup_context(
+    def _build_commitment_timing_context(
         self, commitment: Commitment, now: datetime, history: list[str]
     ) -> str:
         calendar = self._calendar_store.load()
@@ -503,20 +528,14 @@ class LivingBot(discord.Client):
             f'At the time, you said this would happen: "{commitment.due_hint}".'
         )
         lines.append("")
-        # Deliberately last, immediately before the decision: this is the step-1
-        # evidence, and the judge reads what comes last most closely.
         if history:
             lines.append(
-                "What has been said in that channel since — read this before deciding "
-                "anything, and check whether she has already done it or it has been "
-                "called off:"
+                "What has been said in that channel since, so you can judge whether "
+                "speaking up now would feel natural or would cut across the moment:"
             )
             lines.extend(f"  {message}" for message in history)
         else:
-            lines.append(
-                "Nothing has been said in that channel since she promised it, so it "
-                "has neither been done nor called off."
-            )
+            lines.append("Nothing has been said in that channel since she promised it.")
         return "\n".join(lines)
 
     async def _ensure_week_planned(self) -> None:
@@ -886,7 +905,7 @@ def build() -> LivingBot:
     preference_store = PreferenceStore(config.PREFERENCE_DATA_PATH)
     photo_cooldown_store = PhotoCooldownStore(config.PHOTO_COOLDOWN_DATA_PATH)
     commitment_store = CommitmentStore(config.COMMITMENT_DATA_PATH)
-    commitment_followup = CommitmentFollowUpComposer.create()
+    commitment_timing_judge = CommitmentTimingJudge.create()
     spontaneous_store = SpontaneousStore(config.SPONTANEOUS_DATA_PATH)
     spontaneous_messenger = SpontaneousMessenger.create()
     return LivingBot(
@@ -906,7 +925,7 @@ def build() -> LivingBot:
         preference_store=preference_store,
         photo_cooldown_store=photo_cooldown_store,
         commitment_store=commitment_store,
-        commitment_followup=commitment_followup,
+        commitment_timing_judge=commitment_timing_judge,
         spontaneous_store=spontaneous_store,
         spontaneous_messenger=spontaneous_messenger,
         intents=intents,

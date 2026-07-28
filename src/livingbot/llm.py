@@ -110,6 +110,7 @@ class LLMClient:
         waiting_since: datetime | None = None,
         history: list[str] | None = None,
         commitments: list[Commitment] | None = None,
+        trigger: str | None = None,
     ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
@@ -154,7 +155,9 @@ class LLMClient:
             parts.append(f"What I remember:\n{memory_block}\n\n")
         if history:
             parts.append(_build_history_block(history))
-        parts.append(_build_new_messages_block(user_messages))
+        parts.append(
+            trigger if trigger is not None else _build_new_messages_block(user_messages)
+        )
         prompt: list[UserContent] = ["".join(parts), *(images or [])]
         run_result = await self._agent.run(prompt, deps=deps)
         return LLMResult(run_result, deps)
