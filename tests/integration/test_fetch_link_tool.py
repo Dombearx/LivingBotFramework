@@ -17,9 +17,11 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
+from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
+from livingbot.preferences import PreferenceStore
 from livingbot.spending import SpendingStore
 from livingbot.stories import StoryStore
 
@@ -29,6 +31,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 NOW = datetime(2026, 6, 6, 15, 0)
+CHANNEL_ID = 1234
 
 ARTICLE_HTML = """
 <html><head><title>Kreatyna: fakty i mity</title></head><body>
@@ -105,17 +108,22 @@ async def _complete(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ):
     with _patched_network():
         return await client.complete(
             messages,
             MagicMock(),
+            CHANNEL_ID,
             calendar_store,
             activity_notes_store,
             inventory_store,
             spending_store,
             hobby_store,
             story_store,
+            preference_store,
+            commitment_store,
             NOW,
         )
 
@@ -133,6 +141,8 @@ async def test_fetch_link_called_when_asked_to_read_shared_article(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Directly asked to read a shared link and say what she thinks about it."""
     messages = [
@@ -149,6 +159,8 @@ async def test_fetch_link_called_when_asked_to_read_shared_article(
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
     )
 
     assert _tool_was_called(result, "fetch_link"), (
@@ -164,6 +176,8 @@ async def test_fetch_link_called_with_the_shared_url(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """The URL she fetches is the one that was shared in the message."""
     messages = [
@@ -180,6 +194,8 @@ async def test_fetch_link_called_with_the_shared_url(
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
     )
 
     args = _fetch_link_args(result)
@@ -196,6 +212,8 @@ async def test_fetch_link_called_when_opinion_on_link_requested(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """A link dropped with a genuine 'what do you reckon?' — she should read it first."""
     messages = [
@@ -212,6 +230,8 @@ async def test_fetch_link_called_when_opinion_on_link_requested(
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
     )
 
     assert _tool_was_called(result, "fetch_link"), (
@@ -233,6 +253,8 @@ async def test_fetch_link_not_called_for_routine_conversation(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Ordinary chat with no link — nothing to fetch."""
     messages = [
@@ -248,6 +270,8 @@ async def test_fetch_link_not_called_for_routine_conversation(
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
     )
 
     assert not _tool_was_called(result, "fetch_link"), (
@@ -263,6 +287,8 @@ async def test_fetch_link_not_called_when_link_is_incidental(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """A link is mentioned only in passing while the user asks about her, not the page."""
     messages = [
@@ -280,6 +306,8 @@ async def test_fetch_link_not_called_when_link_is_incidental(
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
     )
 
     assert not _tool_was_called(result, "fetch_link"), (

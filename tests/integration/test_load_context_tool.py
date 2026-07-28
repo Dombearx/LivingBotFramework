@@ -15,9 +15,11 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
+from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
+from livingbot.preferences import PreferenceStore
 from livingbot.spending import SpendingStore
 from livingbot.stories import StoryStore
 
@@ -25,6 +27,8 @@ pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
     reason="OPENROUTER_API_KEY not set",
 )
+
+CHANNEL_ID = 1234
 
 
 @pytest.fixture
@@ -79,6 +83,8 @@ async def test_load_context_called_when_explicitly_asked(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Explicit Polish request to scroll back and read what was written before."""
     channel = _make_channel(
@@ -95,12 +101,15 @@ async def test_load_context_called_when_explicitly_asked(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         datetime.now(),
     )
 
@@ -117,6 +126,8 @@ async def test_load_context_called_for_polish_history_question(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Bot fetches history when asked in Polish what was discussed earlier."""
     channel = _make_channel(
@@ -133,12 +144,15 @@ async def test_load_context_called_for_polish_history_question(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         datetime.now(),
     )
 
@@ -155,6 +169,8 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Bot fetches history when asked to recall what a specific person wrote."""
     channel = _make_channel(
@@ -171,12 +187,15 @@ async def test_load_context_called_when_asked_to_remind_what_user_wrote(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         datetime.now(),
     )
 
@@ -193,6 +212,8 @@ async def test_load_context_called_to_summarize_channel_discussion(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Bot fetches history when asked to summarize the recent discussion."""
     channel = _make_channel(
@@ -211,12 +232,15 @@ async def test_load_context_called_to_summarize_channel_discussion(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         datetime.now(),
     )
 
@@ -233,6 +257,8 @@ async def test_load_context_called_for_implicit_context_reference(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Bot fetches history when user implicitly refers to something decided earlier."""
     channel = _make_channel(
@@ -251,12 +277,15 @@ async def test_load_context_called_for_implicit_context_reference(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         datetime.now(),
     )
 

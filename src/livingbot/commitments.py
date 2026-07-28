@@ -20,6 +20,10 @@ class Commitment(BaseModel):
     # nudges the same promise twice — further follow-through only happens
     # through the normal conversation (see resolve_commitment).
     nudged_at: datetime | None = None
+    # When the follow-up judge decides it is not time yet, it also estimates how
+    # long the wait still is; until this moment passes the promise is skipped
+    # without spending a judgement call on it.
+    check_after: datetime | None = None
 
 
 class Commitments(BaseModel):
@@ -27,6 +31,15 @@ class Commitments(BaseModel):
 
     def open_entries(self) -> list[Commitment]:
         return [c for c in self.entries if c.status == "open"]
+
+    def awaiting_followup(self, now: datetime) -> list[Commitment]:
+        return [
+            c
+            for c in self.entries
+            if c.status == "open"
+            and c.nudged_at is None
+            and (c.check_after is None or c.check_after <= now)
+        ]
 
 
 class CommitmentStore:

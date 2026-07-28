@@ -14,7 +14,7 @@ from livingbot import clock, config, prompts
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
 from livingbot.commitment_followup import CommitmentFollowUpComposer
-from livingbot.commitments import Commitment, CommitmentStore
+from livingbot.commitments import Commitment, CommitmentStatus, CommitmentStore
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
@@ -253,7 +253,12 @@ class LivingBot(discord.Client):
                     await self._maybe_follow_up_on_commitments()
             except Exception:
                 logger.exception("Life loop iteration failed")
-            await asyncio.sleep(config.LIFE_LOOP_INTERVAL_SECONDS)
+            await asyncio.sleep(
+                random.uniform(
+                    config.LIFE_LOOP_INTERVAL_MIN_SECONDS,
+                    config.LIFE_LOOP_INTERVAL_MAX_SECONDS,
+                )
+            )
 
     async def _ensure_morning_mood_refresh(self) -> None:
         now = clock.now()
@@ -356,16 +361,34 @@ class LivingBot(discord.Client):
 
     async def _maybe_follow_up_on_commitments(self) -> None:
         now = clock.now()
+        await self._retire_stale_commitments(now)
         if not is_awake(now):
             return
-        commitments = self._commitment_store.load()
-        candidates = [
-            c for c in commitments.entries if c.status == "open" and c.nudged_at is None
-        ]
-        for commitment in candidates:
-            await self._maybe_follow_up_on(commitment, now)
+        # Everything here is a cheap local filter: a promise only costs a
+        # judgement call once its own estimated wait has run out.
+        waiting = self._commitment_store.load().awaiting_followup(now)
+        for commitment in waiting:
+            if await self._maybe_follow_up_on(commitment, now):
+                # One unprompted message per waking, however many are due.
+                return
 
-    async def _maybe_follow_up_on(self, commitment: Commitment, now: datetime) -> None:
+    async def _retire_stale_commitments(self, now: datetime) -> None:
+        cutoff = now - config.COMMITMENT_RETIREMENT_PERIOD
+        async with self._state_lock:
+            commitments = self._commitment_store.load()
+            stale = [
+                c
+                for c in commitments.entries
+                if c.status == "open" and c.made_at < cutoff
+            ]
+            if not stale:
+                return
+            for commitment in stale:
+                commitment.status = "dropped"
+            self._commitment_store.save(commitments)
+        logger.info("Let go of %d promise(s) too old to still chase", len(stale))
+
+    async def _maybe_follow_up_on(self, commitment: Commitment, now: datetime) -> bool:
         channel = self.get_channel(commitment.channel_id)
         if not isinstance(channel, discord.abc.Messageable):
             logger.warning(
@@ -373,24 +396,90 @@ class LivingBot(discord.Client):
                 commitment.id,
                 commitment.channel_id,
             )
-            return
-        context = self._build_commitment_followup_context(commitment, now)
-        decision = await self._commitment_followup.decide(context)
-        if decision is None or not decision.should_follow_up or not decision.message:
-            return
+            await self._defer_commitment(
+                commitment, now, config.COMMITMENT_DEFAULT_RETRY_HOURS
+            )
+            return False
+
+        history = [
+            format_message(message)
+            async for message in channel.history(
+                limit=config.COMMITMENT_FOLLOWUP_HISTORY_LIMIT
+            )
+        ]
+        history.reverse()
+        decision = await self._commitment_followup.decide(
+            self._build_commitment_followup_context(commitment, now, history)
+        )
+        if decision is None:
+            await self._defer_commitment(
+                commitment, now, config.COMMITMENT_DEFAULT_RETRY_HOURS
+            )
+            return False
+
+        if decision.already_handled:
+            await self._save_commitment_outcome(
+                commitment, status="fulfilled", nudged_at=None, check_after=None
+            )
+            logger.info(
+                "Commitment %s already settled in conversation: %s",
+                commitment.id,
+                decision.reason,
+            )
+            return False
+
+        if not decision.should_follow_up or not decision.message:
+            retry_hours = (
+                decision.retry_in_hours
+                if decision.retry_in_hours is not None
+                else config.COMMITMENT_DEFAULT_RETRY_HOURS
+            )
+            await self._defer_commitment(commitment, now, retry_hours)
+            logger.debug(
+                "Holding off on commitment %s for %.1fh: %s",
+                commitment.id,
+                retry_hours,
+                decision.reason,
+            )
+            return False
+
         await _send_chunked(channel, decision.message)
+        await self._save_commitment_outcome(
+            commitment, status="open", nudged_at=now, check_after=None
+        )
+        logger.info(
+            "Followed up on commitment %s in channel %s", commitment.id, channel.id
+        )
+        return True
+
+    async def _defer_commitment(
+        self, commitment: Commitment, now: datetime, retry_hours: float
+    ) -> None:
+        await self._save_commitment_outcome(
+            commitment,
+            status="open",
+            nudged_at=None,
+            check_after=now + timedelta(hours=retry_hours),
+        )
+
+    async def _save_commitment_outcome(
+        self,
+        commitment: Commitment,
+        status: CommitmentStatus,
+        nudged_at: datetime | None,
+        check_after: datetime | None,
+    ) -> None:
         async with self._state_lock:
             commitments = self._commitment_store.load()
             for entry in commitments.entries:
                 if entry.id == commitment.id:
-                    entry.nudged_at = now
+                    entry.status = status
+                    entry.nudged_at = nudged_at
+                    entry.check_after = check_after
             self._commitment_store.save(commitments)
-        logger.info(
-            "Followed up on commitment %s in channel %s", commitment.id, channel.id
-        )
 
     def _build_commitment_followup_context(
-        self, commitment: Commitment, now: datetime
+        self, commitment: Commitment, now: datetime, history: list[str]
     ) -> str:
         calendar = self._calendar_store.load()
         mood = self._mood_store.load()
@@ -413,6 +502,12 @@ class LivingBot(discord.Client):
         lines.append(
             f'At the time, you said this would happen: "{commitment.due_hint}".'
         )
+        lines.append("")
+        if history:
+            lines.append("The most recent messages in that channel:")
+            lines.extend(f"  {message}" for message in history)
+        else:
+            lines.append("Nothing has been said in that channel since.")
         return "\n".join(lines)
 
     async def _ensure_week_planned(self) -> None:

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from livingbot.commitments import Commitment, Commitments, CommitmentStore
@@ -63,3 +63,53 @@ def test_commitment_nudged_at_defaults_to_none() -> None:
     commitment = _commitment()
 
     assert commitment.nudged_at is None
+
+
+NOW = datetime(2026, 6, 24, 15, 0)
+
+
+def test_awaiting_followup_includes_a_commitment_that_has_never_been_judged() -> None:
+    commitment = _commitment()
+    commitments = Commitments(entries=[commitment])
+
+    result = commitments.awaiting_followup(NOW)
+
+    assert result == [commitment]
+
+
+def test_awaiting_followup_excludes_a_commitment_still_inside_its_wait() -> None:
+    commitment = _commitment()
+    commitment.check_after = NOW + timedelta(hours=2)
+    commitments = Commitments(entries=[commitment])
+
+    result = commitments.awaiting_followup(NOW)
+
+    assert result == []
+
+
+def test_awaiting_followup_includes_a_commitment_whose_wait_has_elapsed() -> None:
+    commitment = _commitment()
+    commitment.check_after = NOW - timedelta(minutes=1)
+    commitments = Commitments(entries=[commitment])
+
+    result = commitments.awaiting_followup(NOW)
+
+    assert result == [commitment]
+
+
+def test_awaiting_followup_excludes_an_already_nudged_commitment() -> None:
+    commitment = _commitment()
+    commitment.nudged_at = NOW - timedelta(hours=1)
+    commitments = Commitments(entries=[commitment])
+
+    result = commitments.awaiting_followup(NOW)
+
+    assert result == []
+
+
+def test_awaiting_followup_excludes_a_dropped_commitment() -> None:
+    commitments = Commitments(entries=[_commitment(status="dropped")])
+
+    result = commitments.awaiting_followup(NOW)
+
+    assert result == []

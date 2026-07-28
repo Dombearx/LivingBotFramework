@@ -23,9 +23,11 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 from livingbot.prompts import PHOTO_HINT
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
+from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
+from livingbot.preferences import PreferenceStore
 from livingbot.spending import SpendingStore
 from livingbot.stories import StoryStore
 
@@ -35,6 +37,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 NOW = datetime(2026, 6, 4, 18, 15)  # Wednesday evening
+CHANNEL_ID = 1234
 
 
 def _tool_calls(result, tool_name: str) -> list[ToolCallPart]:
@@ -122,17 +125,22 @@ def _make_complete_kwargs(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
     photo_hint: str = "",
 ) -> dict:
     return dict(
         user_messages=messages,
         channel=MagicMock(),
+        channel_id=CHANNEL_ID,
         calendar_store=calendar_store,
         activity_notes_store=activity_notes_store,
         inventory_store=inventory_store,
         spending_store=spending_store,
         hobby_store=hobby_store,
         story_store=story_store,
+        preference_store=preference_store,
+        commitment_store=commitment_store,
         now=NOW,
         photo_hint=photo_hint,
     )
@@ -165,6 +173,8 @@ async def test_take_photo_called_when_explicitly_instructed(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """User explicitly names the tool and asks Mugda to use it."""
     with patch(
@@ -182,6 +192,8 @@ async def test_take_photo_called_when_explicitly_instructed(
                 spending_store,
                 hobby_store,
                 story_store,
+                preference_store,
+                commitment_store,
                 photo_hint=PHOTO_HINT,
             )
         )
@@ -204,6 +216,8 @@ async def test_take_photo_include_mugda_true_when_selfie_requested(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """User asks for a selfie — Mugda should appear in the photo."""
     with patch(
@@ -221,6 +235,8 @@ async def test_take_photo_include_mugda_true_when_selfie_requested(
                 spending_store,
                 hobby_store,
                 story_store,
+                preference_store,
+                commitment_store,
                 photo_hint=PHOTO_HINT,
             )
         )
@@ -247,6 +263,8 @@ async def test_take_photo_include_mugda_false_when_scenery_requested(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """User asks for a photo of the surroundings, not Mugda herself."""
     with patch(
@@ -264,6 +282,8 @@ async def test_take_photo_include_mugda_false_when_scenery_requested(
                 spending_store,
                 hobby_store,
                 story_store,
+                preference_store,
+                commitment_store,
                 photo_hint=PHOTO_HINT,
             )
         )
@@ -291,6 +311,8 @@ async def test_take_photo_called_when_group_asks_to_see_a_photo(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """A direct request to see a photo while she's at the gym should trigger
     take_photo, without the tool being named."""
@@ -310,6 +332,8 @@ async def test_take_photo_called_when_group_asks_to_see_a_photo(
                 spending_store,
                 hobby_store,
                 story_store,
+                preference_store,
+                commitment_store,
                 photo_hint=PHOTO_HINT,
             )
         )
@@ -333,6 +357,8 @@ async def test_take_photo_include_mugda_false_when_asked_about_place(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Someone asks what the park looks like — Mugda should photograph the scenery,
     not take a selfie."""
@@ -351,6 +377,8 @@ async def test_take_photo_include_mugda_false_when_asked_about_place(
                 spending_store,
                 hobby_store,
                 story_store,
+                preference_store,
+                commitment_store,
                 photo_hint=PHOTO_HINT,
             )
         )
@@ -377,6 +405,8 @@ async def test_take_photo_not_called_for_routine_conversation(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Routine chat at home with no hint present — no photo should be taken."""
     with patch(
@@ -394,6 +424,8 @@ async def test_take_photo_not_called_for_routine_conversation(
                 spending_store,
                 hobby_store,
                 story_store,
+                preference_store,
+                commitment_store,
                 photo_hint="",  # no hint — below cooldown threshold
             )
         )

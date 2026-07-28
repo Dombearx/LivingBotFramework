@@ -16,9 +16,11 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
+from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.llm import LLMClient
+from livingbot.preferences import PreferenceStore
 from livingbot.spending import SpendingState, SpendingStore, _current_week_start
 from livingbot.stories import StoryStore
 
@@ -28,6 +30,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 NOW = datetime(2026, 6, 3, 14, 30)
+CHANNEL_ID = 1234
 RECENTLY_USED = datetime(2026, 6, 2, 12, 0)
 LONG_AGO = datetime(2026, 4, 1, 12, 0)
 
@@ -86,6 +89,8 @@ async def test_buy_item_called_and_persisted_when_told_to_buy(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Explicit: told to buy a specific item, she should call buy_item and the item
     should actually land in her inventory."""
@@ -98,12 +103,15 @@ async def test_buy_item_called_and_persisted_when_told_to_buy(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
 
@@ -123,6 +131,8 @@ async def test_add_item_not_buy_item_when_she_receives_a_gift(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Boundary: a received gift has no cost, so she should use add_item — not
     buy_item — to record it."""
@@ -136,12 +146,15 @@ async def test_add_item_not_buy_item_when_she_receives_a_gift(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
 
@@ -160,6 +173,8 @@ async def test_buy_item_refused_and_not_retried_when_budget_exhausted(
     inventory_store: InventoryStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
     tmp_path,
 ) -> None:
     """Budget enforcement: with 0 points, any purchase attempt should be refused.
@@ -175,12 +190,15 @@ async def test_buy_item_refused_and_not_retried_when_budget_exhausted(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         drained,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
 
@@ -203,6 +221,8 @@ async def test_buy_item_called_when_she_decides_to_buy_without_being_told(
     spending_store: SpendingStore,
     hobby_store: HobbyStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
 ) -> None:
     """Implicit: a friend casually mentions that something Mugda has been wanting is
     now available. Without being told 'buy this', she should decide on her own to use
@@ -233,12 +253,15 @@ async def test_buy_item_called_when_she_decides_to_buy_without_being_told(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
 

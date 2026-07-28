@@ -12,9 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class CommitmentFollowUpDecision(BaseModel):
-    should_follow_up: bool
     reason: str = Field(max_length=300)
+    already_handled: bool = False
+    should_follow_up: bool = False
     message: str | None = None
+    retry_in_hours: float | None = Field(default=None, ge=0.5, le=336.0)
 
 
 class CommitmentFollowUpComposer:

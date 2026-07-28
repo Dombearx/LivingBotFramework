@@ -34,19 +34,30 @@ def composer() -> CommitmentFollowUpComposer:
     return CommitmentFollowUpComposer.create()
 
 
-def _context(situation: str, promised_ago: str, description: str, due_hint: str) -> str:
-    return "\n".join(
-        [
-            f"Right now it is {NOW:%A, %Y-%m-%d %H:%M}.",
-            situation,
-            "",
-            build_mood_block(Mood(value=60.0), NOW).rstrip(),
-            "",
-            f"Earlier — {promised_ago} — you promised <@111222333> that you would: "
-            f"{description}.",
-            f'At the time, you said this would happen: "{due_hint}".',
-        ]
-    )
+def _context(
+    situation: str,
+    promised_ago: str,
+    description: str,
+    due_hint: str,
+    history: list[str] | None = None,
+) -> str:
+    lines = [
+        f"Right now it is {NOW:%A, %Y-%m-%d %H:%M}.",
+        situation,
+        "",
+        build_mood_block(Mood(value=60.0), NOW).rstrip(),
+        "",
+        f"Earlier — {promised_ago} — you promised <@111222333> that you would: "
+        f"{description}.",
+        f'At the time, you said this would happen: "{due_hint}".',
+        "",
+    ]
+    if history:
+        lines.append("The most recent messages in that channel:")
+        lines.extend(f"  {message}" for message in history)
+    else:
+        lines.append("Nothing has been said in that channel since.")
+    return "\n".join(lines)
 
 
 async def _decide(
@@ -162,4 +173,91 @@ async def test_follows_up_on_a_vague_promise_only_after_a_full_day(
 
     assert decision.should_follow_up is True, (
         f"Expected a follow-up two days after a vague promise. Reason: {decision.reason}"
+    )
+
+
+async def test_declining_estimates_how_long_the_wait_still_is(
+    composer: CommitmentFollowUpComposer,
+) -> None:
+    """A refusal has to say when to look again, or the promise is re-judged hourly."""
+    context = _context(
+        "You are at gym, busy with gym session until 20:30.",
+        "6 hours ago",
+        "show a screenshot of my Baldur's Gate character",
+        "next time I'm at my computer",
+    )
+
+    decision = await _decide(composer, context)
+
+    assert decision.retry_in_hours is not None, (
+        f"Expected an estimated wait when declining. Reason: {decision.reason}"
+    )
+
+
+async def test_wait_estimate_for_a_promised_tomorrow_spans_most_of_a_day(
+    composer: CommitmentFollowUpComposer,
+) -> None:
+    """An hour after promising 'tomorrow', the honest wait is many hours, not one."""
+    context = _context(
+        "You are at home with nothing scheduled.",
+        "1 hour ago",
+        "send the protein cookie recipe",
+        "tomorrow",
+    )
+
+    decision = await _decide(composer, context)
+
+    assert decision.retry_in_hours is not None and decision.retry_in_hours >= 6.0, (
+        f"Expected a wait of at least 6 hours until 'tomorrow'. "
+        f"Got {decision.retry_in_hours}. Reason: {decision.reason}"
+    )
+
+
+async def test_recognises_a_promise_she_has_already_kept(
+    composer: CommitmentFollowUpComposer,
+) -> None:
+    """She sent the screenshot but never called resolve_commitment; sending it again
+    unprompted is exactly the sort of thing that makes her look like a machine."""
+    context = _context(
+        "You are at home with nothing scheduled.",
+        "6 hours ago",
+        "show a screenshot of my Baldur's Gate character",
+        "next time I'm at my computer",
+        history=[
+            "[id:1] [2026-06-24 18:30:00] Mugda: o, w końcu jestem przy kompie, "
+            "wrzucam tego screena z moją postacią",
+            "[id:2] [2026-06-24 18:31:00] Hardik: o kurde, wygląda świetnie xD "
+            "dokładnie tak jak opisywałaś",
+        ],
+    )
+
+    decision = await _decide(composer, context)
+
+    assert decision.already_handled is True, (
+        f"Expected the kept promise to be recognised as handled. "
+        f"Reason: {decision.reason}"
+    )
+
+
+async def test_does_not_follow_up_on_a_promise_the_other_person_called_off(
+    composer: CommitmentFollowUpComposer,
+) -> None:
+    """Told not to bother, chasing it anyway is worse than forgetting it."""
+    context = _context(
+        "You are at home with nothing scheduled.",
+        "2 days ago",
+        "send the link to that gym playlist",
+        "soon",
+        history=[
+            "[id:1] [2026-06-23 12:00:00] Hardik: e, nie szukaj już tej playlisty, "
+            "znalazłem sobie inną i już jej słucham",
+            "[id:2] [2026-06-23 12:01:00] Mugda: okej, spoko",
+        ],
+    )
+
+    decision = await _decide(composer, context)
+
+    assert decision.should_follow_up is False, (
+        f"Expected no follow-up on a promise that was called off. "
+        f"Reason: {decision.reason}"
     )

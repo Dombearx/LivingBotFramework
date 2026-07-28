@@ -18,8 +18,10 @@ from pydantic_ai import Agent
 from livingbot import llm_config
 from livingbot.activity_notes import ActivityNotes
 from livingbot.calendar import Calendar
+from livingbot.commitments import Commitments
 from livingbot.hobbies import Hobby, Hobbies
 from livingbot.llm import LLMClient
+from livingbot.preferences import Preferences
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -27,6 +29,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 NOW = datetime(2026, 6, 6, 15, 0)
+CHANNEL_ID = 1234
 _JUDGE_MODEL = "openai/gpt-5.4-mini"
 
 
@@ -79,6 +82,12 @@ def _make_stores() -> tuple:
     story_store.search = AsyncMock(return_value=[])
     story_store.mark_told = AsyncMock(return_value=True)
 
+    preference_store = MagicMock()
+    preference_store.load = MagicMock(return_value=Preferences())
+
+    commitment_store = MagicMock()
+    commitment_store.load = MagicMock(return_value=Commitments())
+
     return (
         channel,
         calendar_store,
@@ -87,6 +96,8 @@ def _make_stores() -> tuple:
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
     )
 
 
@@ -100,16 +111,21 @@ async def _get_response(messages: list[str]) -> str:
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
     ) = _make_stores()
     result = await client.complete(
         messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
     return result.output
