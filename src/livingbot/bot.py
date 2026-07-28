@@ -503,11 +503,20 @@ class LivingBot(discord.Client):
             f'At the time, you said this would happen: "{commitment.due_hint}".'
         )
         lines.append("")
+        # Deliberately last, immediately before the decision: this is the step-1
+        # evidence, and the judge reads what comes last most closely.
         if history:
-            lines.append("The most recent messages in that channel:")
+            lines.append(
+                "What has been said in that channel since — read this before deciding "
+                "anything, and check whether she has already done it or it has been "
+                "called off:"
+            )
             lines.extend(f"  {message}" for message in history)
         else:
-            lines.append("Nothing has been said in that channel since.")
+            lines.append(
+                "Nothing has been said in that channel since she promised it, so it "
+                "has neither been done nor called off."
+            )
         return "\n".join(lines)
 
     async def _ensure_week_planned(self) -> None:

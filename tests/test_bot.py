@@ -1916,4 +1916,4 @@ def test_build_commitment_followup_context_when_channel_silent_says_so(
 
     context = bot._build_commitment_followup_context(make_commitment(), AWAKE_NOW, [])
 
-    assert "Nothing has been said in that channel since." in context
+    assert "Nothing has been said in that channel since she promised it" in context
