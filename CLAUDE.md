@@ -42,6 +42,22 @@ A Python framework built incrementally across multiple implementation steps.
 - Assert the exact value you expect — a test that only checks `result > 3` is a test that would pass for any answer except "wrong enough".
 - Prefer testing observable outputs and side-effects (return values, calls on mocks) over testing internal state.
 
+### Integration Tests
+
+Tests under `tests/integration/` send real requests to the LLM. They cost money and
+take minutes, and because the model is non-deterministic they fail intermittently
+without anything being broken.
+
+- **Never run the whole integration suite, or a large portion of it, without asking
+  first.** Ask, state roughly what it will cost and how long it will take, and wait for
+  an answer. This applies to `uv run pytest tests/integration/` locally and to the
+  `all` group of the Integration Tests workflow.
+- Run only the group covering the code you changed — the workflow's `test_group` input
+  exists for exactly this.
+- A failure in a test unrelated to your change is not yours to chase. Report it and
+  move on; do not re-run it hoping for green, and do not "fix" the assertion.
+- Re-running a group you did change is fine when you are verifying a fix.
+
 ## Python Conventions
 
 - Python 3.14

@@ -8,6 +8,7 @@ import httpx
 from livingbot import config
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
+from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import Hobby, Hobbies
 from livingbot.inventory import InventoryItem
 from datetime import date
@@ -19,6 +20,7 @@ from livingbot.tools import (
     MAX_LINK_PREVIEW_LENGTH,
     BotDeps,
     add_activity_note,
+    add_commitment,
     add_hobby,
     add_item,
     add_plan,
@@ -30,6 +32,7 @@ from livingbot.tools import (
     remove_activity_note,
     remove_item,
     remove_plan,
+    resolve_commitment,
     search_inventory,
     show_story_image,
     take_photo,
@@ -54,6 +57,7 @@ def make_ctx(
 ) -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
+        channel_id=1,
         calendar_store=calendar_store or MagicMock(),
         activity_notes_store=MagicMock(),
         inventory_store=inventory_store or make_inventory_store(),
@@ -61,6 +65,7 @@ def make_ctx(
         hobby_store=hobby_store or make_hobby_store(),
         story_store=story_store or make_story_store(),
         preference_store=MagicMock(),
+        commitment_store=MagicMock(),
     )
     return SimpleNamespace(deps=deps)
 
@@ -321,6 +326,7 @@ async def test_buy_item_when_unaffordable_does_not_add_to_inventory() -> None:
 def make_photo_ctx() -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
+        channel_id=1,
         calendar_store=MagicMock(),
         activity_notes_store=MagicMock(),
         inventory_store=make_inventory_store(),
@@ -328,6 +334,7 @@ def make_photo_ctx() -> SimpleNamespace:
         hobby_store=make_hobby_store(),
         story_store=make_story_store(),
         preference_store=MagicMock(),
+        commitment_store=MagicMock(),
     )
     return SimpleNamespace(deps=deps)
 
@@ -454,6 +461,7 @@ def make_story_image_ctx(story: Story | None) -> SimpleNamespace:
     story_store.get = AsyncMock(return_value=story)
     deps = BotDeps(
         channel=MagicMock(),
+        channel_id=1,
         calendar_store=MagicMock(),
         activity_notes_store=MagicMock(),
         inventory_store=make_inventory_store(),
@@ -461,6 +469,7 @@ def make_story_image_ctx(story: Story | None) -> SimpleNamespace:
         hobby_store=make_hobby_store(),
         story_store=story_store,
         preference_store=MagicMock(),
+        commitment_store=MagicMock(),
     )
     return SimpleNamespace(deps=deps)
 
@@ -625,6 +634,7 @@ def make_activity_ctx(tmp_path) -> SimpleNamespace:
     return SimpleNamespace(
         deps=BotDeps(
             channel=MagicMock(),
+            channel_id=1,
             calendar_store=CalendarStore(tmp_path / "calendar", home_location="home"),
             activity_notes_store=ActivityNotesStore(tmp_path / "activity_notes"),
             inventory_store=make_inventory_store(),
@@ -632,6 +642,7 @@ def make_activity_ctx(tmp_path) -> SimpleNamespace:
             hobby_store=make_hobby_store(),
             story_store=make_story_store(),
             preference_store=MagicMock(),
+            commitment_store=MagicMock(),
         )
     )
 
@@ -698,6 +709,84 @@ async def test_remove_activity_note_when_id_missing_returns_not_found(tmp_path) 
     result = await remove_activity_note(ctx, "nope1234")
 
     assert result == "No activity reminder with id nope1234."
+
+
+# ---------------------------------------------------------------------------
+# add_commitment / resolve_commitment
+# ---------------------------------------------------------------------------
+
+
+def make_commitment_ctx(tmp_path) -> SimpleNamespace:
+    return SimpleNamespace(
+        deps=BotDeps(
+            channel=MagicMock(),
+            channel_id=555,
+            calendar_store=MagicMock(),
+            activity_notes_store=MagicMock(),
+            inventory_store=make_inventory_store(),
+            spending_store=make_spending_store(),
+            hobby_store=make_hobby_store(),
+            story_store=make_story_store(),
+            preference_store=MagicMock(),
+            commitment_store=CommitmentStore(tmp_path / "commitments"),
+        )
+    )
+
+
+async def test_add_commitment_persists_promise_to_store(tmp_path) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+
+    await add_commitment(ctx, "42", "show a screenshot", "next time at her computer")
+
+    saved = ctx.deps.commitment_store.load().entries[0]
+    assert saved.user_id == "42"
+    assert saved.description == "show a screenshot"
+    assert saved.due_hint == "next time at her computer"
+
+
+async def test_add_commitment_stamps_channel_from_deps(tmp_path) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+
+    await add_commitment(ctx, "42", "show a screenshot", "soon")
+
+    saved = ctx.deps.commitment_store.load().entries[0]
+    assert saved.channel_id == 555
+
+
+async def test_add_commitment_defaults_to_open_status(tmp_path) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+
+    await add_commitment(ctx, "42", "show a screenshot", "soon")
+
+    saved = ctx.deps.commitment_store.load().entries[0]
+    assert saved.status == "open"
+
+
+async def test_add_commitment_returns_confirmation_with_id(tmp_path) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+
+    result = await add_commitment(ctx, "42", "show a screenshot", "soon")
+
+    saved = ctx.deps.commitment_store.load().entries[0]
+    assert result == f"Noted [id:{saved.id}] promise to <@42>: show a screenshot."
+
+
+async def test_resolve_commitment_when_present_marks_it_fulfilled(tmp_path) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+    await add_commitment(ctx, "42", "show a screenshot", "soon")
+    commitment_id = ctx.deps.commitment_store.load().entries[0].id
+
+    await resolve_commitment(ctx, commitment_id)
+
+    assert ctx.deps.commitment_store.load().entries[0].status == "fulfilled"
+
+
+async def test_resolve_commitment_when_id_missing_returns_not_found(tmp_path) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+
+    result = await resolve_commitment(ctx, "nope1234")
+
+    assert result == "No open promise with id nope1234."
 
 
 # ---------------------------------------------------------------------------

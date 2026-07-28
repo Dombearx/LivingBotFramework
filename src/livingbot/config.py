@@ -23,10 +23,22 @@ MUGDA_REFERENCE_IMAGE_PATHS = [
     Path("images/reference/mugda_kwiaty.jpeg"),
 ]
 SPONTANEOUS_DATA_PATH = Path("data/spontaneous")
+COMMITMENT_DATA_PATH = Path("data/commitments")
+# How long an unkept promise stays worth chasing. Past this she quietly lets it
+# go, the way people do, instead of carrying it around forever.
+COMMITMENT_RETIREMENT_PERIOD = timedelta(days=14)
+# Fallback wait when the follow-up judge doesn't estimate one itself.
+COMMITMENT_DEFAULT_RETRY_HOURS = 3.0
+# How much of the channel the follow-up judge sees, so it can tell whether she
+# already followed through or the moment has passed.
+COMMITMENT_FOLLOWUP_HISTORY_LIMIT = 15
 PHOTO_COOLDOWN_DATA_PATH = Path("data/photo_cooldown")
 HOME_LOCATION = "home"
 DEFAULT_HOBBIES = ["gym"]
-LIFE_LOOP_INTERVAL_SECONDS = 3600
+# The life loop wakes on a jittered interval rather than exactly on the hour, so
+# her unprompted messages don't land in a visibly mechanical rhythm.
+LIFE_LOOP_INTERVAL_MIN_SECONDS = 3000
+LIFE_LOOP_INTERVAL_MAX_SECONDS = 4200
 PHOTO_COOLDOWN_MIN = 40
 PHOTO_COOLDOWN_MAX = 60
 STORY_TIED_TO_PLAN_PROBABILITY = 0.3

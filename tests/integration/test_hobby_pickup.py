@@ -17,9 +17,11 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
+from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
+from livingbot.preferences import PreferenceStore
 from livingbot.spending import SpendingStore
 from livingbot.stories import StoryStore
 
@@ -29,6 +31,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 NOW = datetime(2026, 6, 8, 12, 0)
+CHANNEL_ID = 1234
 
 
 def _tool_was_called(result, tool_name: str) -> bool:
@@ -75,6 +78,8 @@ async def test_add_hobby_called_when_explicitly_asked(
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
     hobby_store_empty: HobbyStore,
 ) -> None:
     """Jawna prośba: ktoś mówi wprost żeby zapisała garncarstwo jako hobby."""
@@ -87,12 +92,15 @@ async def test_add_hobby_called_when_explicitly_asked(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store_empty,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
 
@@ -111,6 +119,8 @@ async def test_add_hobby_called_when_she_starts_a_new_regular_activity(
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
     hobby_store_empty: HobbyStore,
 ) -> None:
     """Naturalny kontekst: ktoś pyta o garncarstwo które właśnie zaczęła regularnie uprawiać."""
@@ -123,12 +133,15 @@ async def test_add_hobby_called_when_she_starts_a_new_regular_activity(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store_empty,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
 
@@ -148,6 +161,8 @@ async def test_add_hobby_not_called_for_one_time_event(
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
     hobby_store_empty: HobbyStore,
 ) -> None:
     """Jednorazowe wyjście na paintball to nie hobby — add_hobby nie powinno być wywołane."""
@@ -160,12 +175,15 @@ async def test_add_hobby_not_called_for_one_time_event(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store_empty,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
 
@@ -185,6 +203,8 @@ async def test_add_hobby_not_called_when_hobby_already_exists(
     inventory_store: InventoryStore,
     spending_store: SpendingStore,
     story_store: StoryStore,
+    preference_store: PreferenceStore,
+    commitment_store: CommitmentStore,
     hobby_store_with_gym: HobbyStore,
 ) -> None:
     """Siłownia jest już na liście hobby — rozmowa o treningu nie powinna jej dodawać ponownie."""
@@ -197,12 +217,15 @@ async def test_add_hobby_not_called_when_hobby_already_exists(
     result = await client.complete(
         user_messages,
         channel,
+        CHANNEL_ID,
         calendar_store,
         activity_notes_store,
         inventory_store,
         spending_store,
         hobby_store_with_gym,
         story_store,
+        preference_store,
+        commitment_store,
         NOW,
     )
 

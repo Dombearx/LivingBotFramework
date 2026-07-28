@@ -9,7 +9,9 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot.activity_notes import ActivityNotesStore
+from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
+from livingbot.preferences import PreferenceStore
 from livingbot.spending import SpendingStore
 from livingbot.stories import StoryStore
 
@@ -244,3 +246,13 @@ def hobby_store(tmp_path) -> HobbyStore:
 @pytest.fixture
 def story_store(tmp_path) -> StoryStore:
     return StoryStore.create(tmp_path / "stories")
+
+
+@pytest.fixture
+def preference_store(tmp_path) -> PreferenceStore:
+    return PreferenceStore(tmp_path / "preferences")
+
+
+@pytest.fixture
+def commitment_store(tmp_path) -> CommitmentStore:
+    return CommitmentStore(tmp_path / "commitments")

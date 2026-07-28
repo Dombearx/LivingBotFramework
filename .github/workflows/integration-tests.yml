@@ -16,6 +16,9 @@ on:
           - lifestyle
           - background_agents
           - calendar_tools
+          - commitments
+          - commitment_tools
+          - commitment_followup
           - context_tool
           - discord_behavior
           - fetch_link_tool
@@ -56,8 +59,11 @@ jobs:
             tools_context)     files="$t/test_load_context_tool.py $t/test_take_photo_tool.py" ;;
             persona)           files="$t/test_discord_behavior.py $t/test_mood_tone.py" ;;
             lifestyle)         files="$t/test_hobby_pickup.py $t/test_hobby_tone.py" ;;
-            background_agents) files="$t/test_relation_updater.py $t/test_inside_jokes.py $t/test_week_planner.py $t/test_story_generation.py $t/test_spontaneous.py $t/test_memory_extraction.py" ;;
+            background_agents) files="$t/test_relation_updater.py $t/test_inside_jokes.py $t/test_week_planner.py $t/test_story_generation.py $t/test_spontaneous.py $t/test_memory_extraction.py $t/test_commitment_followup.py" ;;
             calendar_tools)    files="$t/test_calendar_tools.py" ;;
+            commitments)       files="$t/test_commitment_tools.py $t/test_commitment_followup.py" ;;
+            commitment_tools)  files="$t/test_commitment_tools.py" ;;
+            commitment_followup) files="$t/test_commitment_followup.py" ;;
             context_tool)      files="$t/test_load_context_tool.py" ;;
             discord_behavior)  files="$t/test_discord_behavior.py" ;;
             fetch_link_tool)   files="$t/test_fetch_link_tool.py" ;;

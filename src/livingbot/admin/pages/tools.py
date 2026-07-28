@@ -15,6 +15,7 @@ from livingbot.bot import LivingBot
 from livingbot.tools import (
     BotDeps,
     add_activity_note,
+    add_commitment,
     add_hobby,
     add_item,
     add_plan,
@@ -27,6 +28,7 @@ from livingbot.tools import (
     remove_activity_note,
     remove_item,
     remove_plan,
+    resolve_commitment,
     search_inventory,
     show_story_image,
     take_photo,
@@ -49,6 +51,8 @@ _TOOL_FUNCTIONS: list[Callable[..., Any]] = [
     check_budget,
     buy_item,
     take_photo,
+    add_commitment,
+    resolve_commitment,
 ]
 
 TOOLS: dict[str, Callable[..., Any]] = {func.__name__: func for func in _TOOL_FUNCTIONS}
@@ -108,6 +112,7 @@ def register(context: AdminContext) -> None:
                     channel = bot.get_channel(int(channel_select.value))
                 deps = BotDeps(
                     channel=cast("discord.abc.Messageable", channel),
+                    channel_id=channel.id if channel is not None else 0,
                     calendar_store=context.calendar_store,
                     activity_notes_store=context.activity_notes_store,
                     inventory_store=context.inventory_store,
@@ -115,6 +120,7 @@ def register(context: AdminContext) -> None:
                     hobby_store=context.hobby_store,
                     story_store=context.story_store,
                     preference_store=context.preference_store,
+                    commitment_store=context.commitment_store,
                 )
                 ctx = SimpleNamespace(deps=deps)
                 with result_area:
