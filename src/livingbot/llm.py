@@ -398,14 +398,19 @@ def _build_relations_block(relations: list[Relation]) -> str:
 def _build_commitments_block(commitments: list[Commitment], now: datetime) -> str:
     lines = ["Promises you've made that you haven't followed through on yet:"]
     for commitment in commitments:
-        lines.append(
+        line = (
             f"  [id:{commitment.id}] to <@{commitment.user_id}>: "
             f"{commitment.description} (promised {humanize_ago(commitment.made_at, now)}, "
-            f'you said: "{commitment.due_hint}")'
+            f'you said: "{commitment.due_hint}"'
         )
+        if commitment.nudged_at is not None:
+            line += f"; you already brought this up {humanize_ago(commitment.nudged_at, now)}"
+        lines.append(line + ")")
     lines.append(
         "If it's genuinely time and it fits the conversation, follow through now. Once "
-        "you do, call resolve_commitment so you don't bring it up again."
+        "you do, call resolve_commitment so you don't bring it up again. One you have "
+        "already brought up doesn't need raising a second time — leave it be unless "
+        "they come back to it."
     )
     return "\n".join(lines) + "\n\n"
 
