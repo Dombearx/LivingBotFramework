@@ -9,6 +9,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from livingbot import config, llm_config, prompts
 from livingbot.activity_notes import ActivityNotes, ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
+from livingbot.commitments import Commitment, CommitmentStore
 from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block, is_awake
@@ -20,6 +21,7 @@ from livingbot.timeformat import humanize_ago
 from livingbot.tools import (
     BotDeps,
     add_activity_note,
+    add_commitment,
     add_hobby,
     add_item,
     add_plan,
@@ -33,6 +35,7 @@ from livingbot.tools import (
     remove_activity_note,
     remove_item,
     remove_plan,
+    resolve_commitment,
     search_inventory,
     show_story_image,
     take_photo,
@@ -80,6 +83,8 @@ class LLMClient:
                 check_budget,
                 buy_item,
                 take_photo,
+                add_commitment,
+                resolve_commitment,
             ],
         )
 
@@ -87,6 +92,7 @@ class LLMClient:
         self,
         user_messages: list[str],
         channel: discord.abc.Messageable,
+        channel_id: int,
         calendar_store: CalendarStore,
         activity_notes_store: ActivityNotesStore,
         inventory_store: InventoryStore,
@@ -94,6 +100,7 @@ class LLMClient:
         hobby_store: HobbyStore,
         story_store: StoryStore,
         preference_store: PreferenceStore,
+        commitment_store: CommitmentStore,
         now: datetime,
         memories: list[str] | None = None,
         relations: list[Relation] | None = None,
@@ -102,9 +109,11 @@ class LLMClient:
         images: list[BinaryContent] | None = None,
         waiting_since: datetime | None = None,
         history: list[str] | None = None,
+        commitments: list[Commitment] | None = None,
     ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
+            channel_id=channel_id,
             calendar_store=calendar_store,
             activity_notes_store=activity_notes_store,
             inventory_store=inventory_store,
@@ -112,6 +121,7 @@ class LLMClient:
             hobby_store=hobby_store,
             story_store=story_store,
             preference_store=preference_store,
+            commitment_store=commitment_store,
         )
         parts: list[str] = []
         if photo_hint:
@@ -136,6 +146,8 @@ class LLMClient:
         parts.append(_build_preferences_block(preference_store.load()))
         if relations:
             parts.append(_build_relations_block(relations))
+        if commitments:
+            parts.append(_build_commitments_block(commitments, now))
         parts.append(_build_stories_block(await story_store.untold()))
         if memories:
             memory_block = "\n".join(f"- {m}" for m in memories)
@@ -381,6 +393,21 @@ def _build_relations_block(relations: list[Relation]) -> str:
             "sounding like a person."
         )
     return "\n".join(blocks) + "\n\n"
+
+
+def _build_commitments_block(commitments: list[Commitment], now: datetime) -> str:
+    lines = ["Promises you've made that you haven't followed through on yet:"]
+    for commitment in commitments:
+        lines.append(
+            f"  [id:{commitment.id}] to <@{commitment.user_id}>: "
+            f"{commitment.description} (promised {humanize_ago(commitment.made_at, now)}, "
+            f'you said: "{commitment.due_hint}")'
+        )
+    lines.append(
+        "If it's genuinely time and it fits the conversation, follow through now. Once "
+        "you do, call resolve_commitment so you don't bring it up again."
+    )
+    return "\n".join(lines) + "\n\n"
 
 
 def _build_history_block(history: list[str]) -> str:

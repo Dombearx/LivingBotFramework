@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.bot import LivingBot
 from livingbot.calendar import CalendarStore
+from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.memory import MemoryStore
@@ -61,3 +62,7 @@ class AdminContext:
     @property
     def spontaneous_store(self) -> SpontaneousStore | None:
         return self.bot.spontaneous_store
+
+    @property
+    def commitment_store(self) -> CommitmentStore:
+        return self.bot.commitment_store

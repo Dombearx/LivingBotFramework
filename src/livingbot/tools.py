@@ -14,6 +14,7 @@ from pydantic_ai import BinaryContent, RunContext
 from livingbot import clock, config
 from livingbot.activity_notes import ActivityNote, ActivityNotesStore
 from livingbot.calendar import CalendarStore, PlanEntry
+from livingbot.commitments import Commitment, CommitmentStore
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.preferences import PreferenceStore
@@ -35,6 +36,7 @@ _FETCH_USER_AGENT = (
 @dataclass
 class BotDeps:
     channel: discord.abc.Messageable
+    channel_id: int
     calendar_store: CalendarStore
     activity_notes_store: ActivityNotesStore
     inventory_store: InventoryStore
@@ -42,6 +44,7 @@ class BotDeps:
     hobby_store: HobbyStore
     story_store: StoryStore
     preference_store: PreferenceStore
+    commitment_store: CommitmentStore
     photo_result: bytes | None = None
 
 
@@ -322,6 +325,55 @@ async def record_preference(ctx: RunContext[BotDeps], topic: str, stance: str) -
     changes."""
     preference = ctx.deps.preference_store.record(topic, stance)
     return f"Noted [id:{preference.id}] {preference.topic}: {preference.stance}."
+
+
+async def add_commitment(
+    ctx: RunContext[BotDeps],
+    user_id: str,
+    description: str,
+    due_hint: str,
+) -> str:
+    """Record a concrete promise you just made to a SPECIFIC person about something
+    you will do or share LATER, not right now. Only call this when you used clear
+    future-promise language addressed to them — e.g. "I'll show you once I'm at my
+    computer" / "pokażę ci jak będę przy kompie" or "I'll send it to you tomorrow".
+    Do NOT call this for: anything you already did or said in this same reply; a vague
+    maybe ("sometime", "kiedyś", "we should really..."); an idea still being floated
+    that nobody has actually committed to; or something someone else promised to you.
+    When in doubt, don't record it — most conversations make no promise worth tracking.
+    user_id: the Discord id of the person you promised.
+    description: what you promised, in a few words, e.g. "show a screenshot of my BG3
+    character".
+    due_hint: your own words for when, taken from what you actually said, e.g. "next
+    time I'm at my computer" or "tomorrow".
+    Returns the new promise's id."""
+    store = ctx.deps.commitment_store
+    commitments = store.load()
+    commitment = Commitment(
+        user_id=user_id,
+        channel_id=ctx.deps.channel_id,
+        description=description,
+        due_hint=due_hint,
+        made_at=clock.now(),
+    )
+    commitments.entries.append(commitment)
+    store.save(commitments)
+    return f"Noted [id:{commitment.id}] promise to <@{user_id}>: {description}."
+
+
+async def resolve_commitment(ctx: RunContext[BotDeps], commitment_id: str) -> str:
+    """Mark a promise as fulfilled once you've actually followed through on it in this
+    reply — e.g. you showed the photo, sent the info, or did the thing you said you
+    would. The id is shown next to open promises in your context. Call this the moment
+    you follow through, so you don't bring the same promise up again."""
+    store = ctx.deps.commitment_store
+    commitments = store.load()
+    for commitment in commitments.entries:
+        if commitment.id == commitment_id:
+            commitment.status = "fulfilled"
+            store.save(commitments)
+            return f"Marked promise {commitment_id} as fulfilled."
+    return f"No open promise with id {commitment_id}."
 
 
 async def recall_story(

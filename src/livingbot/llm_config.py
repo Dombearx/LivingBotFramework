@@ -11,6 +11,7 @@ WEEK_PLANNER_MODEL = "openai/gpt-5-nano"
 STORY_GENERATOR_MODEL = "openai/gpt-5-nano"
 RELATION_UPDATER_MODEL = "openai/gpt-5-nano"
 SPONTANEOUS_MESSENGER_MODEL = "openai/gpt-5-nano"
+COMMITMENT_FOLLOWUP_MODEL = "openai/gpt-5-nano"
 PROMPT_ENHANCER_MODEL = "openai/gpt-5-nano"
 
 

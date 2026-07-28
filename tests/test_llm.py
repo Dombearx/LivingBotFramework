@@ -2,10 +2,12 @@ from datetime import datetime, timedelta
 
 from livingbot import config
 from livingbot.calendar import Calendar, PlanEntry
+from livingbot.commitments import Commitment
 from livingbot.hobbies import Hobby, Hobbies
 from livingbot.inventory import InventoryItem
 from livingbot.llm import (
     _build_calendar_block,
+    _build_commitments_block,
     _build_history_block,
     _build_inventory_block,
     _build_new_messages_block,
@@ -159,6 +161,37 @@ def test_build_recent_block_sorts_entries_newest_first() -> None:
     lines = block.strip().splitlines()
     assert "sukienka" in lines[1]
     assert "pottery" in lines[2]
+
+
+def test_build_commitments_block_lists_promise_with_id_and_recipient() -> None:
+    commitment = Commitment(
+        user_id="42",
+        channel_id=1,
+        description="show a screenshot",
+        due_hint="next time at her computer",
+        made_at=NOW - timedelta(hours=3),
+    )
+
+    block = _build_commitments_block([commitment], NOW)
+
+    assert f"[id:{commitment.id}]" in block
+    assert "<@42>" in block
+    assert "show a screenshot" in block
+    assert "next time at her computer" in block
+
+
+def test_build_commitments_block_mentions_resolve_commitment_tool() -> None:
+    commitment = Commitment(
+        user_id="42",
+        channel_id=1,
+        description="show a screenshot",
+        due_hint="soon",
+        made_at=NOW,
+    )
+
+    block = _build_commitments_block([commitment], NOW)
+
+    assert "resolve_commitment" in block
 
 
 def test_build_history_block_labels_it_as_earlier_conversation() -> None:
