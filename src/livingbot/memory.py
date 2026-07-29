@@ -69,7 +69,7 @@ class MemoryStore:
             "llm": {
                 "provider": "openai",
                 "config": {
-                    "model": "gpt-5-nano",
+                    "model": "gpt-5.4-nano",
                     "reasoning_effort": "low",
                 },
             },
