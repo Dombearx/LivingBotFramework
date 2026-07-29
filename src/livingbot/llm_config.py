@@ -6,7 +6,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
-CHAT_MODEL = "openai/gpt-5.4-mini"
+CHAT_MODEL = "openai/gpt-5.6-terra"
 WEEK_PLANNER_MODEL = "openai/gpt-5-nano"
 STORY_GENERATOR_MODEL = "openai/gpt-5-nano"
 RELATION_UPDATER_MODEL = "openai/gpt-5-nano"
