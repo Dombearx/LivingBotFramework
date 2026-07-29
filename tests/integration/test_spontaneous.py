@@ -1,21 +1,31 @@
 """
 Integration tests verifying that Mugda's unprompted messages sound natural.
 
-Uses an LLM-as-judge (gpt-5.4-mini) to evaluate the composed message against a
-rubric. Run on demand: uv run pytest tests/integration/test_spontaneous.py
+The spontaneous post is written by the main chat agent driven with
+SPONTANEOUS_TRIGGER_MESSAGE, so these exercise the same agent as the chat tests.
+Uses an LLM-as-judge to evaluate the message against a rubric. Run on demand:
+uv run pytest tests/integration/test_spontaneous.py
 Requires OPENROUTER_API_KEY in the environment.
 """
 
 import os
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from livingbot import llm_config
-from livingbot.mood import Mood, build_mood_block
-from livingbot.spontaneous import SpontaneousMessenger
+from livingbot import llm_config, prompts
+from livingbot.activity_notes import ActivityNotes
+from livingbot.calendar import Calendar, PlanEntry
+from livingbot.commitments import Commitments
+from livingbot.hobbies import Hobbies, Hobby
+from livingbot.llm import LLMClient
+from livingbot.mood import Mood
+from livingbot.preferences import Preferences
+from livingbot.relations import Relation
+from livingbot.stories import Story
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -25,6 +35,7 @@ pytestmark = pytest.mark.skipif(
 _JUDGE_MODEL = "openai/gpt-5.4-mini"
 
 _NOW = datetime(2026, 6, 24, 19, 0)
+_CHANNEL_ID = 1234
 
 
 class _Verdict(BaseModel):
@@ -46,36 +57,75 @@ async def _judge(message: str, rubric: str) -> _Verdict:
     return result.output
 
 
-def _messenger() -> SpontaneousMessenger:
-    return SpontaneousMessenger.create()
+async def _post_spontaneously(
+    calendar: Calendar,
+    mood_value: float,
+    untold: list[Story],
+    relations: list[Relation],
+) -> str:
+    channel = MagicMock()
+    channel.send = AsyncMock()
 
+    calendar_store = MagicMock()
+    calendar_store.load = MagicMock(return_value=calendar)
 
-def _context(situation: str, mood_value: float, *extra: str) -> str:
-    lines = [
-        f"Right now it is {_NOW:%A, %Y-%m-%d %H:%M}.",
-        situation,
-        "",
-        build_mood_block(Mood(value=mood_value), _NOW).rstrip(),
-        "",
-        "Your hobbies: gym.",
-        "",
-        *extra,
-    ]
-    return "\n".join(lines)
+    activity_notes_store = MagicMock()
+    activity_notes_store.load = MagicMock(return_value=ActivityNotes())
+
+    inventory_store = MagicMock()
+    inventory_store.recent = AsyncMock(return_value=[])
+    inventory_store.recently_acquired = AsyncMock(return_value=[])
+
+    spending_store = MagicMock()
+    spending_store.summary = MagicMock(return_value="Budget: 4 pts left this week.")
+
+    hobby_store = MagicMock()
+    hobby_store.load = MagicMock(return_value=Hobbies(entries=[Hobby(name="gym")]))
+
+    story_store = MagicMock()
+    story_store.untold = AsyncMock(return_value=untold)
+    story_store.search = AsyncMock(return_value=[])
+    story_store.mark_told = AsyncMock(return_value=True)
+
+    preference_store = MagicMock()
+    preference_store.load = MagicMock(return_value=Preferences())
+
+    commitment_store = MagicMock()
+    commitment_store.load = MagicMock(return_value=Commitments())
+
+    result = await LLMClient.create().complete(
+        [],
+        channel,
+        _CHANNEL_ID,
+        calendar_store,
+        activity_notes_store,
+        inventory_store,
+        spending_store,
+        hobby_store,
+        story_store,
+        preference_store,
+        commitment_store,
+        _NOW,
+        relations=relations,
+        mood=Mood(value=mood_value),
+        trigger=prompts.SPONTANEOUS_TRIGGER_MESSAGE,
+    )
+    return result.output
 
 
 async def test_spontaneous_message_sounds_like_a_natural_off_the_cuff_message() -> None:
-    context = _context(
-        "You are at home with nothing scheduled.",
-        60.0,
-        "Little episodes from your life you haven't shared yet:",
-        "  - tripped in the shop and got dusted in spilled protein powder",
+    story = Story(
+        summary="tripped in the shop and got dusted in spilled protein powder",
+        content="She knocked a tub of protein powder off the shelf and wore most of it.",
+        occurs_at=_NOW,
     )
 
-    message = await _messenger().compose(context)
+    message = await _post_spontaneously(
+        Calendar(home_location="home"), 60.0, [story], []
+    )
 
     verdict = await _judge(
-        message or "",
+        message,
         rubric=(
             "A short, casual message that reads like a real person dropping a thought "
             "into a group chat unprompted. It does NOT greet the whole group formally, "
@@ -90,16 +140,22 @@ async def test_spontaneous_message_sounds_like_a_natural_off_the_cuff_message() 
 
 
 async def test_spontaneous_message_reflects_being_at_the_gym() -> None:
-    context = _context(
-        "You are at gym, busy with gym session.",
-        70.0,
-        "Nothing new has happened that you haven't already shared.",
+    calendar = Calendar(
+        home_location="home",
+        entries=[
+            PlanEntry(
+                start=_NOW.replace(hour=18),
+                end=_NOW.replace(hour=20),
+                activity="gym session",
+                location="gym",
+            )
+        ],
     )
 
-    message = await _messenger().compose(context)
+    message = await _post_spontaneously(calendar, 70.0, [], [])
 
     verdict = await _judge(
-        message or "",
+        message,
         rubric=(
             "The message fits the fact that she is at the gym right now — it reads like "
             "something fired off mid-workout (training, a set, the gym). It does NOT "
@@ -114,20 +170,19 @@ async def test_spontaneous_message_reflects_being_at_the_gym() -> None:
 
 
 async def test_spontaneous_message_can_ask_a_user_about_their_interest() -> None:
-    context = _context(
-        "You are at home with nothing scheduled.",
-        75.0,
-        "Nothing new has happened that you haven't already shared.",
-        "",
-        "People you talk to here, in case you want to ask one of them something:",
-        "  - <@111222333> (attitude 70/100; into bouldering, horror films; "
-        "inside jokes: the cursed tram ride)",
+    relation = Relation(
+        user_id="111222333",
+        attitude=70.0,
+        topics_of_interest=["bouldering", "horror films"],
+        inside_jokes=["the cursed tram ride"],
     )
 
-    message = await _messenger().compose(context)
+    message = await _post_spontaneously(
+        Calendar(home_location="home"), 75.0, [], [relation]
+    )
 
     verdict = await _judge(
-        message or "",
+        message,
         rubric=(
             "A natural, casual message that reaches out to the listed person by pinging "
             "them with <@111222333> and asks them a genuine question tied to something "

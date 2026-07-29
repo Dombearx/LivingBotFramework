@@ -1,16 +1,7 @@
-import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Self
 
 from pydantic import BaseModel
-from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
-
-from livingbot import llm_config
-from livingbot.prompts import SPONTANEOUS_MESSAGE_SYSTEM_PROMPT
-
-logger = logging.getLogger(__name__)
 
 
 class SpontaneousState(BaseModel):
@@ -29,24 +20,3 @@ class SpontaneousStore:
 
     def save(self, state: SpontaneousState) -> None:
         self._path.write_text(state.model_dump_json(indent=2))
-
-
-class SpontaneousMessenger:
-    @classmethod
-    def create(cls) -> Self:
-        return cls(llm_config.build_chat_model(llm_config.SPONTANEOUS_MESSENGER_MODEL))
-
-    def __init__(self, model: OpenAIChatModel) -> None:
-        self._agent: Agent[None, str] = Agent(
-            model,
-            name="spontaneous_messenger",
-            instructions=SPONTANEOUS_MESSAGE_SYSTEM_PROMPT,
-        )
-
-    async def compose(self, context: str) -> str | None:
-        try:
-            result = await self._agent.run(context)
-        except Exception:
-            logger.exception("Failed to compose a spontaneous message")
-            return None
-        return result.output

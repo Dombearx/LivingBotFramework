@@ -42,7 +42,7 @@ from livingbot.relations import (
 )
 from livingbot.spending import SpendingStore
 from livingbot.image import generate_image
-from livingbot.spontaneous import SpontaneousMessenger, SpontaneousStore
+from livingbot.spontaneous import SpontaneousStore
 from livingbot.stories import Story, StoryGenerator, StoryStore
 from livingbot.timeformat import humanize_ago
 from livingbot.tools import extract_images, format_message
@@ -138,7 +138,6 @@ class LivingBot(discord.Client):
         commitment_store: CommitmentStore,
         commitment_timing_judge: CommitmentTimingJudge,
         spontaneous_store: SpontaneousStore | None = None,
-        spontaneous_messenger: SpontaneousMessenger | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -165,7 +164,6 @@ class LivingBot(discord.Client):
         self._commitment_store = commitment_store
         self._commitment_timing_judge = commitment_timing_judge
         self._spontaneous_store = spontaneous_store
-        self._spontaneous_messenger = spontaneous_messenger
 
     @property
     def memory_store(self) -> MemoryStore:
@@ -276,7 +274,7 @@ class LivingBot(discord.Client):
     async def _maybe_post_spontaneously(self) -> None:
         if config.RANDOM_POST_CHANNEL_ID is None:
             return
-        if self._spontaneous_store is None or self._spontaneous_messenger is None:
+        if self._spontaneous_store is None:
             return
         now = clock.now()
         async with self._state_lock:
@@ -296,68 +294,30 @@ class LivingBot(discord.Client):
                 config.RANDOM_POST_CHANNEL_ID,
             )
             return
-        message = await self._spontaneous_messenger.compose(
-            await self._build_spontaneous_context(now)
+        # The main chat agent writes this too, rather than a separate composer: it is
+        # the same person talking to the same people, and only it can reach for
+        # take_photo or mark a story told as it tells one.
+        result = await self._llm_client.complete(
+            [],
+            channel,
+            config.RANDOM_POST_CHANNEL_ID,
+            self._calendar_store,
+            self._activity_notes_store,
+            self._inventory_store,
+            self._spending_store,
+            self._hobby_store,
+            self._story_store,
+            self._preference_store,
+            self._commitment_store,
+            now,
+            relations=self._relation_store.all(),
+            mood=self._mood_store.load(),
+            trigger=prompts.SPONTANEOUS_TRIGGER_MESSAGE,
         )
-        if message is None:
-            return
-        await _send_chunked(channel, message)
+        if result.photo is not None:
+            self._on_photo_taken()
+        await _send_chunked(channel, result.output, photo=result.photo)
         logger.info("Posted a spontaneous message to channel %s", channel.id)
-
-    async def _build_spontaneous_context(self, now: datetime) -> str:
-        calendar = self._calendar_store.load()
-        mood = self._mood_store.load()
-        hobbies = self._hobby_store.load()
-        untold = await self._story_store.untold()
-        relations = self._relation_store.all()
-
-        lines: list[str] = [f"Right now it is {now:%A, %Y-%m-%d %H:%M}."]
-        current = calendar.current_entry(now)
-        if current is not None:
-            current_line = (
-                f"You are at {current.location}, busy with {current.activity}."
-            )
-            if current.note:
-                current_line += f" ({current.note})"
-            lines.append(current_line)
-        else:
-            lines.append(f"You are at {calendar.home_location} with nothing scheduled.")
-        lines.append("")
-        lines.append(build_mood_block(mood, now).rstrip())
-        lines.append("")
-
-        if hobbies.entries:
-            names = ", ".join(hobby.name for hobby in hobbies.entries)
-            lines.append(f"Your hobbies: {names}.")
-        for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW):
-            if (acquired_at := hobby.acquired_at) is not None:
-                lines.append(
-                    f"You took up {hobby.name} {humanize_ago(acquired_at, now)}."
-                )
-        lines.append("")
-
-        if untold:
-            lines.append("Little episodes from your life you haven't shared yet:")
-            lines.extend(f"  - {story.summary}" for story in untold)
-        else:
-            lines.append("Nothing new has happened that you haven't already shared.")
-
-        if relations:
-            lines.append("")
-            lines.append(
-                "People you talk to here, in case you want to ask one of them something:"
-            )
-            for relation in relations:
-                details = [f"attitude {round(relation.attitude)}/100"]
-                if relation.topics_of_interest:
-                    details.append("into " + ", ".join(relation.topics_of_interest))
-                if relation.inside_jokes:
-                    details.append("inside jokes: " + ", ".join(relation.inside_jokes))
-                if relation.most_important_memory:
-                    details.append(relation.most_important_memory)
-                lines.append(f"  - <@{relation.user_id}> ({'; '.join(details)})")
-
-        return "\n".join(lines)
 
     async def _maybe_follow_up_on_commitments(self) -> None:
         now = clock.now()
@@ -907,7 +867,6 @@ def build() -> LivingBot:
     commitment_store = CommitmentStore(config.COMMITMENT_DATA_PATH)
     commitment_timing_judge = CommitmentTimingJudge.create()
     spontaneous_store = SpontaneousStore(config.SPONTANEOUS_DATA_PATH)
-    spontaneous_messenger = SpontaneousMessenger.create()
     return LivingBot(
         llm_client=llm_client,
         memory_store=memory_store,
@@ -927,7 +886,6 @@ def build() -> LivingBot:
         commitment_store=commitment_store,
         commitment_timing_judge=commitment_timing_judge,
         spontaneous_store=spontaneous_store,
-        spontaneous_messenger=spontaneous_messenger,
         intents=intents,
     )
 
