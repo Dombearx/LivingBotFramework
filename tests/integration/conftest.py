@@ -17,7 +17,10 @@ from livingbot.stories import StoryStore
 
 # USD per million input/output tokens, matching the models in llm_config.
 MODEL_PRICES_PER_MILLION: dict[str, tuple[float, float]] = {
+    "openai/gpt-5.6-terra": (1.25, 7.50),
+    "openai/gpt-5.6-luna": (0.50, 3.00),
     "openai/gpt-5.4-mini": (0.75, 4.50),
+    "openai/gpt-5.4-nano": (0.20, 1.25),
     "openai/gpt-5-nano": (0.05, 0.40),
 }
 
