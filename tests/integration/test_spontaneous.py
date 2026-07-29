@@ -21,7 +21,7 @@ from livingbot.activity_notes import ActivityNotes
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.commitments import Commitments
 from livingbot.hobbies import Hobbies, Hobby
-from livingbot.llm import LLMClient
+from livingbot.llm import LLMClient, LLMResult
 from livingbot.mood import Mood
 from livingbot.preferences import Preferences
 from livingbot.relations import Relation
@@ -57,12 +57,12 @@ async def _judge(message: str, rubric: str) -> _Verdict:
     return result.output
 
 
-async def _post_spontaneously(
+async def _run_spontaneously(
     calendar: Calendar,
     mood_value: float,
     untold: list[Story],
     relations: list[Relation],
-) -> str:
+) -> tuple[LLMResult, MagicMock]:
     channel = MagicMock()
     channel.send = AsyncMock()
 
@@ -86,6 +86,11 @@ async def _post_spontaneously(
     story_store.untold = AsyncMock(return_value=untold)
     story_store.search = AsyncMock(return_value=[])
     story_store.mark_told = AsyncMock(return_value=True)
+    story_store.get = AsyncMock(
+        side_effect=lambda story_id: next(
+            (story for story in untold if story.id == story_id), None
+        )
+    )
 
     preference_store = MagicMock()
     preference_store.load = MagicMock(return_value=Preferences())
@@ -110,6 +115,16 @@ async def _post_spontaneously(
         mood=Mood(value=mood_value),
         trigger=prompts.SPONTANEOUS_TRIGGER_MESSAGE,
     )
+    return result, story_store
+
+
+async def _post_spontaneously(
+    calendar: Calendar,
+    mood_value: float,
+    untold: list[Story],
+    relations: list[Relation],
+) -> str:
+    result, _ = await _run_spontaneously(calendar, mood_value, untold, relations)
     return result.output
 
 
@@ -194,3 +209,34 @@ async def test_spontaneous_message_can_ask_a_user_about_their_interest() -> None
         f"Expected a message that asks the user about their interest but judge disagreed.\n"
         f"Message: {message!r}\nReasoning: {verdict.reasoning}"
     )
+
+
+async def test_spontaneous_story_telling_marks_the_story_told() -> None:
+    story = Story(
+        summary="tripped in the shop and got dusted in spilled protein powder",
+        content="She knocked a tub of protein powder off the shelf and wore most of it.",
+        occurs_at=_NOW,
+    )
+
+    _, story_store = await _run_spontaneously(
+        Calendar(home_location="home"), 60.0, [story], []
+    )
+
+    story_store.mark_told.assert_awaited_once_with(story.id)
+
+
+async def test_spontaneous_story_telling_attaches_the_story_photo(tmp_path) -> None:
+    image_path = tmp_path / "story.jpg"
+    image_path.write_bytes(b"fake-jpeg-bytes")
+    story = Story(
+        summary="tripped in the shop and got dusted in spilled protein powder",
+        content="She knocked a tub of protein powder off the shelf and wore most of it.",
+        occurs_at=_NOW,
+        image_path=str(image_path),
+    )
+
+    result, _ = await _run_spontaneously(
+        Calendar(home_location="home"), 60.0, [story], []
+    )
+
+    assert result.photo == b"fake-jpeg-bytes"
