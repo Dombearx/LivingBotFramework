@@ -13,6 +13,7 @@ jobs:
         uses: Alemiz112/netbird-connect@v1
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
 
       - name: Trigger Mugda update
         run: curl -fsS "${{ secrets.MUGDA_UPDATE_SERVER_URL }}/restart"
