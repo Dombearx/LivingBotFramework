@@ -49,6 +49,9 @@ STORY_AVOID_RECENT_LIMIT = 20
 # How many prior channel messages to automatically pull in as context each
 # time she responds, so replies don't come out of nowhere.
 CHANNEL_HISTORY_LIMIT = 20
+# How many messages she sends between reminders of the server's custom emoji.
+# Listing them every time would push her into using them constantly.
+SERVER_EMOJI_REMINDER_INTERVAL = 10
 # Channel she drops the occasional unprompted message into. Set this to the
 # hardcoded channel's ID; while it is None she never posts on her own.
 RANDOM_POST_CHANNEL_ID: int | None = 1184946204333850694

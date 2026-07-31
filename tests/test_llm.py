@@ -12,6 +12,7 @@ from livingbot.llm import (
     _build_inventory_block,
     _build_new_messages_block,
     _build_recent_block,
+    _build_server_emojis_block,
     _build_stories_block,
 )
 from livingbot.stories import Story
@@ -231,7 +232,26 @@ def test_build_history_block_labels_it_as_earlier_conversation() -> None:
     assert "[id:2] bob: yo" in block
 
 
+def test_build_history_block_tells_her_not_to_copy_her_own_earlier_messages() -> None:
+    block = _build_history_block(["[id:1] Mugda (you): hey 😭"])
+
+    assert "not as a style to copy" in block
+
+
 def test_build_new_messages_block_labels_messages_to_respond_to() -> None:
     block = _build_new_messages_block(["[id:3] alice: are you there?"])
 
     assert block == "New message(s) to respond to:\n[id:3] alice: are you there?"
+
+
+def test_build_server_emojis_block_lists_every_emoji_token() -> None:
+    block = _build_server_emojis_block(["<:mugda_lift:111>", "<a:kekw:222>"])
+
+    assert "<:mugda_lift:111>" in block
+    assert "<a:kekw:222>" in block
+
+
+def test_build_server_emojis_block_asks_for_the_token_written_verbatim() -> None:
+    block = _build_server_emojis_block(["<:mugda_lift:111>"])
+
+    assert "exactly as shown" in block

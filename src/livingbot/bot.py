@@ -144,6 +144,8 @@ class LivingBot(discord.Client):
         self._queue = MessageQueue()
         self._resting: bool = False
         self._next_attempt_at: datetime | None = None
+        # Starts spent so the first message she sends carries the emoji list.
+        self._messages_since_emoji_reminder = config.SERVER_EMOJI_REMINDER_INTERVAL
         self._response_lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
         self._llm_client = llm_client
@@ -313,6 +315,7 @@ class LivingBot(discord.Client):
             relations=self._relation_store.all(),
             mood=self._mood_store.load(),
             trigger=prompts.SPONTANEOUS_TRIGGER_MESSAGE,
+            server_emojis=self._server_emojis_for_message(channel),
         )
         if result.photo is not None:
             self._on_photo_taken()
@@ -362,7 +365,7 @@ class LivingBot(discord.Client):
             return False
 
         history = [
-            format_message(message)
+            format_message(message, own=message.author == self.user)
             async for message in channel.history(
                 limit=config.COMMITMENT_FOLLOWUP_HISTORY_LIMIT
             )
@@ -419,6 +422,7 @@ class LivingBot(discord.Client):
             history=history,
             commitments=[commitment],
             trigger=prompts.COMMITMENT_TRIGGER_MESSAGE,
+            server_emojis=self._server_emojis_for_message(channel),
         )
         if result.photo is not None:
             self._on_photo_taken()
@@ -627,6 +631,16 @@ class LivingBot(discord.Client):
     def _on_photo_taken(self) -> None:
         self._photo_cooldown_store.save(PhotoCooldown())
 
+    def _server_emojis_for_message(self, channel: discord.abc.Messageable) -> list[str]:
+        self._messages_since_emoji_reminder += 1
+        if self._messages_since_emoji_reminder < config.SERVER_EMOJI_REMINDER_INTERVAL:
+            return []
+        self._messages_since_emoji_reminder = 0
+        guild = getattr(channel, "guild", None)
+        if guild is None:
+            return []
+        return [str(emoji) for emoji in guild.emojis]
+
     def _onboarding_active(self) -> bool:
         join_times = [
             guild.me.joined_at
@@ -677,7 +691,7 @@ class LivingBot(discord.Client):
                 ) as span:
                     formatted = [format_message(m) for m in messages]
                     history = [
-                        format_message(m)
+                        format_message(m, own=m.author == self.user)
                         async for m in channel.history(
                             limit=config.CHANNEL_HISTORY_LIMIT,
                             before=discord.Object(id=messages[0].id),
@@ -719,6 +733,7 @@ class LivingBot(discord.Client):
                         relations,
                         mood,
                         photo_hint=self._photo_hint_for_message(),
+                        server_emojis=self._server_emojis_for_message(channel),
                         images=images,
                         waiting_since=min(
                             clock.to_local(m.created_at) for m in messages

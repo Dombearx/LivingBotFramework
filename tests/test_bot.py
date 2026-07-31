@@ -547,6 +547,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         [Relation(user_id="123"), Relation(user_id="123")],
         ANY,
         photo_hint=ANY,
+        server_emojis=ANY,
         images=[],
         waiting_since=ANY,
         history=[],
@@ -585,6 +586,33 @@ async def test_attempt_response_includes_recent_channel_history_oldest_first(
     )
     call_kwargs = llm_client.complete.call_args.kwargs
     assert call_kwargs["history"] == [format_message(older), format_message(newer)]
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_marks_her_own_history_messages_as_hers(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client)
+    channel = make_channel()
+    hers = make_message(author=user, channel=channel)
+    hers.content = "moje"
+
+    async def fake_history(limit: int, before: discord.Object):
+        yield hers
+
+    channel.history = MagicMock(side_effect=fake_history)
+    queued = make_message(author=other_user(), mentions=[user], channel=channel)
+    bot._queue.add(queued)
+
+    await bot._attempt_response()
+
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["history"] == [format_message(hers, own=True)]
 
 
 @patch("asyncio.create_task", side_effect=lambda coro: coro.close())
@@ -1012,6 +1040,70 @@ async def test_send_chunked_with_long_text_only_attaches_photo_to_last_chunk() -
         assert "file" not in call.kwargs
     # last chunk must carry the file
     assert "file" in channel.send.call_args_list[-1].kwargs
+
+
+# ---------------------------------------------------------------------------
+# custom emoji cadence: _server_emojis_for_message
+# ---------------------------------------------------------------------------
+
+
+def make_guild_channel(emojis: list[str]) -> MagicMock:
+    channel = make_channel()
+    channel.guild = MagicMock(spec=discord.Guild)
+    channel.guild.emojis = emojis
+    return channel
+
+
+def test_server_emojis_for_message_on_her_first_message_lists_the_guild_emojis() -> (
+    None
+):
+    bot = make_bot()
+    channel = make_guild_channel(["<:mugda_lift:111>"])
+
+    assert bot._server_emojis_for_message(channel) == ["<:mugda_lift:111>"]
+
+
+def test_server_emojis_for_message_within_the_interval_lists_nothing() -> None:
+    bot = make_bot()
+    channel = make_guild_channel(["<:mugda_lift:111>"])
+    bot._server_emojis_for_message(channel)
+
+    assert bot._server_emojis_for_message(channel) == []
+
+
+def test_server_emojis_for_message_lists_them_again_once_the_interval_passes() -> None:
+    bot = make_bot()
+    channel = make_guild_channel(["<:mugda_lift:111>"])
+    for _ in range(config.SERVER_EMOJI_REMINDER_INTERVAL):
+        bot._server_emojis_for_message(channel)
+
+    assert bot._server_emojis_for_message(channel) == ["<:mugda_lift:111>"]
+
+
+def test_server_emojis_for_message_outside_a_guild_lists_nothing() -> None:
+    bot = make_bot()
+    channel = MagicMock(spec=discord.abc.Messageable)
+
+    assert bot._server_emojis_for_message(channel) == []
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_passes_the_server_custom_emojis_to_the_llm(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client)
+    channel = make_guild_channel(["<:mugda_lift:111>"])
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    await bot._attempt_response()
+
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["server_emojis"] == ["<:mugda_lift:111>"]
 
 
 # ---------------------------------------------------------------------------
