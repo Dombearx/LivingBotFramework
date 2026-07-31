@@ -16,9 +16,9 @@ DEFAULT_UPDATE_SERVER_PORT = 40000
 app = FastAPI()
 
 
-@app.get("/restart", response_class=PlainTextResponse)
-def restart() -> PlainTextResponse:
-    logger.info("Received restart request")
+@app.get("/update", response_class=PlainTextResponse)
+def update() -> PlainTextResponse:
+    logger.info("Received update request")
 
     pull = subprocess.run(["git", "pull"], capture_output=True, text=True)
     if pull.returncode != 0:

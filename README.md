@@ -70,7 +70,7 @@ for `up`/`down`/`build`/`restart`/`logs` targets.
 
 `make up` also starts `livingbot-update-server` directly on the host,
 alongside the `docker compose` stack (`make down` stops both). It exposes a
-`GET /restart` endpoint, on port 40000 by default, that runs `git pull`
+`GET /update` endpoint, on port 40000 by default, that runs `git pull`
 followed by `docker compose up -d --build --force-recreate` in this
 directory, redeploying the bot with whatever is on `main`. It runs on the
 host rather than in a container so it can invoke `git` and `docker` directly

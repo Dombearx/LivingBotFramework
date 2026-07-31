@@ -16,4 +16,4 @@ jobs:
           management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
 
       - name: Trigger Mugda update
-        run: curl -fsS "${{ secrets.MUGDA_UPDATE_SERVER_URL }}/restart"
+        run: curl -fsS "${{ secrets.MUGDA_UPDATE_SERVER_URL }}"
