@@ -1,0 +1,14 @@
+[Unit]
+Description=Mugda update server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=domin
+WorkingDirectory=/home/domin/LivingBotFramework
+ExecStart=/home/domin/.local/bin/uv run update_server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
