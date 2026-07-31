@@ -1,3 +1,8 @@
+# make runs recipes through a non-interactive shell, which doesn't source
+# .bashrc/.profile, so uv's install directory has to be added explicitly here
+# even though it's already on PATH in an interactive shell.
+export PATH := $(HOME)/.local/bin:$(HOME)/.cargo/bin:$(PATH)
+
 up:
 	docker compose up -d
 	@if [ -f update-server.pid ] && kill -0 $$(cat update-server.pid) 2>/dev/null; then \
