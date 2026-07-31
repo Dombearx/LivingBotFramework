@@ -16,6 +16,11 @@ DEFAULT_UPDATE_SERVER_PORT = 40000
 app = FastAPI()
 
 
+@app.get("/health", response_class=PlainTextResponse)
+def health() -> PlainTextResponse:
+    return PlainTextResponse("ok")
+
+
 @app.get("/update", response_class=PlainTextResponse)
 def update() -> PlainTextResponse:
     logger.info("Received update request")
