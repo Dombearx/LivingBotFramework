@@ -68,19 +68,36 @@ the admin dashboard, matching `uv run livingbot-admin` above. `data/` is
 mounted as a volume so persistent state survives rebuilds. See the `Makefile`
 for `up`/`down`/`build`/`restart`/`logs` targets.
 
-`make up` also starts `update_server.py` (`uv run update_server.py`) directly
-on the host, alongside the `docker compose` stack (`make down` stops both).
-It's a standalone script with its own inline `fastapi`/`uvicorn` dependencies
-(PEP 723), kept separate from the rest of the project so starting it doesn't
-require syncing livingbot's full dependency set. It exposes a `GET /update`
-endpoint, on port 40000 by default, that runs `git pull` followed by
-`docker compose up -d --build --force-recreate` in this directory,
-redeploying the bot with whatever is on `main`. It runs on the host rather
-than in a container so it can invoke `git` and `docker` directly without
-socket or bind-mount tricks. The endpoint has no authentication of its own;
-it's meant to be reachable only over a private network (e.g. Netbird), such
-as from the `deploy.yml` GitHub Actions workflow, which calls it after every
-merge to `main`.
+### Update server
+
+`update_server.py` redeploys the bot on request. It exposes `GET /update` on
+port 40000, which runs `git pull` followed by
+`docker compose up -d --build --force-recreate` in the checkout, and
+`GET /health`, which reports that it's reachable without deploying anything.
+
+It runs directly on the host, not in Docker, so it can invoke `git` and
+`docker` without the host's socket mounted into a container. It's a
+standalone script with its own inline `fastapi`/`uvicorn` dependencies
+(PEP 723), so `uv run update_server.py` installs just those into an isolated
+environment rather than syncing livingbot's full dependency set.
+
+Install it as a systemd service so it survives reboots and crashes. Check
+`whoami`, `pwd` and `which uv` first and adjust `User`, `WorkingDirectory`
+and `ExecStart` in the unit file if they differ from the defaults:
+
+```bash
+sudo cp livingbot-update-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now livingbot-update-server
+```
+
+`systemctl status livingbot-update-server` shows whether it's running, and
+`journalctl -u livingbot-update-server -f` follows its logs. The user it runs
+as must be in the `docker` group.
+
+The endpoint has no authentication of its own; it's meant to be reachable
+only over a private network (e.g. Netbird), such as from the `deploy.yml`
+GitHub Actions workflow, which calls it after every merge to `main`.
 
 ## Development
 
