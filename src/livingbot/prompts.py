@@ -103,6 +103,25 @@ SPONTANEOUS_TRIGGER_MESSAGE = (
     "and don't explain that you're starting a conversation."
 )
 
+
+def build_scheduled_post_trigger(topic: str, mention_user_id: str | None = None) -> str:
+    trigger = (
+        "Nobody has just messaged you here — you decided on your own that it's time to "
+        f"post about something: {topic}. Write a single short, casual message about it, "
+        "the way you'd drop it into the group chat out of the blue. Stay true to where "
+        "you are and what you're doing right now, but let it come through naturally "
+        "rather than as an announcement."
+    )
+    if mention_user_id is not None:
+        trigger += (
+            f" Direct the message at <@{mention_user_id}> — write <@{mention_user_id}> "
+            "using that id somewhere in your message so they get pinged, the way you "
+            "would when you're specifically calling someone out or asking them "
+            "something."
+        )
+    return trigger
+
+
 PHOTO_HINT = (
     "[You may use take_photo to attach a photo to your reply if it feels natural "
     "for this moment — for example a selfie at the gym or a picture of something "

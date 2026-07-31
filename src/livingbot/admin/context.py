@@ -10,6 +10,7 @@ from livingbot.memory import MemoryStore
 from livingbot.mood import MoodStore
 from livingbot.preferences import PreferenceStore
 from livingbot.relations import RelationStore
+from livingbot.scheduled_posts import ScheduledPostStore
 from livingbot.spending import SpendingStore
 from livingbot.spontaneous import SpontaneousStore
 from livingbot.stories import StoryStore
@@ -66,3 +67,7 @@ class AdminContext:
     @property
     def commitment_store(self) -> CommitmentStore:
         return self.bot.commitment_store
+
+    @property
+    def scheduled_post_store(self) -> ScheduledPostStore | None:
+        return self.bot.scheduled_post_store

@@ -42,6 +42,7 @@ from livingbot.relations import (
 )
 from livingbot.spending import SpendingStore
 from livingbot.image import generate_image
+from livingbot.scheduled_posts import ScheduledPostStore
 from livingbot.spontaneous import SpontaneousStore
 from livingbot.stories import Story, StoryGenerator, StoryStore
 from livingbot.timeformat import humanize_ago
@@ -138,6 +139,7 @@ class LivingBot(discord.Client):
         commitment_store: CommitmentStore,
         commitment_timing_judge: CommitmentTimingJudge,
         spontaneous_store: SpontaneousStore | None = None,
+        scheduled_post_store: ScheduledPostStore | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -166,6 +168,7 @@ class LivingBot(discord.Client):
         self._commitment_store = commitment_store
         self._commitment_timing_judge = commitment_timing_judge
         self._spontaneous_store = spontaneous_store
+        self._scheduled_post_store = scheduled_post_store
 
     @property
     def memory_store(self) -> MemoryStore:
@@ -216,6 +219,10 @@ class LivingBot(discord.Client):
         return self._spontaneous_store
 
     @property
+    def scheduled_post_store(self) -> ScheduledPostStore | None:
+        return self._scheduled_post_store
+
+    @property
     def fatigue(self) -> float:
         return self._mood_store.load().fatigue
 
@@ -250,6 +257,7 @@ class LivingBot(discord.Client):
                     await self._ensure_morning_mood_refresh()
                     await self._story_store.prune_stale(clock.now())
                     await self._maybe_post_spontaneously()
+                    await self._maybe_post_scheduled()
                     await self._maybe_follow_up_on_commitments()
             except Exception:
                 logger.exception("Life loop iteration failed")
@@ -321,6 +329,57 @@ class LivingBot(discord.Client):
             self._on_photo_taken()
         await _send_chunked(channel, result.output, photo=result.photo)
         logger.info("Posted a spontaneous message to channel %s", channel.id)
+
+    async def _maybe_post_scheduled(self) -> None:
+        if config.RANDOM_POST_CHANNEL_ID is None:
+            return
+        if self._scheduled_post_store is None:
+            return
+        now = clock.now()
+        async with self._state_lock:
+            posts = self._scheduled_post_store.load()
+            due = posts.due(now)
+            if not due:
+                return
+            post = due[0]
+            post.status = "posted"
+            post.posted_at = now
+            self._scheduled_post_store.save(posts)
+        channel = self.get_channel(config.RANDOM_POST_CHANNEL_ID)
+        if not isinstance(channel, discord.abc.Messageable):
+            logger.warning(
+                "Scheduled post channel %s not available",
+                config.RANDOM_POST_CHANNEL_ID,
+            )
+            return
+        # Same reasoning as the spontaneous post above: the main chat agent writes
+        # it, since it's the same person talking to the same people.
+        result = await self._llm_client.complete(
+            [],
+            channel,
+            config.RANDOM_POST_CHANNEL_ID,
+            self._calendar_store,
+            self._activity_notes_store,
+            self._inventory_store,
+            self._spending_store,
+            self._hobby_store,
+            self._story_store,
+            self._preference_store,
+            self._commitment_store,
+            now,
+            relations=self._relation_store.all(),
+            mood=self._mood_store.load(),
+            trigger=prompts.build_scheduled_post_trigger(
+                post.topic, post.mention_user_id
+            ),
+            server_emojis=self._server_emojis_for_message(channel),
+        )
+        if result.photo is not None:
+            self._on_photo_taken()
+        await _send_chunked(channel, result.output, photo=result.photo)
+        logger.info(
+            "Posted scheduled message about '%s' to channel %s", post.topic, channel.id
+        )
 
     async def _maybe_follow_up_on_commitments(self) -> None:
         now = clock.now()
@@ -882,6 +941,7 @@ def build() -> LivingBot:
     commitment_store = CommitmentStore(config.COMMITMENT_DATA_PATH)
     commitment_timing_judge = CommitmentTimingJudge.create()
     spontaneous_store = SpontaneousStore(config.SPONTANEOUS_DATA_PATH)
+    scheduled_post_store = ScheduledPostStore(config.SCHEDULED_POST_DATA_PATH)
     return LivingBot(
         llm_client=llm_client,
         memory_store=memory_store,
@@ -901,6 +961,7 @@ def build() -> LivingBot:
         commitment_store=commitment_store,
         commitment_timing_judge=commitment_timing_judge,
         spontaneous_store=spontaneous_store,
+        scheduled_post_store=scheduled_post_store,
         intents=intents,
     )
 

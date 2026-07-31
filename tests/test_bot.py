@@ -22,6 +22,7 @@ from livingbot.mood import Mood
 from livingbot.photo import PhotoCooldown
 from livingbot.preferences import Preferences
 from livingbot.relations import Relation, RelationUpdate, apply_update
+from livingbot.scheduled_posts import ScheduledPost, ScheduledPosts
 from livingbot.stories import Story
 
 # A fixed afternoon moment: outside the sleep window and with no elapsed time
@@ -162,6 +163,13 @@ def make_commitment_timing_judge() -> MagicMock:
     return judge
 
 
+def make_scheduled_post_store(posts: ScheduledPosts | None = None) -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(return_value=posts or ScheduledPosts())
+    store.save = MagicMock()
+    return store
+
+
 def make_bot(
     llm_client: MagicMock | None = None,
     memory_store: MagicMock | None = None,
@@ -180,6 +188,7 @@ def make_bot(
     photo_cooldown_store: MagicMock | None = None,
     commitment_store: MagicMock | None = None,
     commitment_timing_judge: MagicMock | None = None,
+    scheduled_post_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
@@ -202,6 +211,7 @@ def make_bot(
         commitment_store=commitment_store or make_commitment_store(),
         commitment_timing_judge=commitment_timing_judge
         or make_commitment_timing_judge(),
+        scheduled_post_store=scheduled_post_store,
         intents=intents,
     )
 
@@ -1792,6 +1802,212 @@ async def test_retire_stale_commitments_keeps_a_recent_promise(
     await bot._retire_stale_commitments(AWAKE_NOW)
 
     store.save.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# admin-scheduled topic posts: _maybe_post_scheduled
+# ---------------------------------------------------------------------------
+
+
+def make_scheduled_post(
+    topic: str = "her new gym shoes",
+    run_at: datetime = AWAKE_NOW,
+    mention_user_id: str | None = None,
+) -> ScheduledPost:
+    return ScheduledPost(topic=topic, run_at=run_at, mention_user_id=mention_user_id)
+
+
+@patch.object(LivingBot, "get_channel")
+async def test_maybe_post_scheduled_when_store_is_none_does_not_look_up_a_channel(
+    mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    bot = make_bot()  # scheduled_post_store defaults to None
+
+    await bot._maybe_post_scheduled()
+
+    mock_get_channel.assert_not_called()
+
+
+@patch.object(LivingBot, "get_channel")
+async def test_maybe_post_scheduled_when_channel_not_configured_does_not_look_up_a_channel(
+    mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", None)
+    store = make_scheduled_post_store(
+        ScheduledPosts(entries=[make_scheduled_post(run_at=AWAKE_NOW)])
+    )
+    bot = make_bot(scheduled_post_store=store)
+
+    await bot._maybe_post_scheduled()
+
+    mock_get_channel.assert_not_called()
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_post_scheduled_when_none_due_does_not_send(
+    mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    mock_clock.now.return_value = AWAKE_NOW
+    channel = make_messageable_channel()
+    mock_get_channel.return_value = channel
+    store = make_scheduled_post_store(
+        ScheduledPosts(
+            entries=[make_scheduled_post(run_at=AWAKE_NOW + timedelta(hours=1))]
+        )
+    )
+    bot = make_bot(scheduled_post_store=store)
+
+    await bot._maybe_post_scheduled()
+
+    channel.send.assert_not_called()
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_post_scheduled_when_due_sends_the_llm_response_to_the_channel(
+    mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    mock_clock.now.return_value = AWAKE_NOW
+    channel = make_messageable_channel()
+    mock_get_channel.return_value = channel
+    llm_client = make_llm_client("o kurczę, dzisiaj było na siłce niesamowicie")
+    store = make_scheduled_post_store(
+        ScheduledPosts(
+            entries=[make_scheduled_post(run_at=AWAKE_NOW - timedelta(minutes=1))]
+        )
+    )
+    bot = make_bot(scheduled_post_store=store, llm_client=llm_client)
+
+    await bot._maybe_post_scheduled()
+
+    channel.send.assert_called_once_with("o kurczę, dzisiaj było na siłce niesamowicie")
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_post_scheduled_marks_the_due_post_as_posted(
+    mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    mock_clock.now.return_value = AWAKE_NOW
+    mock_get_channel.return_value = make_messageable_channel()
+    store = make_scheduled_post_store(
+        ScheduledPosts(
+            entries=[make_scheduled_post(run_at=AWAKE_NOW - timedelta(minutes=1))]
+        )
+    )
+    bot = make_bot(scheduled_post_store=store)
+
+    await bot._maybe_post_scheduled()
+
+    saved = store.save.call_args.args[0]
+    assert saved.entries[0].status == "posted"
+    assert saved.entries[0].posted_at == AWAKE_NOW
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_post_scheduled_passes_a_trigger_built_from_the_topic(
+    mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    mock_clock.now.return_value = AWAKE_NOW
+    mock_get_channel.return_value = make_messageable_channel()
+    llm_client = make_llm_client()
+    store = make_scheduled_post_store(
+        ScheduledPosts(
+            entries=[
+                make_scheduled_post(
+                    topic="jej nowe buty na siłkę",
+                    run_at=AWAKE_NOW - timedelta(minutes=1),
+                )
+            ]
+        )
+    )
+    bot = make_bot(scheduled_post_store=store, llm_client=llm_client)
+
+    await bot._maybe_post_scheduled()
+
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["trigger"] == prompts.build_scheduled_post_trigger(
+        "jej nowe buty na siłkę"
+    )
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_post_scheduled_passes_the_mention_user_id_into_the_trigger(
+    mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    mock_clock.now.return_value = AWAKE_NOW
+    mock_get_channel.return_value = make_messageable_channel()
+    llm_client = make_llm_client()
+    store = make_scheduled_post_store(
+        ScheduledPosts(
+            entries=[
+                make_scheduled_post(
+                    run_at=AWAKE_NOW - timedelta(minutes=1), mention_user_id="42"
+                ),
+            ]
+        )
+    )
+    bot = make_bot(scheduled_post_store=store, llm_client=llm_client)
+
+    await bot._maybe_post_scheduled()
+
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["trigger"] == prompts.build_scheduled_post_trigger(
+        "her new gym shoes", "42"
+    )
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_post_scheduled_posts_at_most_one_message_per_check(
+    mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    mock_clock.now.return_value = AWAKE_NOW
+    channel = make_messageable_channel()
+    mock_get_channel.return_value = channel
+    store = make_scheduled_post_store(
+        ScheduledPosts(
+            entries=[
+                make_scheduled_post(run_at=AWAKE_NOW - timedelta(hours=2)),
+                make_scheduled_post(run_at=AWAKE_NOW - timedelta(hours=1)),
+            ]
+        )
+    )
+    bot = make_bot(scheduled_post_store=store)
+
+    await bot._maybe_post_scheduled()
+
+    channel.send.assert_called_once()
+
+
+@patch.object(LivingBot, "get_channel", return_value=None)
+@patch("livingbot.bot.clock")
+async def test_maybe_post_scheduled_when_channel_unavailable_does_not_call_the_llm(
+    mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    mock_clock.now.return_value = AWAKE_NOW
+    llm_client = make_llm_client()
+    store = make_scheduled_post_store(
+        ScheduledPosts(
+            entries=[make_scheduled_post(run_at=AWAKE_NOW - timedelta(minutes=1))]
+        )
+    )
+    bot = make_bot(scheduled_post_store=store, llm_client=llm_client)
+
+    await bot._maybe_post_scheduled()
+
+    llm_client.complete.assert_not_called()
 
 
 @patch.object(LivingBot, "get_channel")
