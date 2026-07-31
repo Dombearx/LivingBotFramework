@@ -12,24 +12,5 @@ services:
       - ./data:/app/data
       - chroma_cache:/root/.cache/chroma
 
-  # Pulls the latest code and redeploys via the host's docker daemon when asked
-  # to on its /restart endpoint. REPO_PATH must be this repository's absolute
-  # path on the host: the checkout is bind-mounted at the same path inside the
-  # container so `docker compose`, run from in here against the host's socket,
-  # resolves the other services' relative volume paths the same way the host
-  # would.
-  update-server:
-    build:
-      context: ./
-      dockerfile: ./Dockerfile
-    command: livingbot-update-server
-    restart: unless-stopped
-    ports:
-      - "40000:40000"
-    working_dir: ${REPO_PATH:?set REPO_PATH to this repo's absolute path on the host}
-    volumes:
-      - ${REPO_PATH}:${REPO_PATH}
-      - /var/run/docker.sock:/var/run/docker.sock
-
 volumes:
   chroma_cache:
