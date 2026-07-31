@@ -17,4 +17,15 @@ jobs:
           management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
 
       - name: Trigger Mugda update
-        run: curl -fsS "${{ secrets.MUGDA_UPDATE_SERVER_URL }}"
+        run: |
+          echo "::group::Netbird detailed status"
+          sudo netbird status --detail
+          echo "::endgroup::"
+
+          echo "::group::DNS resolver state"
+          resolvectl status
+          echo "::endgroup::"
+
+          echo "::group::Update request"
+          curl -v -fsS "${{ secrets.MUGDA_UPDATE_SERVER_URL }}"
+          echo "::endgroup::"
