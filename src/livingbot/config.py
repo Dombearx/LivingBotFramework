@@ -23,6 +23,7 @@ MUGDA_REFERENCE_IMAGE_PATHS = [
     Path("images/reference/mugda_kwiaty.jpeg"),
 ]
 SPONTANEOUS_DATA_PATH = Path("data/spontaneous")
+SCHEDULED_POST_DATA_PATH = Path("data/scheduled_posts")
 COMMITMENT_DATA_PATH = Path("data/commitments")
 # How long an unkept promise stays worth chasing. Past this she quietly lets it
 # go, the way people do, instead of carrying it around forever.
