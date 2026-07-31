@@ -58,6 +58,32 @@ without anything being broken.
   move on; do not re-run it hoping for green, and do not "fix" the assertion.
 - Re-running a group you did change is fine when you are verifying a fix.
 
+#### Running them via GitHub Actions
+
+`OPENROUTER_API_KEY` is usually absent from the dev environment, in which case every
+integration test skips itself and `uv run pytest tests/integration/` is a no-op. The
+key does exist as a repository secret, so the way to actually run them is the
+**Integration Tests** workflow (`.github/workflows/integration-tests.yml`).
+
+- It is `workflow_dispatch` only — trigger it manually, against the branch you want
+  tested. The workflow file must exist on that branch.
+- Pass the `test_group` input to pick what runs; it defaults to `all`, which is the one
+  value covered by the "ask first" rule above. The group names and the files each maps
+  to are listed in the workflow itself — read them there rather than guessing.
+- Watch the run and read its logs to get the result.
+
+Reading the results — the two outputs are not equivalent:
+
+- **Job logs** carry the console summary: pass/fail, duration, token counts and
+  estimated cost per test. The model's actual replies appear only for tests that
+  failed, inside the assertion message.
+- **The run's Step Summary** carries the full detail — every agent call with its model,
+  tools called and the text the model produced, passing or not. It is written to
+  `GITHUB_STEP_SUMMARY` and is visible in the GitHub UI, but is not retrievable through
+  the API, so an agent reading logs alone cannot see what the bot said on a passing
+  test. When the point of the run is to inspect her voice rather than check assertions,
+  say so instead of assuming a green run proves anything about tone.
+
 ## Python Conventions
 
 - Python 3.14

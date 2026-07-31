@@ -824,6 +824,22 @@ def make_link_message(
     return msg
 
 
+def test_format_message_when_own_marks_the_author_as_her() -> None:
+    msg = make_link_message([], content="siema")
+
+    result = format_message(msg, own=True)
+
+    assert "Ola (you): siema" in result
+
+
+def test_format_message_when_not_own_leaves_the_author_unmarked() -> None:
+    msg = make_link_message([], content="siema")
+
+    result = format_message(msg)
+
+    assert "Ola: siema" in result
+
+
 def test_format_message_includes_link_preview_for_rich_embed() -> None:
     embed = make_embed(title="Deadlift", description="A compound lift.")
     msg = make_link_message([embed])

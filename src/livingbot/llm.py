@@ -111,6 +111,7 @@ class LLMClient:
         history: list[str] | None = None,
         commitments: list[Commitment] | None = None,
         trigger: str | None = None,
+        server_emojis: list[str] | None = None,
     ) -> LLMResult:
         deps = BotDeps(
             channel=channel,
@@ -153,6 +154,8 @@ class LLMClient:
         if memories:
             memory_block = "\n".join(f"- {m}" for m in memories)
             parts.append(f"What I remember:\n{memory_block}\n\n")
+        if server_emojis:
+            parts.append(_build_server_emojis_block(server_emojis))
         if history:
             parts.append(_build_history_block(history))
         parts.append(
@@ -420,7 +423,24 @@ def _build_commitments_block(commitments: list[Commitment], now: datetime) -> st
 
 def _build_history_block(history: list[str]) -> str:
     history_text = "\n".join(history)
-    return f"Earlier in the conversation:\n{history_text}\n\n"
+    return (
+        f"Earlier in the conversation:\n{history_text}\n"
+        "The lines marked (you) are your own earlier messages. They are here so you stay "
+        "coherent with what you already said — not as a style to copy. Don't recycle the "
+        "wording, the emoji or the shape of your last message just because it is in "
+        "front of you.\n\n"
+    )
+
+
+def _build_server_emojis_block(emojis: list[str]) -> str:
+    lines = ["Custom emoji that exist on this Discord server:"]
+    lines.extend(f"  {emoji}" for emoji in emojis)
+    lines.append(
+        "Write one exactly as shown, angle brackets and all, or it won't render. These "
+        "are yours to use like any other emoji — once in a while, when one genuinely "
+        "fits, not in every message."
+    )
+    return "\n".join(lines) + "\n\n"
 
 
 def _build_new_messages_block(user_messages: list[str]) -> str:

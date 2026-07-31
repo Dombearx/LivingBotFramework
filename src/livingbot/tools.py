@@ -48,12 +48,12 @@ class BotDeps:
     photo_result: bytes | None = None
 
 
-def format_message(message: discord.Message) -> str:
+def format_message(message: discord.Message, own: bool = False) -> str:
     timestamp = clock.to_local(message.created_at).strftime("%Y-%m-%d %H:%M:%S")
-    line = (
-        f"[id:{message.id}] [{timestamp}] "
-        f"{message.author.display_name}: {message.content}"
-    )
+    author = message.author.display_name
+    if own:
+        author += " (you)"
+    line = f"[id:{message.id}] [{timestamp}] {author}: {message.content}"
     previews = _format_link_previews(message)
     if previews:
         line += f"\n{previews}"
