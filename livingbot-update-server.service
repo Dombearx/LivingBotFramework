@@ -6,7 +6,10 @@ Wants=network-online.target
 [Service]
 User=domin
 WorkingDirectory=/home/domin/LivingBotFramework
-ExecStart=/home/domin/.local/bin/uv run update_server.py
+# Login shell so uv is picked up from the profile wherever its installer put
+# it, rather than hardcoding a path here. exec replaces the shell, so systemd
+# supervises uv itself instead of a wrapper.
+ExecStart=/bin/bash -lc 'exec uv run update_server.py'
 Restart=always
 RestartSec=5
 

@@ -81,9 +81,9 @@ standalone script with its own inline `fastapi`/`uvicorn` dependencies
 (PEP 723), so `uv run update_server.py` installs just those into an isolated
 environment rather than syncing livingbot's full dependency set.
 
-Install it as a systemd service so it survives reboots and crashes. Check
-`whoami`, `pwd` and `which uv` first and adjust `User`, `WorkingDirectory`
-and `ExecStart` in the unit file if they differ from the defaults:
+Install it as a systemd service so it survives reboots and crashes. The unit
+finds `uv` via the login profile, so only `User` and `WorkingDirectory` need
+adjusting if the checkout doesn't live at `/home/domin/LivingBotFramework`:
 
 ```bash
 sudo cp livingbot-update-server.service /etc/systemd/system/
