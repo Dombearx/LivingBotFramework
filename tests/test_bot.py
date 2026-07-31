@@ -1812,8 +1812,9 @@ async def test_retire_stale_commitments_keeps_a_recent_promise(
 def make_scheduled_post(
     topic: str = "her new gym shoes",
     run_at: datetime = AWAKE_NOW,
+    mention_user_id: str | None = None,
 ) -> ScheduledPost:
-    return ScheduledPost(topic=topic, run_at=run_at)
+    return ScheduledPost(topic=topic, run_at=run_at, mention_user_id=mention_user_id)
 
 
 @patch.object(LivingBot, "get_channel")
@@ -1934,6 +1935,34 @@ async def test_maybe_post_scheduled_passes_a_trigger_built_from_the_topic(
     call_kwargs = llm_client.complete.call_args.kwargs
     assert call_kwargs["trigger"] == prompts.build_scheduled_post_trigger(
         "jej nowe buty na siłkę"
+    )
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_post_scheduled_passes_the_mention_user_id_into_the_trigger(
+    mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
+    mock_clock.now.return_value = AWAKE_NOW
+    mock_get_channel.return_value = make_messageable_channel()
+    llm_client = make_llm_client()
+    store = make_scheduled_post_store(
+        ScheduledPosts(
+            entries=[
+                make_scheduled_post(
+                    run_at=AWAKE_NOW - timedelta(minutes=1), mention_user_id="42"
+                ),
+            ]
+        )
+    )
+    bot = make_bot(scheduled_post_store=store, llm_client=llm_client)
+
+    await bot._maybe_post_scheduled()
+
+    call_kwargs = llm_client.complete.call_args.kwargs
+    assert call_kwargs["trigger"] == prompts.build_scheduled_post_trigger(
+        "her new gym shoes", "42"
     )
 
 

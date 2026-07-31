@@ -12,6 +12,7 @@ class ScheduledPost(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     topic: str
     run_at: datetime
+    mention_user_id: str | None = None
     status: ScheduledPostStatus = "pending"
     posted_at: datetime | None = None
 

@@ -63,6 +63,12 @@ def test_scheduled_post_id_defaults_to_a_generated_value() -> None:
     assert first.id != second.id
 
 
+def test_scheduled_post_mention_user_id_defaults_to_none() -> None:
+    post = _post()
+
+    assert post.mention_user_id is None
+
+
 def test_store_save_then_load_round_trips_scheduled_posts(tmp_path: Path) -> None:
     store = ScheduledPostStore(tmp_path)
     posts = ScheduledPosts(entries=[_post()])
@@ -72,6 +78,18 @@ def test_store_save_then_load_round_trips_scheduled_posts(tmp_path: Path) -> Non
 
     assert loaded.entries[0].topic == "her new gym shoes"
     assert loaded.entries[0].run_at == NOW
+
+
+def test_store_save_then_load_round_trips_the_mention_user_id(tmp_path: Path) -> None:
+    store = ScheduledPostStore(tmp_path)
+    post = _post()
+    post.mention_user_id = "42"
+    posts = ScheduledPosts(entries=[post])
+
+    store.save(posts)
+    loaded = store.load()
+
+    assert loaded.entries[0].mention_user_id == "42"
 
 
 def test_store_load_when_file_absent_returns_empty_scheduled_posts(

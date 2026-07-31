@@ -5,6 +5,7 @@ from nicegui import ui
 
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
+from livingbot.bot import LivingBot
 from livingbot.scheduled_posts import ScheduledPost, ScheduledPostStatus
 
 STATUS_COLOR: dict[ScheduledPostStatus, str] = {
@@ -15,6 +16,7 @@ STATUS_COLOR: dict[ScheduledPostStatus, str] = {
 
 STATUS_OPTIONS: list[str] = list(get_args(ScheduledPostStatus))
 _DT_FORMAT = "%Y-%m-%d %H:%M"
+_NO_MENTION = ""
 
 
 def register(context: AdminContext) -> None:
@@ -25,6 +27,7 @@ def register(context: AdminContext) -> None:
             if store is None:
                 ui.label("Scheduled posts are not available.")
                 return
+            _user_options = _server_users(context.bot)
 
             ui.label(
                 "Have Mugda post about a topic in her allowed channel at a given "
@@ -51,6 +54,10 @@ def register(context: AdminContext) -> None:
                             ui.label(f"Run at {post.run_at:%Y-%m-%d %H:%M}").classes(
                                 "text-sm text-gray-500"
                             )
+                            if post.mention_user_id is not None:
+                                ui.label(
+                                    f"Mentions {_user_options.get(post.mention_user_id, post.mention_user_id)}"
+                                ).classes("text-xs text-gray-400")
                             if post.posted_at is not None:
                                 ui.label(
                                     f"Posted at {post.posted_at:%Y-%m-%d %H:%M}"
@@ -85,6 +92,19 @@ def register(context: AdminContext) -> None:
                         f"Run at ({_DT_FORMAT})",
                         value=post.run_at.strftime(_DT_FORMAT) if post else "",
                     ).classes("w-full")
+                    mention_options = {_NO_MENTION: "No mention", **_user_options}
+                    initial_mention = (
+                        post.mention_user_id
+                        if post and post.mention_user_id
+                        else _NO_MENTION
+                    )
+                    mention_user = ui.select(
+                        mention_options,
+                        value=initial_mention
+                        if initial_mention in mention_options
+                        else _NO_MENTION,
+                        label="Mention user (optional)",
+                    ).classes("w-full")
                     status = ui.select(
                         STATUS_OPTIONS,
                         value=post.status if post else "pending",
@@ -104,12 +124,14 @@ def register(context: AdminContext) -> None:
                                 f"Run at must match {_DT_FORMAT}", color="negative"
                             )
                             return
+                        mention_user_id = mention_user.value or None
                         posts = store.load()
                         if post is None:
                             posts.entries.append(
                                 ScheduledPost(
                                     topic=topic.value.strip(),
                                     run_at=run_at_value,
+                                    mention_user_id=mention_user_id,
                                     status=status.value,
                                 )
                             )
@@ -118,6 +140,7 @@ def register(context: AdminContext) -> None:
                                 if entry.id == post.id:
                                     entry.topic = topic.value.strip()
                                     entry.run_at = run_at_value
+                                    entry.mention_user_id = mention_user_id
                                     entry.status = status.value
                                     break
                         store.save(posts)
@@ -131,3 +154,13 @@ def register(context: AdminContext) -> None:
                 dialog.open()
 
             post_list()
+
+
+def _server_users(bot: LivingBot) -> dict[str, str]:
+    if not bot.is_ready():
+        return {}
+    return {
+        str(member.id): f"{guild.name} · {member.display_name}"
+        for guild in bot.guilds
+        for member in guild.members
+    }

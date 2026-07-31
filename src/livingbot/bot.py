@@ -369,7 +369,9 @@ class LivingBot(discord.Client):
             now,
             relations=self._relation_store.all(),
             mood=self._mood_store.load(),
-            trigger=prompts.build_scheduled_post_trigger(post.topic),
+            trigger=prompts.build_scheduled_post_trigger(
+                post.topic, post.mention_user_id
+            ),
             server_emojis=self._server_emojis_for_message(channel),
         )
         if result.photo is not None:
