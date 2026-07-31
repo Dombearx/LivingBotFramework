@@ -1,0 +1,18 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connect to Netbird
+        uses: Alemiz112/netbird-connect@v1
+        with:
+          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+
+      - name: Trigger Mugda update
+        run: curl -fsS "${{ secrets.MUGDA_UPDATE_SERVER_URL }}/restart"

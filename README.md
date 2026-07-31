@@ -68,6 +68,17 @@ the admin dashboard, matching `uv run livingbot-admin` above. `data/` is
 mounted as a volume so persistent state survives rebuilds. See the `Makefile`
 for `up`/`down`/`build`/`restart`/`logs` targets.
 
+`docker compose up -d` also starts an `update-server` container alongside the
+bot. It exposes a `GET /restart` endpoint that runs `git pull` followed by
+`docker compose up -d --build --force-recreate` against the host's docker
+daemon, redeploying the bot with whatever is on `main`. Set `REPO_PATH` in
+`.env` to this repository's absolute path on the host before starting it — the
+checkout is bind-mounted at that same path inside the container so the
+commands it runs resolve paths the way the host would. The endpoint has no
+authentication of its own; it's meant to be reachable only over a private
+network (e.g. Netbird), such as from the `deploy.yml` GitHub Actions workflow,
+which calls it after every merge to `main`.
+
 ## Development
 
 After any change, run, in order:
