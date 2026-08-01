@@ -10,8 +10,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Connect to Netbird
-        uses: Alemiz112/netbird-connect@v1
+        uses: ./.github/actions/netbird-connect
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
           management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}

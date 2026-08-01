@@ -1,0 +1,71 @@
+name: 'Netbird connect'
+description: 'Connect your workflow to your Netbird network'
+inputs:
+  setup-key:
+    description: 'Setup key obtained from the Management Service Dashboard (used to register peer)'
+    required: true
+  hostname:
+    description: 'Sets a custom hostname that is visible from Netbird Dashboard'
+    required: false
+    default: ''
+  management-url:
+    description: 'Management Service URL [http|https]://[host]:[port] (default "https://api.netbird.io:443")'
+    required: false
+    default: 'https://api.netbird.io:443'
+  args:
+    description: 'Optional additional arguments to `netbird up`'
+    required: false
+    default: ''
+branding:
+  icon: 'bar-chart'
+  color: 'orange'
+runs:
+  using: 'composite'
+  steps:
+    - name: Check Runner OS
+      if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        echo "::error title=error hint::Support Linux Only"
+        exit 1
+    - name: Cache Netbird Installer
+      id: cache-netbird-installer
+      uses: actions/cache@v5
+      with:
+        path: netbird-installer
+        key: netbird-installer
+    - name: Download Netbird
+      shell: bash
+      env:
+        USE_BIN_INSTALL: true
+      run: >
+        mkdir -p netbird-installer
+
+        curl --fail --no-progress-meter --location
+        --etag-save netbird-installer/etag.txt --etag-compare netbird-installer/etag.txt
+        --write-out "HTTP Code from fetching installer : %{http_code}\n"
+        --output netbird-installer/install.sh
+        https://pkgs.netbird.io/install.sh
+
+        chmod 755 netbird-installer/install.sh
+
+        netbird-installer/install.sh
+    - name: Connect to Netbird
+      shell: bash
+      env:
+        SETUP_KEY: ${{ inputs.setup-key }}
+        ADDITIONAL_ARGS: ${{ inputs.args }}
+        HOSTNAME: ${{ inputs.hostname }}
+        MANAGEMENT_URL: ${{ inputs.management-url }}
+      run: |
+        if [ -z "${HOSTNAME}" ]; then
+          HOSTNAME="github-$(cat /etc/hostname)"
+        fi
+        sudo netbird up --setup-key=${SETUP_KEY} --hostname=${HOSTNAME} --management-url=${MANAGEMENT_URL} ${ADDITIONAL_ARGS}
+    - name: Wait for Netbird to connect
+      shell: bash
+      run: |
+          while [ -z "$(sudo netbird status | grep 'Management: Connected')" ]; do
+          echo "Waiting for Netbird to connect..."
+          sleep 5
+          done
