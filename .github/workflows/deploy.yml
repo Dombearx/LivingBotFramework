@@ -14,7 +14,7 @@ jobs:
         uses: hackiron/public-actions/netbird-connect@main
         with:
           setup-key: ${{ secrets.NETBIRD_SETUP_KEY }}
-          hostname: ${{ secrets.NETBIRD_HOSTNAME }}
+          hostname: github-actions-deploy
           management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
 
       - name: Trigger Mugda update
