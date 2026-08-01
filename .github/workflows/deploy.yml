@@ -10,10 +10,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Connect to Netbird
-        uses: Alemiz112/netbird-connect@v1
+      - name: Join Netbird network
+        uses: hackiron/public-actions/netbird-connect@main
         with:
-          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          setup-key: ${{ secrets.NETBIRD_SETUP_KEY }}
+          hostname: github-actions-deploy
           management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
 
       - name: Trigger Mugda update
