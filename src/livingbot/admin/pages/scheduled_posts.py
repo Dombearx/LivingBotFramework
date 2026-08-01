@@ -81,17 +81,30 @@ def register(context: AdminContext) -> None:
                 post_list.refresh()
 
             def _open_editor(post: ScheduledPost | None) -> None:
-                with ui.dialog() as dialog, ui.card().classes("w-96"):
+                with ui.dialog() as dialog, ui.card().classes("w-[28rem]"):
                     ui.label("Edit post" if post else "Schedule post").classes(
                         "text-lg font-semibold"
                     )
                     topic = ui.input("Topic", value=post.topic if post else "").classes(
                         "w-full"
                     )
-                    run_at = ui.input(
-                        f"Run at ({_DT_FORMAT})",
-                        value=post.run_at.strftime(_DT_FORMAT) if post else "",
-                    ).classes("w-full")
+                    with ui.row().classes("w-full gap-4"):
+                        run_date = (
+                            ui.input(
+                                "Run date",
+                                value=post.run_at.date().isoformat() if post else "",
+                            )
+                            .props("type=date")
+                            .classes("grow")
+                        )
+                        run_time = (
+                            ui.input(
+                                "Run time",
+                                value=post.run_at.strftime("%H:%M") if post else "",
+                            )
+                            .props("type=time")
+                            .classes("grow")
+                        )
                     mention_options = {_NO_MENTION: "No mention", **_user_options}
                     initial_mention = (
                         post.mention_user_id
@@ -115,14 +128,17 @@ def register(context: AdminContext) -> None:
                         if not topic.value.strip():
                             ui.notify("Topic is required", color="negative")
                             return
+                        if not run_date.value or not run_time.value:
+                            ui.notify(
+                                "Run date and time are required", color="negative"
+                            )
+                            return
                         try:
                             run_at_value = datetime.strptime(
-                                run_at.value.strip(), _DT_FORMAT
+                                f"{run_date.value} {run_time.value}", _DT_FORMAT
                             )
                         except ValueError:
-                            ui.notify(
-                                f"Run at must match {_DT_FORMAT}", color="negative"
-                            )
+                            ui.notify("Invalid run date/time", color="negative")
                             return
                         mention_user_id = mention_user.value or None
                         posts = store.load()

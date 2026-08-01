@@ -923,6 +923,10 @@ class LivingBot(discord.Client):
 def build() -> LivingBot:
     intents = discord.Intents.default()
     intents.message_content = True
+    # Needed to populate guild.members (used by the scheduled-posts mention
+    # dropdown); must also be enabled as a privileged intent in the Discord
+    # Developer Portal or the gateway will reject the connection.
+    intents.members = True
     llm_client = LLMClient.create()
     memory_store = MemoryStore.create(config.MEMORY_DATA_PATH)
     relation_store = RelationStore(config.RELATION_DATA_PATH)
