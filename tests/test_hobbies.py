@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from livingbot.hobbies import (
@@ -6,6 +7,7 @@ from livingbot.hobbies import (
     HobbyStore,
     Hobbies,
     LEVEL_UP_THRESHOLDS,
+    experience_progress,
     recent_hobbies,
 )
 
@@ -101,6 +103,33 @@ def test_hobby_store_gain_experience_does_nothing_when_hobby_not_found(
     hobbies = store.load()
     assert len(hobbies.entries) == 1
     assert hobbies.entries[0].name == "gym"
+
+
+def test_hobby_store_gain_experience_warns_when_hobby_not_found(
+    tmp_path, caplog
+) -> None:
+    store = HobbyStore(tmp_path / "data", default_hobbies=["gym"])
+
+    with caplog.at_level(logging.WARNING, logger="livingbot.hobbies"):
+        store.gain_experience("Gym", 10)
+
+    assert "Dropped 10 xp: no hobby named 'Gym'. Her hobbies are: gym" in caplog.text
+
+
+def test_experience_progress_below_expert_shows_threshold_and_next_level() -> None:
+    hobby = Hobby(name="gym", level=HobbyLevel.novice, experience=20)
+
+    progress = experience_progress(hobby)
+
+    assert progress == "20 / 100 xp → beginner"
+
+
+def test_experience_progress_at_expert_shows_bare_total() -> None:
+    hobby = Hobby(name="gym", level=HobbyLevel.expert, experience=500)
+
+    progress = experience_progress(hobby)
+
+    assert progress == "500 xp"
 
 
 def test_recent_hobbies_includes_hobby_acquired_within_window() -> None:

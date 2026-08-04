@@ -54,6 +54,19 @@ class Hobbies(BaseModel):
     entries: list[Hobby] = Field(default_factory=list)
 
 
+def experience_progress(hobby: Hobby) -> str:
+    """Experience as progress within the current level, e.g. "20 / 100 xp → beginner".
+
+    Levelling up subtracts the threshold, so the bare number drops on level-up and
+    reads as lost experience unless the level it counts towards is shown with it.
+    """
+    threshold = LEVEL_UP_THRESHOLDS.get(hobby.level.value)
+    if threshold is None:
+        return f"{hobby.experience} xp"
+    next_level = LEVEL_ORDER[LEVEL_ORDER.index(hobby.level.value) + 1]
+    return f"{hobby.experience} / {threshold} xp → {next_level}"
+
+
 def recent_hobbies(hobbies: Hobbies, now: datetime, within: timedelta) -> list[Hobby]:
     return [
         hobby
