@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 EXPERIENCE_PER_SESSION = 10
 
@@ -80,3 +83,9 @@ class HobbyStore:
                 hobby.gain_experience(amount)
                 self.save(hobbies)
                 return
+        logger.warning(
+            "Dropped %d xp: no hobby named %r. Her hobbies are: %s",
+            amount,
+            name,
+            ", ".join(hobby.name for hobby in hobbies.entries) or "(none)",
+        )

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, Field, field_validator
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import clock, llm_config
@@ -78,18 +78,39 @@ class WeekPlan(BaseModel):
     activities: list[PlannedActivity]
 
 
+def _reject_unknown_hobbies(ctx: RunContext[list[str]], plan: WeekPlan) -> WeekPlan:
+    unknown = sorted(
+        {a.hobby for a in plan.activities if a.hobby and a.hobby not in ctx.deps}
+    )
+    if unknown:
+        raise ModelRetry(
+            f"These are not her hobbies: {', '.join(unknown)}. "
+            f"hobby must be exactly one of: {', '.join(ctx.deps)} — or empty for "
+            "anything that is not her practising a hobby. Fix those activities and "
+            "return the whole plan again."
+        )
+    return plan
+
+
 class WeekPlanner:
     @classmethod
     def create(cls) -> Self:
         return cls(llm_config.build_chat_model(llm_config.WEEK_PLANNER_MODEL))
 
     def __init__(self, model: OpenAIChatModel) -> None:
-        self._agent: Agent[None, WeekPlan] = Agent(
+        # A hobby name the planner invents matches nothing downstream, so the week's
+        # experience is dropped silently; the validator sends it back to correct.
+        # Two attempts because exhausting them raises, and plan() turns that into an
+        # empty week — a worse outcome than the lost experience.
+        self._agent: Agent[list[str], WeekPlan] = Agent(
             model,
             name="week_planner",
             instructions=WEEK_PLAN_SYSTEM_PROMPT,
             output_type=WeekPlan,
+            deps_type=list[str],
+            retries={"output": 2},
         )
+        self._agent.output_validator(_reject_unknown_hobbies)
 
     async def plan(
         self,
@@ -110,7 +131,7 @@ class WeekPlanner:
                 "Give these new hobbies real time in the week."
             )
         try:
-            result = await self._agent.run(prompt)
+            result = await self._agent.run(prompt, deps=hobbies)
             return [PlanEntry(**a.model_dump()) for a in result.output.activities]
         except Exception:
             logger.exception("Failed to plan week starting %s", week_start)
