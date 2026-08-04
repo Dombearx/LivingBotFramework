@@ -2,6 +2,7 @@ from nicegui import ui
 
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
+from livingbot.bot import LivingBot
 from livingbot.relations import Relation
 
 
@@ -11,6 +12,10 @@ def register(context: AdminContext) -> None:
     @ui.page("/relations")
     def relations_page() -> None:
         with page_layout("Relations"):
+            names = _discord_names(context.bot)
+
+            def _name_for(user_id: str) -> str:
+                return names.get(user_id, f"User {user_id}")
 
             @ui.refreshable
             def relation_list() -> None:
@@ -25,7 +30,7 @@ def register(context: AdminContext) -> None:
                 with ui.card().classes("w-full"):
                     with ui.row().classes("w-full items-center justify-between"):
                         with ui.column().classes("gap-0"):
-                            ui.label(f"User {relation.user_id}").classes(
+                            ui.label(_name_for(relation.user_id)).classes(
                                 "font-semibold"
                             )
                             ui.label(f"Attitude: {relation.attitude:.1f}/100").classes(
@@ -53,7 +58,7 @@ def register(context: AdminContext) -> None:
 
             def _open_editor(relation: Relation) -> None:
                 with ui.dialog() as dialog, ui.card().classes("w-[32rem]"):
-                    ui.label(f"Edit relation · user {relation.user_id}").classes(
+                    ui.label(f"Edit relation · {_name_for(relation.user_id)}").classes(
                         "text-lg font-semibold"
                     )
                     attitude = ui.number(
@@ -106,3 +111,13 @@ def register(context: AdminContext) -> None:
                 dialog.open()
 
             relation_list()
+
+
+def _discord_names(bot: LivingBot) -> dict[str, str]:
+    if not bot.is_ready():
+        return {}
+    return {
+        str(member.id): member.display_name
+        for guild in bot.guilds
+        for member in guild.members
+    }
