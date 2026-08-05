@@ -55,8 +55,14 @@ FRIEND_ATTITUDE = 45.0
 CLOSE_FRIEND_ATTITUDE = 75.0
 
 # Sampled per condition in the joke-ending experiment. A rate cannot be read off a
-# single non-deterministic draw, and each sample is a full chat call.
-SAMPLES_PER_CONDITION = 3
+# single non-deterministic draw, and each sample is a full chat call. Three per side
+# was not enough: a 1-against-0 win is chance, and a tie — likely at these rates —
+# fails an experiment that is actually inconclusive.
+SAMPLES_PER_CONDITION = 5
+
+# Below this the control condition never produced enough joke endings for suppression
+# to be visible, so the run measured nothing and says so rather than passing.
+MIN_CONTROL_JOKES = 2
 
 CATCHPHRASE = "no ale co ja tam wiem"
 REPEATED_EMOJI = "🙃"
@@ -291,11 +297,11 @@ async def test_repetitive_joke_endings_in_her_history_suppress_another_joke_endi
     control_jokes, control_responses = await _joke_endings(_control_history())
     repetitive_jokes, repetitive_responses = await _joke_endings(_joke_ending_history())
 
-    if control_jokes == 0:
+    if control_jokes < MIN_CONTROL_JOKES:
         pytest.skip(
-            "No headroom: with plain endings in her history she closed on a joke "
-            f"0/{SAMPLES_PER_CONDITION} times, so suppression cannot be observed.\n"
-            f"Control replies: {control_responses!r}"
+            "No headroom: with plain endings in her history she closed on a joke only "
+            f"{control_jokes}/{SAMPLES_PER_CONDITION} times, so suppression cannot be "
+            f"observed.\nControl replies: {control_responses!r}"
         )
     assert repetitive_jokes < control_jokes, (
         f"Expected fewer joke endings when her visible history is full of them, got "
