@@ -14,11 +14,14 @@ def register(context: AdminContext) -> None:
     @ui.page("/memories")
     async def memories() -> None:
         with page_layout("Memories"):
-            user_ids = [GLOBAL_USER_ID] + [
-                r.user_id for r in relation_store.all() if r.user_id != GLOBAL_USER_ID
-            ]
+            names = context.discord_names()
+            banks = {GLOBAL_USER_ID: "Global"} | {
+                r.user_id: names.get(r.user_id, f"User {r.user_id}")
+                for r in relation_store.all()
+                if r.user_id != GLOBAL_USER_ID
+            }
             user_select = ui.select(
-                user_ids, value=GLOBAL_USER_ID, label="Memory bank"
+                banks, value=GLOBAL_USER_ID, label="Memory bank"
             ).classes("w-64")
             user_select.on("update:model-value", lambda: memory_list.refresh())
 
