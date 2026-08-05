@@ -20,6 +20,7 @@ from livingbot.spending import SpendingStore
 from livingbot.stories import Story, StoryStore
 from livingbot.timeformat import humanize_ago
 from livingbot.tools import (
+    OWN_MESSAGE_MARKER,
     BotDeps,
     add_activity_note,
     add_commitment,
@@ -431,13 +432,36 @@ def _build_commitments_block(
 
 def _build_history_block(history: list[str]) -> str:
     history_text = "\n".join(history)
-    return (
+    block = (
         f"Earlier in the conversation:\n{history_text}\n"
         "The lines marked (you) are your own earlier messages. They are here so you stay "
-        "coherent with what you already said — not as a style to copy. Don't recycle the "
-        "wording, the emoji or the shape of your last message just because it is in "
-        "front of you.\n\n"
+        "coherent with what you already said — not as a style to copy.\n\n"
     )
+    return block + _build_own_messages_block(history)
+
+
+def _build_own_messages_block(history: list[str]) -> str:
+    """Repeat her own recent messages back on their own.
+
+    Interleaved through everyone else's they are context; gathered together they are
+    a pattern, which is what the instruction below actually asks her to look at.
+    """
+    own = [line for line in history if _is_own_message(line)]
+    if not own:
+        return ""
+    recent = "\n".join(own[-config.RECENT_OWN_MESSAGE_LIMIT :])
+    return (
+        f"Your own last messages, oldest first:\n{recent}\n"
+        "Read how these end. Anything they already share — a closing joke, the same "
+        "emoji, the same rhythm, the same way of handing the conversation back — is a "
+        "habit setting in, and you don't do it again here. Say the next thing plainly "
+        "instead.\n\n"
+    )
+
+
+def _is_own_message(line: str) -> bool:
+    header = line.split(": ", 1)[0]
+    return header.endswith(OWN_MESSAGE_MARKER)
 
 
 def _build_server_emojis_block(emojis: list[str]) -> str:

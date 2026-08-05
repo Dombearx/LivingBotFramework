@@ -4,8 +4,8 @@ is something you do now and then", "never reach for the same emoji you used last
 time") have anything to work from. The only mechanism that could supply them is the
 history block, which shows her her own recent messages marked (you).
 
-The three tests form a ladder, from the narrowest form of the rule to the one the
-rules are actually about:
+The tests form a ladder, from the narrowest form of the rule to the one the rules are
+actually about:
 
 1. literal wording — the case the history block most plainly covers;
 2. a repeated emoji — the narrowest frequency rule with a concrete referent;
@@ -14,15 +14,26 @@ rules are actually about:
 Tests 1 and 2 are cheap falsifiers: a failure there means the history block only ever
 prevented literal repetition, and every "do this sometimes" instruction in the prompt
 is decorative. Passing them is weak evidence on its own, since she may simply not have
-reached for that phrase or emoji anyway. Test 3 is the measurement.
+reached for that phrase or emoji anyway. Rung 3 is the measurement.
 
-What the ladder measured (run 31027637343): 1 and 2 pass — she does not reuse a phrase
-or an emoji her own visible messages are full of. 3 fails, and not narrowly: with four
-joke endings of her own in front of her she closed on a joke 5/5 times against 3/5 for
-the plain control. The line falls between a repeated token, which she avoids, and a
-repeated shape, which she does not notice. It is marked xfail rather than deleted
-because the mechanism it measures is the one the frequency rules in the prompt assume,
-so this is the test that would tell us a fix worked.
+What the ladder measured first (run 31027637343): 1 and 2 pass — she does not reuse a
+phrase or an emoji her own visible messages are full of. 3 failed, and not narrowly:
+with four joke endings of her own in front of her she closed on a joke 5/5 times
+against 3/5 for the plain control. The line falls between a repeated token, which she
+avoids, and a repeated shape, which she does not notice.
+
+Two changes followed from that, and rung 3 is now measured twice because they pull in
+opposite directions:
+
+- the closing-joke rules were rewritten per-message, since a rate she cannot evaluate
+  buys nothing. `test_she_does_not_close_on_a_punchline_by_default` is what holds that
+  rewrite in place. Working, it drains the joke experiment of headroom — no closing
+  jokes in the control means no suppression to observe — so that one is expected to
+  skip, and stays as the check a regression would light up;
+- her own recent messages are now repeated back to her in a block of their own, on the
+  theory that a habit scattered through twenty interleaved channel lines is not
+  visible as one. `test_repetitive_question_endings…` measures whether that worked, on
+  a shape the per-message rules leave alone so the headroom survives.
 
 Run on demand: uv run pytest tests/integration/test_reply_variety.py
 Requires OPENROUTER_API_KEY in the environment.
@@ -68,9 +79,15 @@ CLOSE_FRIEND_ATTITUDE = 75.0
 # fails an experiment that is actually inconclusive.
 SAMPLES_PER_CONDITION = 5
 
-# Below this the control condition never produced enough joke endings for suppression
-# to be visible, so the run measured nothing and says so rather than passing.
-MIN_CONTROL_JOKES = 2
+# Below this the control condition never produced enough of the ending being measured
+# for suppression to be visible, so the run measured nothing and says so rather than
+# passing.
+MIN_CONTROL_HITS = 2
+
+# The rewritten rule is absolute — the last line is the substance, never a gag — so the
+# expected count is zero. One draw in five is where a stochastic slip stops being a
+# slip and starts being the tic coming back.
+MAX_DEFAULT_PUNCHLINES = 1
 
 CATCHPHRASE = "no ale co ja tam wiem"
 REPEATED_EMOJI = "🙃"
@@ -311,7 +328,7 @@ async def test_repetitive_joke_endings_in_her_history_suppress_another_joke_endi
     control_jokes, control_responses = await _joke_endings(_control_history())
     repetitive_jokes, repetitive_responses = await _joke_endings(_joke_ending_history())
 
-    if control_jokes < MIN_CONTROL_JOKES:
+    if control_jokes < MIN_CONTROL_HITS:
         pytest.skip(
             "No headroom: with plain endings in her history she closed on a joke only "
             f"{control_jokes}/{SAMPLES_PER_CONDITION} times, so suppression cannot be "
@@ -321,6 +338,94 @@ async def test_repetitive_joke_endings_in_her_history_suppress_another_joke_endi
         f"Expected fewer joke endings when her visible history is full of them, got "
         f"{repetitive_jokes}/{SAMPLES_PER_CONDITION} against a control of "
         f"{control_jokes}/{SAMPLES_PER_CONDITION}.\n"
+        f"Control replies: {control_responses!r}\n"
+        f"Repetitive-history replies: {repetitive_responses!r}"
+    )
+
+
+async def test_she_does_not_close_on_a_punchline_by_default() -> None:
+    """The per-message rule that replaced the closing-joke rate has to hold on an ordinary reply."""
+    jokes, responses = await _joke_endings(_control_history())
+
+    assert jokes <= MAX_DEFAULT_PUNCHLINES, (
+        f"Expected at most {MAX_DEFAULT_PUNCHLINES} closing joke in "
+        f"{SAMPLES_PER_CONDITION} replies to ordinary banter, got {jokes}.\n"
+        f"Replies: {responses!r}"
+    )
+
+
+# The same experiment as the joke one, on a shape nothing in the prompt bars: ending by
+# turning a question back on him. Its rate survives the per-message rules, so this is
+# what still has headroom to show suppression once closing jokes are gone.
+_QUESTION_HISTORY_TURNS = (
+    ("jack", "kupiłem sobie wczoraj nowe buty do biegania"),
+    ("mugda", "o, dobre buty to naprawdę podstawa"),
+    ("jack", "no i od razu poszedłem na 5 km"),
+    ("mugda", "5 km na pierwszy raz w nowych to sporo"),
+    ("jack", "trochę mnie potem bolały łydki"),
+    ("mugda", "łydki zawsze dają znać przy nowych butach"),
+    ("jack", "myślisz że warto iść jutro znowu?"),
+    ("mugda", "jutro spokojnie, dzień przerwy jeszcze nikomu nie zaszkodził"),
+)
+
+_PLANTED_QUESTIONS = {
+    1: " a jakie w końcu wziąłeś?",
+    3: " nie za dużo tego na pierwszy raz?",
+    5: " długo cię to ciągnęło?",
+    7: " co ci mówi głowa, chce się jutro czy nie?",
+}
+
+RUNNING_MESSAGE = (
+    "w sumie myślę żeby zapisać się jesienią na jakieś zawody na 10 km, nigdy "
+    "wcześniej nie startowałem"
+)
+
+
+def _statement_ending_history() -> list[str]:
+    return _history(*_QUESTION_HISTORY_TURNS)
+
+
+def _question_ending_history() -> list[str]:
+    turns = [
+        (speaker, text + _PLANTED_QUESTIONS[index])
+        if index in _PLANTED_QUESTIONS
+        else (speaker, text)
+        for index, (speaker, text) in enumerate(_QUESTION_HISTORY_TURNS)
+    ]
+    return _history(*turns)
+
+
+async def _question_endings(history: list[str]) -> tuple[int, list[str]]:
+    responses = await asyncio.gather(
+        *(
+            _reply(RUNNING_MESSAGE, history, attitude=CLOSE_FRIEND_ATTITUDE)
+            for _ in range(SAMPLES_PER_CONDITION)
+        )
+    )
+    return sum(r.rstrip().endswith("?") for r in responses), list(responses)
+
+
+async def test_repetitive_question_endings_in_her_history_suppress_another_question_ending() -> (
+    None
+):
+    """Seeing her own last four replies all hand the conversation back as a question must make the next one less likely to."""
+    control_questions, control_responses = await _question_endings(
+        _statement_ending_history()
+    )
+    repetitive_questions, repetitive_responses = await _question_endings(
+        _question_ending_history()
+    )
+
+    if control_questions < MIN_CONTROL_HITS:
+        pytest.skip(
+            "No headroom: with statement endings in her history she ended on a question "
+            f"only {control_questions}/{SAMPLES_PER_CONDITION} times, so suppression "
+            f"cannot be observed.\nControl replies: {control_responses!r}"
+        )
+    assert repetitive_questions < control_questions, (
+        f"Expected fewer question endings when her visible history is full of them, got "
+        f"{repetitive_questions}/{SAMPLES_PER_CONDITION} against a control of "
+        f"{control_questions}/{SAMPLES_PER_CONDITION}.\n"
         f"Control replies: {control_responses!r}\n"
         f"Repetitive-history replies: {repetitive_responses!r}"
     )

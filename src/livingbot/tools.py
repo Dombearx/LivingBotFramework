@@ -50,11 +50,16 @@ class BotDeps:
     photo_result: bytes | None = None
 
 
+# Marks her own lines in a formatted history. The prompt builder reads it back out to
+# pick her messages from the channel's, so the two must agree on the exact wording.
+OWN_MESSAGE_MARKER = " (you)"
+
+
 def format_message(message: discord.Message, own: bool = False) -> str:
     timestamp = clock.to_local(message.created_at).strftime("%Y-%m-%d %H:%M:%S")
     author = message.author.display_name
     if own:
-        author += " (you)"
+        author += OWN_MESSAGE_MARKER
     # clean_content is discord.py's own mention rendering: "<@123>" arrives as
     # "@Kuba", so the model never sees a raw user id.
     line = f"[id:{message.id}] [{timestamp}] {author}: {message.clean_content}"

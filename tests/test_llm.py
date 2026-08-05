@@ -242,6 +242,49 @@ def test_build_history_block_tells_her_not_to_copy_her_own_earlier_messages() ->
     assert "not as a style to copy" in block
 
 
+def test_build_history_block_gathers_her_own_messages_into_their_own_list() -> None:
+    block = _build_history_block(
+        [
+            "[id:1] [2026-06-03 14:00:00] Kuba: hey",
+            "[id:2] [2026-06-03 14:01:00] Mugda (you): siema",
+            "[id:3] [2026-06-03 14:02:00] Ola: co tam",
+        ]
+    )
+
+    own_section = block.split("Your own last messages, oldest first:\n")[1]
+    assert own_section.startswith("[id:2] [2026-06-03 14:01:00] Mugda (you): siema\n")
+
+
+def test_build_history_block_keeps_only_the_most_recent_own_messages() -> None:
+    history = [
+        f"[id:{i}] [2026-06-03 14:0{i}:00] Mugda (you): wiadomość {i}"
+        for i in range(config.RECENT_OWN_MESSAGE_LIMIT + 2)
+    ]
+
+    block = _build_history_block(history)
+
+    own_section = block.split("Your own last messages, oldest first:\n")[1]
+    assert "wiadomość 0" not in own_section
+
+
+def test_build_history_block_omits_the_own_messages_list_when_she_has_not_spoken() -> (
+    None
+):
+    block = _build_history_block(["[id:1] [2026-06-03 14:00:00] Kuba: hey"])
+
+    assert "Your own last messages" not in block
+
+
+def test_build_history_block_does_not_mistake_a_quoted_marker_for_her_own_line() -> (
+    None
+):
+    block = _build_history_block(
+        ["[id:1] [2026-06-03 14:00:00] Kuba: haha (you): nope"]
+    )
+
+    assert "Your own last messages" not in block
+
+
 def test_build_new_messages_block_labels_messages_to_respond_to() -> None:
     block = _build_new_messages_block(["[id:3] alice: are you there?"])
 
