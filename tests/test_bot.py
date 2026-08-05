@@ -17,6 +17,7 @@ from livingbot.bot import (
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.commitment_timing import CommitmentTimingDecision
 from livingbot.commitments import Commitment, Commitments
+from livingbot.directory import Directory
 from livingbot.hobbies import Hobbies, Hobby
 from livingbot.mood import Mood
 from livingbot.photo import PhotoCooldown
@@ -538,7 +539,7 @@ def test_format_message_shows_timestamp_in_warsaw_wall_clock() -> None:
     msg.id = 987654321
     msg.created_at = datetime(2024, 6, 1, 8, 0, tzinfo=timezone.utc)
     msg.author.display_name = "Alice"
-    msg.content = "hello world"
+    msg.clean_content = "hello world"
 
     result = format_message(msg)
 
@@ -558,9 +559,9 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
     bot = make_bot(llm_client)
     channel = make_channel()
     msg1 = make_message(author=other_user(), mentions=[user], channel=channel)
-    msg1.content = "first"
+    msg1.clean_content = "first"
     msg2 = make_message(author=other_user(), mentions=[user], channel=channel)
-    msg2.content = "second"
+    msg2.clean_content = "second"
     bot._queue.add(msg1)
     bot._queue.add(msg2)
 
@@ -588,6 +589,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         waiting_since=ANY,
         history=[],
         commitments=[],
+        directory=ANY,
     )
 
 
@@ -818,7 +820,7 @@ async def test_is_reply_to_bot_when_resolved_reference_is_bots_returns_true(
 async def test_send_chunked_when_response_fits_sends_single_message() -> None:
     channel = make_channel()
 
-    await _send_chunked(channel, "short response")
+    await _send_chunked(channel, "short response", Directory({}))
 
     channel.send.assert_called_once_with("short response")
 
@@ -827,7 +829,7 @@ async def test_send_chunked_when_response_exceeds_limit_splits_into_chunks() -> 
     channel = make_channel()
     text = "x" * 2500
 
-    await _send_chunked(channel, text)
+    await _send_chunked(channel, text, Directory({}))
 
     assert channel.send.call_count == 2
     channel.send.assert_any_call("x" * 2000)
@@ -922,7 +924,7 @@ async def test_update_relations_includes_bot_response_in_conversation(
     relation_updater = make_relation_updater()
     bot = make_bot(relation_updater=relation_updater)
     msg = make_message(author=other_user(), mentions=[user])
-    msg.content = "hey bot"
+    msg.clean_content = "hey bot"
 
     await bot._update_relations([relation], [msg], "my reply")
 
@@ -1064,7 +1066,7 @@ async def test_ensure_week_planned_prunes_finished_entries(
 async def test_send_chunked_without_photo_sends_text_only() -> None:
     channel = make_channel()
 
-    await _send_chunked(channel, "hello")
+    await _send_chunked(channel, "hello", Directory({}))
 
     channel.send.assert_called_once_with("hello")
 
@@ -1072,7 +1074,7 @@ async def test_send_chunked_without_photo_sends_text_only() -> None:
 async def test_send_chunked_with_photo_attaches_file_to_last_chunk() -> None:
     channel = make_channel()
 
-    await _send_chunked(channel, "here you go", photo=b"\xff\xd8\xff")
+    await _send_chunked(channel, "here you go", Directory({}), photo=b"\xff\xd8\xff")
 
     call_kwargs = channel.send.call_args.kwargs
     assert "file" in call_kwargs
@@ -1082,7 +1084,7 @@ async def test_send_chunked_with_photo_attaches_file_to_last_chunk() -> None:
 async def test_send_chunked_with_photo_sends_text_in_same_call() -> None:
     channel = make_channel()
 
-    await _send_chunked(channel, "check this out", photo=b"\xff\xd8\xff")
+    await _send_chunked(channel, "check this out", Directory({}), photo=b"\xff\xd8\xff")
 
     text_sent = channel.send.call_args.args[0]
     assert text_sent == "check this out"
@@ -1092,7 +1094,7 @@ async def test_send_chunked_with_long_text_only_attaches_photo_to_last_chunk() -
     channel = make_channel()
     long_text = "x" * 4500  # exceeds DISCORD_MAX_LENGTH, produces 3 chunks
 
-    await _send_chunked(channel, long_text, photo=b"\xff\xd8\xff")
+    await _send_chunked(channel, long_text, Directory({}), photo=b"\xff\xd8\xff")
 
     assert channel.send.call_count == 3
     # first two chunks must not have a file kwarg
@@ -2009,7 +2011,7 @@ async def test_maybe_post_scheduled_passes_a_trigger_built_from_the_topic(
 
 @patch.object(LivingBot, "get_channel")
 @patch("livingbot.bot.clock")
-async def test_maybe_post_scheduled_passes_the_mention_user_id_into_the_trigger(
+async def test_maybe_post_scheduled_names_the_mentioned_user_in_the_trigger(
     mock_clock: MagicMock, mock_get_channel: MagicMock, monkeypatch
 ) -> None:
     monkeypatch.setattr(config, "RANDOM_POST_CHANNEL_ID", 555)
@@ -2026,12 +2028,13 @@ async def test_maybe_post_scheduled_passes_the_mention_user_id_into_the_trigger(
         )
     )
     bot = make_bot(scheduled_post_store=store, llm_client=llm_client)
+    monkeypatch.setattr(LivingBot, "_directory", lambda self: Directory({"42": "Kuba"}))
 
     await bot._maybe_post_scheduled()
 
     call_kwargs = llm_client.complete.call_args.kwargs
     assert call_kwargs["trigger"] == prompts.build_scheduled_post_trigger(
-        "her new gym shoes", "42"
+        "her new gym shoes", "Kuba"
     )
 
 
@@ -2232,7 +2235,7 @@ def test_build_commitment_timing_context_states_promise_and_timing_hint(
 
     assert "show a screenshot of my BG3 character" in context
     assert "next time I'm at my computer" in context
-    assert "<@42>" in context
+    assert "User 42" in context
 
 
 @patch("livingbot.bot.clock")
@@ -2293,3 +2296,11 @@ def test_build_commitment_timing_context_when_channel_silent_says_so(
     context = bot._build_commitment_timing_context(make_commitment(), AWAKE_NOW, [])
 
     assert "Nothing has been said in that channel since she promised it" in context
+
+
+async def test_send_chunked_turns_a_written_name_into_a_ping() -> None:
+    channel = make_messageable_channel()
+
+    await _send_chunked(channel, "hej @Kuba", Directory({"42": "Kuba"}))
+
+    channel.send.assert_awaited_once_with("hej <@42>")

@@ -48,12 +48,15 @@ Tests under `tests/integration/` send real requests to the LLM. They cost money 
 take minutes, and because the model is non-deterministic they fail intermittently
 without anything being broken.
 
-- **Never run the whole integration suite, or a large portion of it, without asking
-  first.** Ask, state roughly what it will cost and how long it will take, and wait for
-  an answer. This applies to `uv run pytest tests/integration/` locally and to the
-  `all` group of the Integration Tests workflow.
+- **Never start an integration run on your own initiative — not the full suite, not a
+  single group, not locally and not through GitHub Actions.** Every run needs the user
+  to approve that specific run first. Propose it, say which group you would run and
+  roughly what it costs and how long it takes, and then wait. Deciding a run is
+  warranted is not the same as being allowed to start it.
+- An approval covers the run it was given for. Wanting to re-check after a fix means
+  asking again.
 - Run only the group covering the code you changed — the workflow's `test_group` input
-  exists for exactly this.
+  exists for exactly this. `all` is never a default; it needs its own approval.
 - A failure in a test unrelated to your change is not yours to chase. Report it and
   move on; do not re-run it hoping for green, and do not "fix" the assertion.
 - Re-running a group you did change is fine when you are verifying a fix.
@@ -66,7 +69,8 @@ key does exist as a repository secret, so the way to actually run them is the
 **Integration Tests** workflow (`.github/workflows/integration-tests.yml`).
 
 - It is `workflow_dispatch` only — trigger it manually, against the branch you want
-  tested. The workflow file must exist on that branch.
+  tested, once the user has approved that run. The workflow file must exist on that
+  branch, so push before triggering.
 - Pass the `test_group` input to pick what runs; it defaults to `all`, which is the one
   value covered by the "ask first" rule above. The group names and the files each maps
   to are listed in the workflow itself — read them there rather than guessing.

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -15,6 +15,7 @@ from livingbot import clock, config
 from livingbot.activity_notes import ActivityNote, ActivityNotesStore
 from livingbot.calendar import CalendarStore, PlanEntry
 from livingbot.commitments import Commitment, CommitmentStore
+from livingbot.directory import Directory
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.preferences import PreferenceStore
@@ -45,6 +46,7 @@ class BotDeps:
     story_store: StoryStore
     preference_store: PreferenceStore
     commitment_store: CommitmentStore
+    directory: Directory = field(default_factory=lambda: Directory({}))
     photo_result: bytes | None = None
 
 
@@ -53,7 +55,9 @@ def format_message(message: discord.Message, own: bool = False) -> str:
     author = message.author.display_name
     if own:
         author += " (you)"
-    line = f"[id:{message.id}] [{timestamp}] {author}: {message.content}"
+    # clean_content is discord.py's own mention rendering: "<@123>" arrives as
+    # "@Kuba", so the model never sees a raw user id.
+    line = f"[id:{message.id}] [{timestamp}] {author}: {message.clean_content}"
     previews = _format_link_previews(message)
     if previews:
         line += f"\n{previews}"
@@ -329,7 +333,7 @@ async def record_preference(ctx: RunContext[BotDeps], topic: str, stance: str) -
 
 async def add_commitment(
     ctx: RunContext[BotDeps],
-    user_id: str,
+    person: str,
     description: str,
     due_hint: str,
 ) -> str:
@@ -345,12 +349,16 @@ async def add_commitment(
     vague maybe ("sometime", "kiedyś", "we should really..."); or an idea still being
     floated that nobody has actually committed to.
     When in doubt, don't record it — most conversations make no promise worth tracking.
-    user_id: the Discord id of the person you promised.
+    person: the name of the person you promised, exactly as it is shown in the
+    conversation.
     description: what you promised, in a few words, e.g. "show a screenshot of my BG3
     character".
     due_hint: your own words for when, taken from what you actually said, e.g. "next
     time I'm at my computer" or "tomorrow".
     Returns the new promise's id."""
+    user_id = ctx.deps.directory.id_for(person)
+    if user_id is None:
+        return f"No one called {person} is here, so there's nothing to record."
     store = ctx.deps.commitment_store
     commitments = store.load()
     commitment = Commitment(
@@ -362,7 +370,7 @@ async def add_commitment(
     )
     commitments.entries.append(commitment)
     store.save(commitments)
-    return f"Noted [id:{commitment.id}] promise to <@{user_id}>: {description}."
+    return f"Noted [id:{commitment.id}] promise to {person}: {description}."
 
 
 async def resolve_commitment(ctx: RunContext[BotDeps], commitment_id: str) -> str:

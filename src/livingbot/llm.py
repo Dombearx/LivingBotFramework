@@ -14,7 +14,8 @@ from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block, is_awake
 from livingbot.preferences import Preferences, PreferenceStore
-from livingbot.relations import Relation
+from livingbot.directory import Directory
+from livingbot.relations import Relation, attitude_behaviour
 from livingbot.spending import SpendingStore
 from livingbot.stories import Story, StoryStore
 from livingbot.timeformat import humanize_ago
@@ -112,7 +113,9 @@ class LLMClient:
         commitments: list[Commitment] | None = None,
         trigger: str | None = None,
         server_emojis: list[str] | None = None,
+        directory: Directory | None = None,
     ) -> LLMResult:
+        directory = directory if directory is not None else Directory({})
         deps = BotDeps(
             channel=channel,
             channel_id=channel_id,
@@ -124,6 +127,7 @@ class LLMClient:
             story_store=story_store,
             preference_store=preference_store,
             commitment_store=commitment_store,
+            directory=directory,
         )
         parts: list[str] = []
         if photo_hint:
@@ -147,9 +151,9 @@ class LLMClient:
         parts.append(_build_inventory_block(await inventory_store.recent()))
         parts.append(_build_preferences_block(preference_store.load()))
         if relations:
-            parts.append(_build_relations_block(relations))
+            parts.append(_build_relations_block(relations, directory))
         if commitments:
-            parts.append(_build_commitments_block(commitments, now))
+            parts.append(_build_commitments_block(commitments, now, directory))
         parts.append(_build_stories_block(await story_store.untold()))
         if memories:
             memory_block = "\n".join(f"- {m}" for m in memories)
@@ -372,11 +376,13 @@ def _build_preferences_block(preferences: Preferences) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def _build_relations_block(relations: list[Relation]) -> str:
+def _build_relations_block(relations: list[Relation], directory: Directory) -> str:
     blocks: list[str] = ["My relationships with the people in this conversation:"]
     for relation in relations:
         parts: list[str] = [
-            f"  User {relation.user_id} (attitude: {round(relation.attitude)}/100):"
+            f"  {directory.name_for(relation.user_id)} "
+            f"(attitude: {round(relation.attitude)}/100):",
+            f"    - How you feel about them: {attitude_behaviour(relation.attitude)}",
         ]
         if relation.most_important_memory:
             parts.append(
@@ -401,11 +407,13 @@ def _build_relations_block(relations: list[Relation]) -> str:
     return "\n".join(blocks) + "\n\n"
 
 
-def _build_commitments_block(commitments: list[Commitment], now: datetime) -> str:
+def _build_commitments_block(
+    commitments: list[Commitment], now: datetime, directory: Directory
+) -> str:
     lines = ["Promises you've made that you haven't followed through on yet:"]
     for commitment in commitments:
         line = (
-            f"  [id:{commitment.id}] to <@{commitment.user_id}>: "
+            f"  [id:{commitment.id}] to {directory.name_for(commitment.user_id)}: "
             f"{commitment.description} (promised {humanize_ago(commitment.made_at, now)}, "
             f'you said: "{commitment.due_hint}"'
         )

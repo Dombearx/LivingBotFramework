@@ -14,6 +14,7 @@ from livingbot import clock, config, prompts
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
 from livingbot.commitment_timing import CommitmentTimingJudge
+from livingbot.directory import Directory
 from livingbot.commitments import Commitment, CommitmentStatus, CommitmentStore
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryStore
@@ -56,8 +57,10 @@ DISCORD_MAX_LENGTH = 2000
 async def _send_chunked(
     channel: discord.abc.Messageable,
     text: str,
+    directory: Directory,
     photo: bytes | None = None,
 ) -> None:
+    text = directory.to_mentions(text)
     chunks = [
         text[i : i + DISCORD_MAX_LENGTH]
         for i in range(0, len(text), DISCORD_MAX_LENGTH)
@@ -307,6 +310,7 @@ class LivingBot(discord.Client):
         # The main chat agent writes this too, rather than a separate composer: it is
         # the same person talking to the same people, and only it can reach for
         # take_photo or mark a story told as it tells one.
+        directory = self._directory()
         result = await self._llm_client.complete(
             [],
             channel,
@@ -324,10 +328,11 @@ class LivingBot(discord.Client):
             mood=self._mood_store.load(),
             trigger=prompts.SPONTANEOUS_TRIGGER_MESSAGE,
             server_emojis=self._server_emojis_for_message(channel),
+            directory=directory,
         )
         if result.photo is not None:
             self._on_photo_taken()
-        await _send_chunked(channel, result.output, photo=result.photo)
+        await _send_chunked(channel, result.output, directory, photo=result.photo)
         logger.info("Posted a spontaneous message to channel %s", channel.id)
 
     async def _maybe_post_scheduled(self) -> None:
@@ -354,6 +359,7 @@ class LivingBot(discord.Client):
             return
         # Same reasoning as the spontaneous post above: the main chat agent writes
         # it, since it's the same person talking to the same people.
+        directory = self._directory()
         result = await self._llm_client.complete(
             [],
             channel,
@@ -370,13 +376,17 @@ class LivingBot(discord.Client):
             relations=self._relation_store.all(),
             mood=self._mood_store.load(),
             trigger=prompts.build_scheduled_post_trigger(
-                post.topic, post.mention_user_id
+                post.topic,
+                directory.name_for(post.mention_user_id)
+                if post.mention_user_id is not None
+                else None,
             ),
             server_emojis=self._server_emojis_for_message(channel),
+            directory=directory,
         )
         if result.photo is not None:
             self._on_photo_taken()
-        await _send_chunked(channel, result.output, photo=result.photo)
+        await _send_chunked(channel, result.output, directory, photo=result.photo)
         logger.info(
             "Posted scheduled message about '%s' to channel %s", post.topic, channel.id
         )
@@ -462,6 +472,7 @@ class LivingBot(discord.Client):
             [(commitment.description, commitment.user_id)]
         )
         relation = self._relation_store.load(commitment.user_id)
+        directory = self._directory()
         result = await self._llm_client.complete(
             [],
             channel,
@@ -482,10 +493,11 @@ class LivingBot(discord.Client):
             commitments=[commitment],
             trigger=prompts.COMMITMENT_TRIGGER_MESSAGE,
             server_emojis=self._server_emojis_for_message(channel),
+            directory=directory,
         )
         if result.photo is not None:
             self._on_photo_taken()
-        await _send_chunked(channel, result.output, photo=result.photo)
+        await _send_chunked(channel, result.output, directory, photo=result.photo)
         # The agent may have already called resolve_commitment itself while handling
         # this; only stamp nudged_at, don't clobber a status it just set to fulfilled.
         current = next(
@@ -529,6 +541,7 @@ class LivingBot(discord.Client):
     def _build_commitment_timing_context(
         self, commitment: Commitment, now: datetime, history: list[str]
     ) -> str:
+        directory = self._directory()
         calendar = self._calendar_store.load()
         mood = self._mood_store.load()
         lines = [f"Right now it is {now:%A, %Y-%m-%d %H:%M}."]
@@ -545,7 +558,8 @@ class LivingBot(discord.Client):
         lines.append("")
         lines.append(
             f"Earlier — {humanize_ago(commitment.made_at, now)} — you promised "
-            f"<@{commitment.user_id}> that you would: {commitment.description}."
+            f"{directory.name_for(commitment.user_id)} that you would: "
+            f"{commitment.description}."
         )
         lines.append(
             f'At the time, you said this would happen: "{commitment.due_hint}".'
@@ -694,6 +708,15 @@ class LivingBot(discord.Client):
     def _on_photo_taken(self) -> None:
         self._photo_cooldown_store.save(PhotoCooldown())
 
+    def _directory(self) -> Directory:
+        return Directory(
+            {
+                str(member.id): member.display_name
+                for guild in self.guilds
+                for member in guild.members
+            }
+        )
+
     def _server_emojis_for_message(self, channel: discord.abc.Messageable) -> list[str]:
         self._messages_since_emoji_reminder += 1
         if self._messages_since_emoji_reminder < config.SERVER_EMOJI_REMINDER_INTERVAL:
@@ -779,6 +802,7 @@ class LivingBot(discord.Client):
                     ]
                     span.set_attribute("memories", len(memories))
                     span.set_attribute("images", len(images))
+                    directory = self._directory()
                     result = await self._llm_client.complete(
                         formatted,
                         channel,
@@ -803,11 +827,14 @@ class LivingBot(discord.Client):
                         ),
                         history=history,
                         commitments=commitments,
+                        directory=directory,
                     )
                     span.set_attribute("photo", result.photo is not None)
                     if result.photo is not None:
                         self._on_photo_taken()
-                    await _send_chunked(channel, result.output, photo=result.photo)
+                    await _send_chunked(
+                        channel, result.output, directory, photo=result.photo
+                    )
                     asyncio.create_task(
                         self._store_memories(messages, result.output, author_ids)
                     )

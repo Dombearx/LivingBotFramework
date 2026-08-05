@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from livingbot import config
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.commitments import Commitment
+from livingbot.directory import Directory
 from livingbot.hobbies import Hobby, Hobbies
 from livingbot.inventory import InventoryItem
 from livingbot.llm import (
@@ -12,12 +13,15 @@ from livingbot.llm import (
     _build_inventory_block,
     _build_new_messages_block,
     _build_recent_block,
+    _build_relations_block,
     _build_server_emojis_block,
     _build_stories_block,
 )
+from livingbot.relations import _ATTITUDE_BEHAVIOURS, Relation, attitude_behaviour
 from livingbot.stories import Story
 
 NOW = datetime(2026, 6, 3, 14, 30)
+DIRECTORY = Directory({"42": "Kuba", "111": "Ola", "222": "Wiktor"})
 
 
 def test_build_calendar_block_when_busy_reports_location_and_end_time() -> None:
@@ -173,10 +177,10 @@ def test_build_commitments_block_lists_promise_with_id_and_recipient() -> None:
         made_at=NOW - timedelta(hours=3),
     )
 
-    block = _build_commitments_block([commitment], NOW)
+    block = _build_commitments_block([commitment], NOW, DIRECTORY)
 
     assert f"[id:{commitment.id}]" in block
-    assert "<@42>" in block
+    assert "Kuba" in block
     assert "show a screenshot" in block
     assert "next time at her computer" in block
 
@@ -191,7 +195,7 @@ def test_build_commitments_block_notes_a_promise_already_brought_up() -> None:
         nudged_at=NOW - timedelta(hours=2),
     )
 
-    block = _build_commitments_block([commitment], NOW)
+    block = _build_commitments_block([commitment], NOW, DIRECTORY)
 
     assert "you already brought this up 2 hours ago" in block
 
@@ -205,7 +209,7 @@ def test_build_commitments_block_omits_the_note_for_a_promise_never_raised() -> 
         made_at=NOW - timedelta(days=1),
     )
 
-    block = _build_commitments_block([commitment], NOW)
+    block = _build_commitments_block([commitment], NOW, DIRECTORY)
 
     assert "already brought this up" not in block
 
@@ -219,7 +223,7 @@ def test_build_commitments_block_mentions_resolve_commitment_tool() -> None:
         made_at=NOW,
     )
 
-    block = _build_commitments_block([commitment], NOW)
+    block = _build_commitments_block([commitment], NOW, DIRECTORY)
 
     assert "resolve_commitment" in block
 
@@ -255,3 +259,28 @@ def test_build_server_emojis_block_asks_for_the_token_written_verbatim() -> None
     block = _build_server_emojis_block(["<:mugda_lift:111>"])
 
     assert "exactly as shown" in block
+
+
+def test_build_relations_block_describes_how_she_feels_about_each_user() -> None:
+    relations = [
+        Relation(user_id="111", attitude=4),
+        Relation(user_id="222", attitude=65),
+    ]
+
+    result = _build_relations_block(relations, DIRECTORY)
+
+    assert attitude_behaviour(4) in result
+    assert attitude_behaviour(65) in result
+
+
+def test_build_relations_block_omits_the_bands_a_user_does_not_fall_into() -> None:
+    relations = [Relation(user_id="111", attitude=4)]
+
+    result = _build_relations_block(relations, DIRECTORY)
+
+    unmatched = [
+        description
+        for _, description in _ATTITUDE_BEHAVIOURS
+        if description != attitude_behaviour(4)
+    ]
+    assert not [description for description in unmatched if description in result]

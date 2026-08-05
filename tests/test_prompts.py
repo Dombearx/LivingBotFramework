@@ -19,10 +19,10 @@ def test_build_scheduled_post_trigger_without_mention_has_no_mention_instruction
 ):
     result = build_scheduled_post_trigger("her new gym shoes")
 
-    assert "<@" not in result
+    assert "@" not in result
 
 
-def test_build_scheduled_post_trigger_with_mention_includes_the_user_id() -> None:
-    result = build_scheduled_post_trigger("her new gym shoes", mention_user_id="42")
+def test_build_scheduled_post_trigger_with_mention_includes_the_persons_name() -> None:
+    result = build_scheduled_post_trigger("her new gym shoes", mention_name="Kuba")
 
-    assert "<@42>" in result
+    assert "@Kuba" in result

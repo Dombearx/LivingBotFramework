@@ -46,8 +46,7 @@ def _context(
         "",
         build_mood_block(Mood(value=60.0), NOW).rstrip(),
         "",
-        f"Earlier — {promised_ago} — you promised <@111222333> that you would: "
-        f"{description}.",
+        f"Earlier — {promised_ago} — you promised Kuba that you would: {description}.",
         f'At the time, you said this would happen: "{due_hint}".',
         "",
     ]

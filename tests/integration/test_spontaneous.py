@@ -22,6 +22,7 @@ from livingbot.calendar import Calendar, PlanEntry
 from livingbot.commitments import Commitments
 from livingbot.hobbies import Hobbies, Hobby
 from livingbot.llm import LLMClient, LLMResult
+from livingbot.directory import Directory
 from livingbot.mood import Mood
 from livingbot.preferences import Preferences
 from livingbot.relations import Relation
@@ -35,6 +36,7 @@ pytestmark = pytest.mark.skipif(
 _JUDGE_MODEL = "openai/gpt-5.4-mini"
 
 _NOW = datetime(2026, 6, 24, 19, 0)
+DIRECTORY = Directory({"111222333": "Kuba"})
 _CHANNEL_ID = 1234
 
 
@@ -114,6 +116,7 @@ async def _run_spontaneously(
         relations=relations,
         mood=Mood(value=mood_value),
         trigger=prompts.SPONTANEOUS_TRIGGER_MESSAGE,
+        directory=DIRECTORY,
     )
     return result, story_store
 
@@ -200,7 +203,7 @@ async def test_spontaneous_message_can_ask_a_user_about_their_interest() -> None
         message,
         rubric=(
             "A natural, casual message that reaches out to the listed person by pinging "
-            "them with <@111222333> and asks them a genuine question tied to something "
+            "them as @Kuba and asks them a genuine question tied to something "
             "they care about — bouldering, horror films, or the shared 'cursed tram "
             "ride' joke. It still reads like a real off-the-cuff message."
         ),
