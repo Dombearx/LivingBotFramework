@@ -55,20 +55,7 @@ _ATTRIBUTION_INSTRUCTIONS = (
 # plain "I love dark chocolate"; the rejections carry the override marker so
 # they still beat the base prompt, which otherwise yields entries like
 # "Mugda reacted to Kuba's plan by wishing him luck".
-_RELEVANCE_INSTRUCTIONS = (
-    "Extract facts of lasting value, and only those. Capture every one of these "
-    "whenever it appears — none of them may be dropped:\n"
-    "- who someone is and their stable circumstances: work, studies, where "
-    "they live, family, pets, health\n"
-    "- lasting preferences, tastes and strong opinions, including food, drink, "
-    "music, games and anything else someone says they love or hate\n"
-    "- who to ask about what, even when that person is not in the "
-    'conversation (e.g. "for anything about the Minecraft server, ask '
-    'Weronika")\n'
-    "- standing instructions about how to behave towards someone\n"
-    "- ongoing projects and plans with their dates\n"
-    "- promises made and things someone is waiting for\n"
-    "- significant events in someone's life\n"
+_REJECTION_INSTRUCTIONS = (
     "OVERRIDE — the rules below beat every instruction above them, including "
     "the guidance to extract when in doubt and the claim that casual chat is "
     "valuable. Never extract:\n"
@@ -80,28 +67,51 @@ _RELEVANCE_INSTRUCTIONS = (
     "- what someone is doing right now or in the next few minutes, and "
     "momentary moods\n"
     "- how something was phrased, which emoji, slang or spelling was used\n"
-    "A message carrying nothing from the first list yields no memory at all."
+    "A message carrying nothing from the keep list yields no memory at all."
 )
 
 # The per-user banks and the shared global bank are written by separate
-# extraction passes over the same conversation, each told which facts belong to
-# it, so the global bank holds what stays true no matter who is talking.
+# extraction passes over the same conversation, so the global bank holds what
+# stays true no matter who is talking. Each pass gets its own keep list rather
+# than a shared one plus a scope caveat: a shared list ordering "capture
+# everyone's job" and a caveat saying "but not for the people here" contradict
+# each other, and the mandatory-sounding list won — Kuba's new job kept landing
+# in the global bank.
 _PERSONAL_MEMORY_INSTRUCTIONS = (
-    f"{_ATTRIBUTION_INSTRUCTIONS}\n{_RELEVANCE_INSTRUCTIONS}\n"
-    "SCOPE — this bank is read back whenever {name} talks with the people in "
-    "this conversation. Keep facts about them, and anything they told {name} "
-    "that she will need later, including pointers to people outside the "
-    "conversation. Leave out facts about {name} herself.".format(name=PERSONA_NAME)
+    f"{_ATTRIBUTION_INSTRUCTIONS}\n"
+    "This bank is read back whenever {name} talks with the people in this "
+    "conversation, and holds facts about them — never about {name} herself. "
+    "Capture every one of these whenever it appears; none may be dropped:\n"
+    "- who they are and their stable circumstances: work, studies, where they "
+    "live, family, pets, health\n"
+    "- their lasting preferences, tastes and strong opinions, including food, "
+    "drink, music, games and anything else they say they love or hate\n"
+    "- who to ask about what, even when that person is not in the "
+    'conversation (e.g. "for anything about the Minecraft server, ask '
+    'Weronika")\n'
+    "- standing instructions they gave about how {name} should behave towards "
+    "them\n"
+    "- their ongoing projects and plans with dates\n"
+    "- promises made to them and things they are waiting for\n"
+    "- significant events in their lives\n"
+    "{rejections}".format(name=PERSONA_NAME, rejections=_REJECTION_INSTRUCTIONS)
 )
 
 _GLOBAL_MEMORY_INSTRUCTIONS = (
-    f"{_ATTRIBUTION_INSTRUCTIONS}\n{_RELEVANCE_INSTRUCTIONS}\n"
-    "SCOPE — this bank is read back in conversations with everyone on the "
-    "server, so it holds only what is true regardless of who is talking: "
-    "facts about {name} herself, about the server and the group as a whole, "
-    "and about the world. Reject every fact whose subject is one of the "
-    "humans in this conversation — their jobs, homes, tastes and plans belong "
-    "to their own banks, and repeating them here is an error.".format(name=PERSONA_NAME)
+    f"{_ATTRIBUTION_INSTRUCTIONS}\n"
+    "This bank is read back in conversations with everyone on the server, so "
+    "it holds only what stays true regardless of who is talking. Capture:\n"
+    "- what {name} herself is like: her tastes, opinions, habits, what she "
+    "owns, what she has done and what she plans\n"
+    "- how the server and the group work: recurring events, rules, roles, who "
+    "runs what\n"
+    "- facts about the world that came up and are worth knowing later\n"
+    "The people in this conversation each have their own bank. Their jobs, "
+    "homes, families, tastes and plans go there, never here — extracting a "
+    "fact about one of them into this bank is an error, however durable that "
+    "fact is. If the conversation says nothing about {name}, the server or "
+    "the world, extract nothing.\n"
+    "{rejections}".format(name=PERSONA_NAME, rejections=_REJECTION_INSTRUCTIONS)
 )
 
 
