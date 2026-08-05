@@ -22,18 +22,22 @@ with four joke endings of her own in front of her she closed on a joke 5/5 times
 against 3/5 for the plain control. The line falls between a repeated token, which she
 avoids, and a repeated shape, which she does not notice.
 
-Two changes followed from that, and rung 3 is now measured twice because they pull in
-opposite directions:
+Three changes followed from that, and rung 3 is now measured twice because they pull
+in opposite directions:
 
 - the closing-joke rules were rewritten per-message, since a rate she cannot evaluate
   buys nothing. `test_she_does_not_close_on_a_punchline_by_default` is what holds that
   rewrite in place. Working, it drains the joke experiment of headroom — no closing
   jokes in the control means no suppression to observe — so that one is expected to
   skip, and stays as the check a regression would light up;
-- her own recent messages are now repeated back to her in a block of their own, on the
+- her own recent messages are repeated back to her in a block of their own, on the
   theory that a habit scattered through twenty interleaved channel lines is not
-  visible as one. `test_repetitive_question_endings…` measures whether that worked, on
-  a shape the per-message rules leave alone so the headroom survives.
+  visible as one. Measured (run 31033165326), that alone did nothing: 3/5 question
+  endings against a control of 3/5, an exact tie with headroom to spare;
+- so a labeller now does the noticing for her. `ReplyShapeLabeller` reads her own last
+  messages and names what they share, and the prompt states that conclusion outright
+  instead of hoping she infers it. `_reply` below runs it exactly as the bot does, so
+  these experiments measure the whole mechanism rather than the prompt alone.
 
 Run on demand: uv run pytest tests/integration/test_reply_variety.py
 Requires OPENROUTER_API_KEY in the environment.
@@ -54,10 +58,11 @@ from livingbot.calendar import Calendar
 from livingbot.commitments import Commitments
 from livingbot.directory import Directory
 from livingbot.hobbies import Hobby, Hobbies
-from livingbot.llm import LLMClient
+from livingbot.llm import LLMClient, own_messages
 from livingbot.mood import Mood
 from livingbot.preferences import Preferences
 from livingbot.relations import Relation
+from livingbot.reply_shapes import ReplyShapeLabeller
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -108,12 +113,15 @@ async def _closes_on_a_joke(response: str) -> _Verdict:
         "You are evaluating a Discord chat message written in Polish by a young woman "
         "named Mugda. Judge one thing only: how the message ENDS.\n\n"
         f"The message:\n{response}\n\n"
-        "Set matches=true if the message closes on a joke — a punchline, quip, comic "
-        "exaggeration or funny flourish tacked on after she has already said the "
-        "substance. Set matches=false if the last thing she says is simply the thing "
-        "she meant: an ordinary sentence, a plain reaction, or a genuine question. "
-        "A message that is playful throughout but does not land a separate gag at the "
-        "end is false. Judge only the ending, not the rest of the message."
+        "Set matches=true only if the message's final beat is a DECLARATIVE gag: a "
+        "punchline, quip, comic exaggeration or wry general observation, landed after "
+        "she has already said the substance. Set matches=false if the last thing she "
+        "says is the thing she meant — an ordinary sentence, a plain reaction — or if "
+        "it is a question aimed at the other person. A question back is false even when "
+        "it is playfully worded or has a joke inside it: she is handing him the "
+        "conversation, not signing off on a laugh, and the prompt she is written from "
+        "allows it. A message that is funny throughout but does not land a separate gag "
+        "as its last beat is false. Judge only the ending, not the rest of the message."
     )
     return result.output
 
@@ -173,7 +181,9 @@ def _history(*turns: tuple[str, str]) -> list[str]:
 
 
 async def _reply(message: str, history: list[str], attitude: float) -> str:
+    """Reply the way the bot does: the labeller reads her own lines first."""
     client = LLMClient.create()
+    shared_ending = await ReplyShapeLabeller.create().label(own_messages(history))
     (
         channel,
         calendar_store,
@@ -201,6 +211,7 @@ async def _reply(message: str, history: list[str], attitude: float) -> str:
         relations=[Relation(user_id=USER_ID, attitude=attitude)],
         mood=Mood(value=NEUTRAL_MOOD),
         history=history,
+        shared_ending=shared_ending,
         directory=DIRECTORY,
     )
     return result.output

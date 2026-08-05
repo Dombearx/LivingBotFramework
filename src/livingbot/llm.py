@@ -111,6 +111,7 @@ class LLMClient:
         images: list[BinaryContent] | None = None,
         waiting_since: datetime | None = None,
         history: list[str] | None = None,
+        shared_ending: str | None = None,
         commitments: list[Commitment] | None = None,
         trigger: str | None = None,
         server_emojis: list[str] | None = None,
@@ -163,6 +164,8 @@ class LLMClient:
             parts.append(_build_server_emojis_block(server_emojis))
         if history:
             parts.append(_build_history_block(history))
+        if shared_ending:
+            parts.append(_build_shared_ending_block(shared_ending))
         parts.append(
             trigger if trigger is not None else _build_new_messages_block(user_messages)
         )
@@ -446,10 +449,10 @@ def _build_own_messages_block(history: list[str]) -> str:
     Interleaved through everyone else's they are context; gathered together they are
     a pattern, which is what the instruction below actually asks her to look at.
     """
-    own = [line for line in history if _is_own_message(line)]
+    own = own_messages(history)
     if not own:
         return ""
-    recent = "\n".join(own[-config.RECENT_OWN_MESSAGE_LIMIT :])
+    recent = "\n".join(own)
     return (
         f"Your own last messages, oldest first:\n{recent}\n"
         "Read how these end. Anything they already share — a closing joke, the same "
@@ -462,6 +465,21 @@ def _build_own_messages_block(history: list[str]) -> str:
 def _is_own_message(line: str) -> bool:
     header = line.split(": ", 1)[0]
     return header.endswith(OWN_MESSAGE_MARKER)
+
+
+def own_messages(history: list[str]) -> list[str]:
+    return [line for line in history if _is_own_message(line)][
+        -config.RECENT_OWN_MESSAGE_LIMIT :
+    ]
+
+
+def _build_shared_ending_block(shared_ending: str) -> str:
+    return (
+        f"Every one of your last few messages ends the same way: {shared_ending}. That "
+        "is a habit now, and one more would make it your voice rather than a thing you "
+        "happened to do. This reply ends some other way — finish on the plain thing you "
+        "meant, or on whatever this particular message actually calls for.\n\n"
+    )
 
 
 def _build_server_emojis_block(emojis: list[str]) -> str:

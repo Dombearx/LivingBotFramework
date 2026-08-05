@@ -334,6 +334,26 @@ reason: one short sentence explaining the decision either way.
 Return only valid JSON matching the schema. No extra text.\
 """
 
+REPLY_SHAPE_SYSTEM_PROMPT = f"""\
+You are given the last few Discord messages {PERSONA_NAME} sent, oldest first. Decide
+one thing: do they all end the same way?
+
+You are looking at the final beat of each message — the move it closes on, not what it
+is about. Kinds of ending worth naming: a joke or quip landed after the point is made,
+a wry general observation, a question handed back to the other person, a piece of
+advice, a plain statement of what she is doing.
+
+Set shared_ending only when EVERY message ends on the same kind of move, and name that
+move in a short phrase, in English, addressed to her: "a joke after you have already
+made your point", "a question handed back to him". Different subjects do not matter;
+the same closing move on different subjects still counts.
+
+Leave shared_ending null when the endings vary, which is the normal answer. Two of four
+sharing a move is not a habit, and naming one that is not there would have her avoid an
+ending she was never overusing.
+No extra text.\
+"""
+
 COMMITMENT_TRIGGER_MESSAGE = (
     "Nobody has just messaged you here — you decided on your own that it's time to "
     "follow up on the promise above. If it's still outstanding, follow through on it "

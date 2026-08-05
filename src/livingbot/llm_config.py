@@ -20,6 +20,9 @@ RELATION_UPDATER_MODEL = "openai/gpt-5.4-nano"
 # cost of the stronger model is immaterial.
 COMMITMENT_TIMING_MODEL = "openai/gpt-5.6-luna"
 PROMPT_ENHANCER_MODEL = "openai/gpt-5-nano"
+# Names what her last few messages share at the end, once per reply. It reads four
+# short messages and answers with a phrase, so the cheapest model covers it.
+REPLY_SHAPE_MODEL = "openai/gpt-5.4-nano"
 
 
 def _api_key() -> str:
