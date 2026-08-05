@@ -97,6 +97,11 @@ _PERSONAL_MEMORY_INSTRUCTIONS = (
     "{rejections}".format(name=PERSONA_NAME, rejections=_REJECTION_INSTRUCTIONS)
 )
 
+# NOTE for the user: the "never here" rule below does not hold in practice.
+# gpt-5.4-nano at low reasoning effort keeps copying facts about individual
+# people into the global bank, so it will collect some per-person noise that
+# every user's conversation can surface. Raising reasoning_effort or the
+# extraction model would likely fix it, at a cost paid on every message.
 _GLOBAL_MEMORY_INSTRUCTIONS = (
     f"{_ATTRIBUTION_INSTRUCTIONS}\n"
     "This bank is read back in conversations with everyone on the server, so "
