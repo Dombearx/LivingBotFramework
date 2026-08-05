@@ -31,6 +31,7 @@ def register(context: AdminContext) -> None:
                 if not entries:
                     ui.label("No memories.")
                     return
+                entries.sort(key=lambda e: e.get("created_at", ""), reverse=True)
                 for entry in entries:
                     _render_memory(entry)
 
