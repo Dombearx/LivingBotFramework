@@ -148,11 +148,13 @@ class MemoryStore:
                     "path": str(data_path),
                 },
             },
+            # reasoning_effort is deliberately absent: mem0 only forwards it for
+            # models its _is_reasoning_model() recognises, and that check
+            # excludes the gpt-5.x family, so setting it here does nothing.
             "llm": {
                 "provider": "openai",
                 "config": {
-                    "model": "gpt-5.4-nano",
-                    "reasoning_effort": "low",
+                    "model": "openai/gpt-5.6-luna",
                 },
             },
             "embedder": {
