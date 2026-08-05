@@ -26,41 +26,36 @@ def _joined_memory_texts(memories: list[dict]) -> str:
     return " ".join(memory["memory"] for memory in memories)
 
 
-async def test_bot_opinion_is_attributed_to_the_persona_not_generic_assistant(
+async def test_bot_routine_is_attributed_to_the_persona_not_generic_assistant(
     tmp_path,
 ) -> None:
-    """A personal opinion Mugda shares about herself is remembered and
-    attributed to her by name, not stored as a generic "Assistant" fact."""
+    """A routine of her own that Mugda mentions is remembered and attributed to
+    her by name, not stored as a generic "Assistant" fact. It is a habit rather
+    than a taste because settled tastes belong to record_preference, not here."""
     store = MemoryStore.create(tmp_path)
     conversation = [
         {
             "role": "user",
-            "content": (
-                "[id:1] [2026-07-27 10:00:00] Kuba: jaki model językowy jest "
-                "twoim ulubionym?"
-            ),
+            "content": "[id:1] [2026-07-27 10:00:00] Kuba: co robisz w czwartki?",
         },
         {
             "role": "assistant",
             "content": (
-                "Zdecydowanie GPT-4o - działa bez zbędnego dramatu i szybko "
-                "ogarnia zadania, to model który wybieram najczęściej."
+                "w czwartki mam wspinaczkę na Bemowie, chodzę tam co tydzień od marca"
             ),
         },
     ]
 
-    await store.store(conversation, user_ids=["test-bot-opinion-user"])
-    memories = await store.all("test-bot-opinion-user") + await store.all(
-        GLOBAL_USER_ID
-    )
+    await store.store(conversation, user_ids=["test-bot-routine-user"])
+    memories = await store.all(GLOBAL_USER_ID)
 
-    assert memories, "Expected her opinion to be remembered in one of the banks"
+    assert memories, "Expected her routine to be remembered in the global bank"
     joined = _joined_memory_texts(memories)
     assert not re.search(r"\bassistant\b", joined, re.IGNORECASE), (
         f"Expected no generic 'Assistant' attribution, got memories: {memories}"
     )
     assert re.search(rf"\b{PERSONA_NAME}\b", joined, re.IGNORECASE), (
-        f"Expected the opinion attributed to {PERSONA_NAME} by name, "
+        f"Expected the routine attributed to {PERSONA_NAME} by name, "
         f"got memories: {memories}"
     )
 
