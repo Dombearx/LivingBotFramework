@@ -354,35 +354,18 @@ async def test_she_does_not_close_on_a_punchline_by_default() -> None:
     )
 
 
-# The same experiment as the joke one, on a shape nothing in the prompt bars: ending by
-# turning a question back on him. Its rate survives the per-message rules, so this is
-# what still has headroom to show suppression once closing jokes are gone.
-_QUESTION_HISTORY_TURNS = (
-    ("jack", "kupiłem sobie wczoraj nowe buty do biegania"),
-    ("mugda", "o, dobre buty to naprawdę podstawa"),
-    ("jack", "no i od razu poszedłem na 5 km"),
-    ("mugda", "5 km na pierwszy raz w nowych to sporo"),
-    ("jack", "trochę mnie potem bolały łydki"),
-    ("mugda", "łydki zawsze dają znać przy nowych butach"),
-    ("jack", "myślisz że warto iść jutro znowu?"),
-    ("mugda", "jutro spokojnie, dzień przerwy jeszcze nikomu nie zaszkodził"),
-)
-
+# The same experiment as the joke one, on the same conversation, measuring a shape
+# nothing in the prompt bars: ending by turning a question back on him. Its rate
+# survives the per-message rules, so this is what still has headroom to show
+# suppression once closing jokes are gone. It rides on the banter conversation because
+# that is where she demonstrably ends on questions unprompted — on a quieter exchange
+# the control produced too few to measure against.
 _PLANTED_QUESTIONS = {
-    1: " a jakie w końcu wziąłeś?",
-    3: " nie za dużo tego na pierwszy raz?",
-    5: " długo cię to ciągnęło?",
-    7: " co ci mówi głowa, chce się jutro czy nie?",
+    1: " a ty w czym stałeś, w tych korkach na obwodnicy?",
+    3: " robisz w ogóle nogi czy tylko górę?",
+    5: " a ty jadłeś dzisiaj coś normalnego?",
+    7: " masz w domu jajka albo twaróg?",
 }
-
-RUNNING_MESSAGE = (
-    "w sumie myślę żeby zapisać się jesienią na jakieś zawody na 10 km, nigdy "
-    "wcześniej nie startowałem"
-)
-
-
-def _statement_ending_history() -> list[str]:
-    return _history(*_QUESTION_HISTORY_TURNS)
 
 
 def _question_ending_history() -> list[str]:
@@ -390,7 +373,7 @@ def _question_ending_history() -> list[str]:
         (speaker, text + _PLANTED_QUESTIONS[index])
         if index in _PLANTED_QUESTIONS
         else (speaker, text)
-        for index, (speaker, text) in enumerate(_QUESTION_HISTORY_TURNS)
+        for index, (speaker, text) in enumerate(_JOKE_HISTORY_TURNS)
     ]
     return _history(*turns)
 
@@ -398,7 +381,7 @@ def _question_ending_history() -> list[str]:
 async def _question_endings(history: list[str]) -> tuple[int, list[str]]:
     responses = await asyncio.gather(
         *(
-            _reply(RUNNING_MESSAGE, history, attitude=CLOSE_FRIEND_ATTITUDE)
+            _reply(BANTER_MESSAGE, history, attitude=CLOSE_FRIEND_ATTITUDE)
             for _ in range(SAMPLES_PER_CONDITION)
         )
     )
@@ -409,9 +392,7 @@ async def test_repetitive_question_endings_in_her_history_suppress_another_quest
     None
 ):
     """Seeing her own last four replies all hand the conversation back as a question must make the next one less likely to."""
-    control_questions, control_responses = await _question_endings(
-        _statement_ending_history()
-    )
+    control_questions, control_responses = await _question_endings(_control_history())
     repetitive_questions, repetitive_responses = await _question_endings(
         _question_ending_history()
     )
