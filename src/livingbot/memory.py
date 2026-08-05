@@ -45,16 +45,29 @@ _ATTRIBUTION_INSTRUCTIONS = (
 # casual chat as prime material, which on a Discord server fills the store with
 # greetings, banter and one-off jokes. These instructions raise the bar back to
 # durable facts; mem0 gives custom instructions "highest priority", so they win
-# over the base prompt's bias. The rejection rules lead and are phrased as an
-# override because a first pass that merely listed them alongside the keep rules
-# still let "Mugda reacted to Kuba's plan by wishing him luck" through.
+# over the base prompt's bias. The keep list leads and is marked as mandatory
+# because leading with the rejections instead made the extractor discard even
+# plain "I love dark chocolate"; the rejections carry the override marker so
+# they still beat the base prompt, which otherwise yields entries like
+# "Mugda reacted to Kuba's plan by wishing him luck".
 _RELEVANCE_INSTRUCTIONS = (
-    "OVERRIDE — these rules beat every instruction above them, including the "
-    "guidance to extract when in doubt and the claim that casual chat is "
-    "valuable. This is a Discord server where most messages are small talk "
-    "that must produce nothing. An empty list is the normal, expected result.\n"
-    "Reject, always:\n"
-    "- greetings, goodbyes, reactions, filler, and any purely social message\n"
+    "Extract facts of lasting value, and only those. Capture every one of these "
+    "whenever it appears — none of them may be dropped:\n"
+    "- who someone is and their stable circumstances: work, studies, where "
+    "they live, family, pets, health\n"
+    "- lasting preferences, tastes and strong opinions, including food, drink, "
+    "music, games and anything else someone says they love or hate\n"
+    "- who to ask about what, even when that person is not in the "
+    'conversation (e.g. "for anything about the Minecraft server, ask '
+    'Weronika")\n'
+    "- standing instructions about how to behave towards someone\n"
+    "- ongoing projects and plans with their dates\n"
+    "- promises made and things someone is waiting for\n"
+    "- significant events in someone's life\n"
+    "OVERRIDE — the rules below beat every instruction above them, including "
+    "the guidance to extract when in doubt and the claim that casual chat is "
+    "valuable. Never extract:\n"
+    "- greetings, goodbyes, reactions and filler\n"
     "- jokes, banter, teasing, sarcasm, memes and wordplay\n"
     "- any statement describing the exchange itself — anything shaped like "
     f'"X said/asked/replied/reacted/joked/wished...", and in particular every '
@@ -62,18 +75,7 @@ _RELEVANCE_INSTRUCTIONS = (
     "- what someone is doing right now or in the next few minutes, and "
     "momentary moods\n"
     "- how something was phrased, which emoji, slang or spelling was used\n"
-    "Keep only what would still be worth knowing a month from now:\n"
-    "- who someone is and their stable circumstances: work, studies, where "
-    "they live, family, pets, health\n"
-    "- lasting preferences, tastes and strong opinions\n"
-    "- who to ask about what, even when that person is not in the "
-    'conversation (e.g. "for anything about the Minecraft server, ask '
-    'Weronika") — this is high-value and must never be dropped\n'
-    "- standing instructions about how to behave towards someone\n"
-    "- ongoing projects and plans with their dates\n"
-    "- promises made and things someone is waiting for\n"
-    "- significant events in someone's life\n"
-    "One solid fact beats five weak ones."
+    "A message carrying nothing from the first list yields no memory at all."
 )
 
 # The per-user banks and the shared global bank are written by separate

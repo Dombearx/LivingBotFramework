@@ -123,9 +123,12 @@ async def test_standing_instruction_about_who_to_ask_is_remembered(tmp_path) -> 
     )
 
 
-async def test_small_talk_produces_no_memories(tmp_path) -> None:
-    """A greeting and a throwaway joke carry nothing worth remembering weeks
-    later, so nothing should be stored at all."""
+async def test_only_the_durable_fact_survives_a_chat_full_of_small_talk(
+    tmp_path,
+) -> None:
+    """Greetings and jokes carry nothing worth remembering, but the move buried
+    among them does. The real fact has to be there — otherwise this passes just
+    because extraction returned nothing at all."""
     store = MemoryStore.create(tmp_path)
     conversation = [
         {
@@ -136,22 +139,27 @@ async def test_small_talk_produces_no_memories(tmp_path) -> None:
         {
             "role": "user",
             "content": (
-                "[id:5] [2026-07-27 12:01:00] Kuba: haha klasyk, chyba pójdę "
-                "poudawać że pracuję"
+                "[id:5] [2026-07-27 12:01:00] Kuba: haha klasyk. a tak w ogóle "
+                "w październiku przeprowadzam się do Gdańska"
             ),
         },
-        {"role": "assistant", "content": "powodzenia w tym udawaniu 😄"},
+        {"role": "assistant", "content": "o kurde, serio? 😄"},
     ]
 
     await store.store(conversation, user_ids=["test-small-talk-user"])
     memories = await store.all("test-small-talk-user")
 
-    assert memories == [], f"Expected no memories from small talk, got: {memories}"
+    assert memories, "Expected the move to be remembered"
+    assert all(
+        re.search(r"gdańsk|przeprowadz", memory["memory"], re.IGNORECASE)
+        for memory in memories
+    ), f"Expected nothing but the move to be stored, got: {memories}"
 
 
 async def test_personal_fact_stays_out_of_the_global_bank(tmp_path) -> None:
     """The global bank is read back in conversations with everyone, so a fact
-    that only concerns one person must not be copied into it."""
+    that only concerns one person must not be copied into it — while still
+    landing in that person's own bank, which also proves extraction ran."""
     store = MemoryStore.create(tmp_path)
     conversation = [
         {
@@ -165,9 +173,12 @@ async def test_personal_fact_stays_out_of_the_global_bank(tmp_path) -> None:
     ]
 
     await store.store(conversation, user_ids=["test-no-leak-user"])
-    memories = await store.all(GLOBAL_USER_ID)
+    personal = await store.all("test-no-leak-user")
+    global_bank = await store.all(GLOBAL_USER_ID)
 
-    joined = _joined_memory_texts(memories)
-    assert not re.search(r"fizjoterapeut", joined, re.IGNORECASE), (
-        f"Expected Kuba's new job to stay out of the global bank, got: {memories}"
+    assert re.search(r"fizjoterapeut", _joined_memory_texts(personal), re.IGNORECASE), (
+        f"Expected Kuba's new job in his own bank, got: {personal}"
     )
+    assert not re.search(
+        r"fizjoterapeut", _joined_memory_texts(global_bank), re.IGNORECASE
+    ), f"Expected Kuba's new job to stay out of the global bank, got: {global_bank}"
