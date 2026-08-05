@@ -7,6 +7,7 @@ Run on demand: uv run pytest tests/integration/test_attitude_tone.py
 Requires OPENROUTER_API_KEY in the environment.
 """
 
+import asyncio
 import os
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -47,6 +48,9 @@ SOMETHING_TO_REACT_TO = (
 )
 
 _JUDGE_MODEL = "openai/gpt-5.4-mini"
+
+# Enough replies to tell "sometimes" from "every time" without paying for many more.
+_PUNCHLINE_SAMPLES = 3
 
 
 class _ToneVerdict(BaseModel):
@@ -188,8 +192,8 @@ async def test_default_attitude_reply_is_ordinary_rather_than_sarcastic() -> Non
     )
 
 
-async def test_default_attitude_reply_does_not_end_on_a_punchline() -> None:
-    """At attitude 4, a mundane question should not be answered with a joke ending."""
+async def test_default_attitude_reply_does_not_end_on_a_banned_move() -> None:
+    """The four moves named in the prompt are barred outright, not merely rationed."""
     message = "Stoisz i patrzysz na to pranie?"
 
     response = await _get_response(message, attitude=4.0)
@@ -198,18 +202,50 @@ async def test_default_attitude_reply_does_not_end_on_a_punchline() -> None:
         message,
         response,
         rubric=(
-            "The response ends on the actual answer rather than on a joke. "
-            "In particular its closing sentence is NOT any of: an ordinary thing "
-            "inflated into something grand or dramatic (laundry described as cinema, "
-            "an epic battle, a performance), a dig at the person, a 'nie X, tylko Y' "
-            "self-correction, or a mock title for the person (e.g. 'kierowniku'). "
-            "A plain, slightly dry ending counts as matching the rubric."
+            "The response does NOT close on any of these four moves: an ordinary "
+            "thing inflated into something grand or dramatic (laundry as cinema, an "
+            "epic battle, a performance), a dig at the person it is addressed to, a "
+            "'nie X, tylko Y' self-correction, or a mock title for that person (e.g. "
+            "'kierowniku'). Any other ending matches the rubric, including a light "
+            "joke — only those four are barred."
         ),
     )
     assert verdict.matches, (
-        f"Expected a reply that does not close on a punchline at attitude=4 but "
-        f"judge disagreed.\nResponse: {response!r}\nReasoning: {verdict.reasoning}"
+        f"Expected no banned closing move at attitude=4 but judge disagreed.\n"
+        f"Response: {response!r}\nReasoning: {verdict.reasoning}"
     )
+
+
+async def test_default_attitude_replies_do_not_all_end_on_a_joke() -> None:
+    """The prompt rations closing jokes rather than banning them, so what matters is
+    how often she reaches for one — which a single reply cannot show."""
+    message = "Stoisz i patrzysz na to pranie?"
+
+    endings = await asyncio.gather(
+        *(_ends_on_a_joke(message, attitude=4.0) for _ in range(_PUNCHLINE_SAMPLES))
+    )
+
+    plain = [response for ends_on_joke, response in endings if not ends_on_joke]
+    assert plain, (
+        f"Expected at least one of {_PUNCHLINE_SAMPLES} replies to end plainly, but "
+        "every one closed on a joke.\n"
+        + "\n".join(f"  {response!r}" for _, response in endings)
+    )
+
+
+async def _ends_on_a_joke(message: str, attitude: float) -> tuple[bool, str]:
+    response = await _get_response(message, attitude=attitude)
+    verdict = await _judge(
+        message,
+        response,
+        rubric=(
+            "The response closes on a joke — a punchline, a comic image, a wry "
+            "flourish or an object described as if it had a will of its own. "
+            "Set matches=true if the ending is a joke of any kind, and false if it "
+            "simply ends on what she had to say."
+        ),
+    )
+    return verdict.matches, response
 
 
 async def test_default_attitude_answers_a_sincere_question_straight() -> None:
