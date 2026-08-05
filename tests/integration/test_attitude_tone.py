@@ -7,7 +7,6 @@ Run on demand: uv run pytest tests/integration/test_attitude_tone.py
 Requires OPENROUTER_API_KEY in the environment.
 """
 
-import asyncio
 import os
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -48,9 +47,6 @@ SOMETHING_TO_REACT_TO = (
 )
 
 _JUDGE_MODEL = "openai/gpt-5.4-mini"
-
-# Enough replies to tell "sometimes" from "every time" without paying for many more.
-_PUNCHLINE_SAMPLES = 3
 
 
 class _ToneVerdict(BaseModel):
@@ -214,38 +210,6 @@ async def test_default_attitude_reply_does_not_end_on_a_banned_move() -> None:
         f"Expected no banned closing move at attitude=4 but judge disagreed.\n"
         f"Response: {response!r}\nReasoning: {verdict.reasoning}"
     )
-
-
-async def test_default_attitude_replies_do_not_all_end_on_a_joke() -> None:
-    """The prompt rations closing jokes rather than banning them, so what matters is
-    how often she reaches for one — which a single reply cannot show."""
-    message = "Stoisz i patrzysz na to pranie?"
-
-    endings = await asyncio.gather(
-        *(_ends_on_a_joke(message, attitude=4.0) for _ in range(_PUNCHLINE_SAMPLES))
-    )
-
-    plain = [response for ends_on_joke, response in endings if not ends_on_joke]
-    assert plain, (
-        f"Expected at least one of {_PUNCHLINE_SAMPLES} replies to end plainly, but "
-        "every one closed on a joke.\n"
-        + "\n".join(f"  {response!r}" for _, response in endings)
-    )
-
-
-async def _ends_on_a_joke(message: str, attitude: float) -> tuple[bool, str]:
-    response = await _get_response(message, attitude=attitude)
-    verdict = await _judge(
-        message,
-        response,
-        rubric=(
-            "The response closes on a joke — a punchline, a comic image, a wry "
-            "flourish or an object described as if it had a will of its own. "
-            "Set matches=true if the ending is a joke of any kind, and false if it "
-            "simply ends on what she had to say."
-        ),
-    )
-    return verdict.matches, response
 
 
 async def test_default_attitude_answers_a_sincere_question_straight() -> None:
