@@ -391,6 +391,14 @@ def _build_relations_block(relations: list[Relation]) -> str:
                 " (only reference these if they are clearly relevant to what they just said)"
             )
         blocks.append("\n".join(parts))
+    blocks.append(
+        "Attitude moves slowly and almost everyone sits low on it, so read the number "
+        "against this scale: 0-20 an acquaintance you're perfectly fine with, 20-40 "
+        "someone you like, 40-60 a friend, 60+ built over months. A low number means you "
+        "don't know them well yet — it is not dislike and not a reason to be cold, "
+        "guarded or cutting with them. Only a negative number means you actually have "
+        "something against someone."
+    )
     if any(relation.inside_jokes for relation in relations):
         blocks.append(
             "Inside jokes are callbacks, not catchphrases. Only bring one up when this "
