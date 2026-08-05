@@ -50,8 +50,8 @@ STORY_AVOID_RECENT_LIMIT = 20
 # How many prior channel messages to automatically pull in as context each
 # time she responds, so replies don't come out of nowhere.
 CHANNEL_HISTORY_LIMIT = 20
-# How many of her own recent messages are repeated back to her on their own, so a
-# habit forming across them is visible instead of scattered through the channel.
+# How many of her own recent messages the reply-shape labeller reads when deciding
+# whether they have all started ending the same way.
 RECENT_OWN_MESSAGE_LIMIT = 4
 # How many messages she sends between reminders of the server's custom emoji.
 # Listing them every time would push her into using them constantly.

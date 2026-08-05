@@ -30,14 +30,16 @@ in opposite directions:
   rewrite in place. Working, it drains the joke experiment of headroom — no closing
   jokes in the control means no suppression to observe — so that one is expected to
   skip, and stays as the check a regression would light up;
-- her own recent messages are repeated back to her in a block of their own, on the
+- her own recent messages were repeated back to her in a block of their own, on the
   theory that a habit scattered through twenty interleaved channel lines is not
-  visible as one. Measured (run 31033165326), that alone did nothing: 3/5 question
-  endings against a control of 3/5, an exact tie with headroom to spare;
-- so a labeller now does the noticing for her. `ReplyShapeLabeller` reads her own last
-  messages and names what they share, and the prompt states that conclusion outright
-  instead of hoping she infers it. `_reply` below runs it exactly as the bot does, so
-  these experiments measure the whole mechanism rather than the prompt alone.
+  visible as one. Measured (run 31033165326), that did nothing: 3/5 question endings
+  against a control of 3/5, an exact tie with headroom to spare. It has since been
+  removed — it bought no behaviour and put four of her lines directly before the new
+  message, where they read as things she had just said;
+- so a labeller does the noticing for her instead. `ReplyShapeLabeller` reads her own
+  last messages and names what they share, and the prompt states that conclusion
+  outright rather than hoping she infers it. `_reply` below runs it exactly as the bot
+  does, so these experiments measure the whole mechanism rather than the prompt alone.
 
 Run on demand: uv run pytest tests/integration/test_reply_variety.py
 Requires OPENROUTER_API_KEY in the environment.
