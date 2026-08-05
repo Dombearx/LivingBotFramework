@@ -54,15 +54,16 @@ class _ToneVerdict(BaseModel):
     matches: bool
 
 
-async def _judge(response: str, rubric: str) -> _ToneVerdict:
+async def _judge(incoming: str, response: str, rubric: str) -> _ToneVerdict:
     agent: Agent[None, _ToneVerdict] = Agent(
         llm_config.build_chat_model(_JUDGE_MODEL), output_type=_ToneVerdict
     )
     result = await agent.run(
         "You are evaluating a Discord chat response written in Polish by a young "
         "woman named Mugda.\n\n"
+        f"The message she was replying to:\n{incoming}\n\n"
         f"Rubric — what the response SHOULD feel like:\n{rubric}\n\n"
-        f"Response to evaluate:\n{response}\n\n"
+        f"Her response, the thing you are judging:\n{response}\n\n"
         "Set matches=true if the response clearly fits the rubric, false if it "
         "clearly contradicts it."
     )
@@ -70,14 +71,15 @@ async def _judge(response: str, rubric: str) -> _ToneVerdict:
 
 
 async def _compare(
-    label_a: str, reply_a: str, label_b: str, reply_b: str, question: str
+    incoming: str, label_a: str, reply_a: str, label_b: str, reply_b: str, question: str
 ) -> _ToneVerdict:
     agent: Agent[None, _ToneVerdict] = Agent(
         llm_config.build_chat_model(_JUDGE_MODEL), output_type=_ToneVerdict
     )
     result = await agent.run(
         "You are comparing two Discord replies written in Polish by the same person "
-        "to two different people. Both were written to the same incoming message.\n\n"
+        "to two different people. Both are replies to this same message:\n"
+        f"{incoming}\n\n"
         f"{label_a}:\n{reply_a}\n\n"
         f"{label_b}:\n{reply_b}\n\n"
         f"{question}"
@@ -170,6 +172,7 @@ async def test_default_attitude_reply_is_ordinary_rather_than_sarcastic() -> Non
     response = await _get_response(message, attitude=4.0)
 
     verdict = await _judge(
+        message,
         response,
         rubric=(
             "The response is relaxed and ordinary — the way you'd answer someone you "
@@ -192,6 +195,7 @@ async def test_default_attitude_reply_does_not_end_on_a_punchline() -> None:
     response = await _get_response(message, attitude=4.0)
 
     verdict = await _judge(
+        message,
         response,
         rubric=(
             "The response ends on the actual answer rather than on a joke. "
@@ -215,6 +219,7 @@ async def test_default_attitude_answers_a_sincere_question_straight() -> None:
     response = await _get_response(message, attitude=4.0)
 
     verdict = await _judge(
+        message,
         response,
         rubric=(
             "The person asked something sincere and slightly vulnerable. Mugda "
@@ -235,6 +240,7 @@ async def test_hostile_attitude_reply_is_curt_and_unfriendly() -> None:
     response = await _get_response(SOMETHING_TO_REACT_TO, attitude=-60.0)
 
     verdict = await _judge(
+        SOMETHING_TO_REACT_TO,
         response,
         rubric=(
             "The response is cold, curt and unwelcoming. Mugda gives this person "
@@ -254,6 +260,7 @@ async def test_hostile_attitude_reply_does_not_ask_the_person_anything_back() ->
     response = await _get_response(SOMETHING_TO_REACT_TO, attitude=-60.0)
 
     verdict = await _judge(
+        SOMETHING_TO_REACT_TO,
         response,
         rubric=(
             "The response does NOT turn a question back on the other person — no "
@@ -273,6 +280,7 @@ async def test_close_friend_attitude_reply_is_warm_and_open() -> None:
     response = await _get_response(SOMETHING_TO_REACT_TO, attitude=75.0)
 
     verdict = await _judge(
+        SOMETHING_TO_REACT_TO,
         response,
         rubric=(
             "The response is warm and engaged. Mugda reacts to what this person "
@@ -293,6 +301,7 @@ async def test_friend_attitude_reply_is_warmer_than_the_newcomer_band() -> None:
     friend_response = await _get_response(SOMETHING_TO_REACT_TO, attitude=45.0)
 
     verdict = await _compare(
+        SOMETHING_TO_REACT_TO,
         "Reply A (to someone she barely knows)",
         newcomer_response,
         "Reply B (to a real friend of hers)",
@@ -320,6 +329,7 @@ async def test_same_message_gets_warmer_reply_at_high_attitude_than_at_hostile()
     friendly_response = await _get_response(SOMETHING_TO_REACT_TO, attitude=75.0)
 
     verdict = await _compare(
+        SOMETHING_TO_REACT_TO,
         "Reply A (to someone she dislikes)",
         hostile_response,
         "Reply B (to a close friend)",
