@@ -327,9 +327,11 @@ async def _joke_endings(history: list[str]) -> tuple[int, list[str]]:
 
 
 @pytest.mark.xfail(
-    reason="She does not vary the shape of an ending she can see herself repeating; "
-    "see issue #76. Not strict: the measurement is stochastic, so a run that comes "
-    "out the other way should not fail the group.",
+    reason="Kept non-strict because this one is expected to skip, not run: the "
+    "per-message rules leave too few closing jokes in the control to measure against. "
+    "The mechanism it was written for is measured on question endings instead. If the "
+    "jokes ever come back the headroom returns with them, and then this either passes "
+    "or shows the suppression failing.",
     strict=False,
 )
 async def test_repetitive_joke_endings_in_her_history_suppress_another_joke_ending() -> (
