@@ -45,43 +45,56 @@ _ATTRIBUTION_INSTRUCTIONS = (
 # casual chat as prime material, which on a Discord server fills the store with
 # greetings, banter and one-off jokes. These instructions raise the bar back to
 # durable facts; mem0 gives custom instructions "highest priority", so they win
-# over the base prompt's bias.
+# over the base prompt's bias. The rejection rules lead and are phrased as an
+# override because a first pass that merely listed them alongside the keep rules
+# still let "Mugda reacted to Kuba's plan by wishing him luck" through.
 _RELEVANCE_INSTRUCTIONS = (
-    "Extract only information that will still be useful weeks from now. "
-    "Worth remembering: who someone is and their stable circumstances (work, "
-    "studies, where they live, family, pets, health); lasting preferences, "
-    "tastes and strong opinions; relationships between people and who is the "
-    'person to ask about what (e.g. "for anything about the server setup, ask '
-    'Kuba"); standing instructions about how to behave towards someone; '
-    "ongoing projects and plans, with their dates; promises made and things "
-    "someone is waiting for; and significant events in someone's life. "
-    "Never extract: greetings, goodbyes and other phatic messages; jokes, "
-    "banter, memes, teasing and wordplay; how someone phrased something or "
-    "which emoji they used; momentary states and moods; what the conversation "
-    "is currently about; or facts about the exchange itself (e.g. "
-    f'"{PERSONA_NAME} greeted Kuba", "Kuba made a joke about cats"). '
-    "Most casual chat contains nothing worth keeping — returning an empty "
-    "list is the normal outcome, and one solid fact beats five weak ones. "
-    "This overrides any instruction above to extract when in doubt."
+    "OVERRIDE — these rules beat every instruction above them, including the "
+    "guidance to extract when in doubt and the claim that casual chat is "
+    "valuable. This is a Discord server where most messages are small talk "
+    "that must produce nothing. An empty list is the normal, expected result.\n"
+    "Reject, always:\n"
+    "- greetings, goodbyes, reactions, filler, and any purely social message\n"
+    "- jokes, banter, teasing, sarcasm, memes and wordplay\n"
+    "- any statement describing the exchange itself — anything shaped like "
+    f'"X said/asked/replied/reacted/joked/wished...", and in particular every '
+    f"sentence about what {PERSONA_NAME} said or how she reacted\n"
+    "- what someone is doing right now or in the next few minutes, and "
+    "momentary moods\n"
+    "- how something was phrased, which emoji, slang or spelling was used\n"
+    "Keep only what would still be worth knowing a month from now:\n"
+    "- who someone is and their stable circumstances: work, studies, where "
+    "they live, family, pets, health\n"
+    "- lasting preferences, tastes and strong opinions\n"
+    "- who to ask about what, even when that person is not in the "
+    'conversation (e.g. "for anything about the Minecraft server, ask '
+    'Weronika") — this is high-value and must never be dropped\n'
+    "- standing instructions about how to behave towards someone\n"
+    "- ongoing projects and plans with their dates\n"
+    "- promises made and things someone is waiting for\n"
+    "- significant events in someone's life\n"
+    "One solid fact beats five weak ones."
 )
 
 # The per-user banks and the shared global bank are written by separate
 # extraction passes over the same conversation, each told which facts belong to
 # it, so the global bank holds what stays true no matter who is talking.
 _PERSONAL_MEMORY_INSTRUCTIONS = (
-    f"{_ATTRIBUTION_INSTRUCTIONS} {_RELEVANCE_INSTRUCTIONS} "
-    "This memory bank belongs to the people taking part in this conversation. "
-    "Extract only facts about them: their lives, their preferences, their "
-    f"plans, and what {PERSONA_NAME} has agreed or promised them."
+    f"{_ATTRIBUTION_INSTRUCTIONS}\n{_RELEVANCE_INSTRUCTIONS}\n"
+    "SCOPE — this bank is read back whenever {name} talks with the people in "
+    "this conversation. Keep facts about them, and anything they told {name} "
+    "that she will need later, including pointers to people outside the "
+    "conversation. Leave out facts about {name} herself.".format(name=PERSONA_NAME)
 )
 
 _GLOBAL_MEMORY_INSTRUCTIONS = (
-    f"{_ATTRIBUTION_INSTRUCTIONS} {_RELEVANCE_INSTRUCTIONS} "
-    "This is the shared memory bank, read back during conversations with "
-    "everyone. Extract only facts that are not about one particular "
-    f"participant: facts about {PERSONA_NAME} herself, about the server and "
-    "the group as a whole, and about the world that came up in the "
-    "conversation. Skip anything that only matters to the person who said it."
+    f"{_ATTRIBUTION_INSTRUCTIONS}\n{_RELEVANCE_INSTRUCTIONS}\n"
+    "SCOPE — this bank is read back in conversations with everyone on the "
+    "server, so it holds only what is true regardless of who is talking: "
+    "facts about {name} herself, about the server and the group as a whole, "
+    "and about the world. Reject every fact whose subject is one of the "
+    "humans in this conversation — their jobs, homes, tastes and plans belong "
+    "to their own banks, and repeating them here is an error.".format(name=PERSONA_NAME)
 )
 
 
@@ -102,6 +115,10 @@ class MemoryStore:
         data_path.mkdir(parents=True, exist_ok=True)
         config = {
             "custom_instructions": _PERSONAL_MEMORY_INSTRUCTIONS,
+            # mem0 defaults this to ~/.mem0/history.db, outside data_path — the
+            # extractor reads recent messages from it, so leaving it there ties
+            # extraction quality to a directory nothing else backs up or mounts.
+            "history_db_path": str(data_path / "history.db"),
             "vector_store": {
                 "provider": "chroma",
                 "config": {
