@@ -20,6 +20,7 @@ from livingbot.spending import SpendingStore
 from livingbot.stories import Story, StoryStore
 from livingbot.timeformat import humanize_ago
 from livingbot.tools import (
+    OWN_MESSAGE_MARKER,
     BotDeps,
     add_activity_note,
     add_commitment,
@@ -110,6 +111,7 @@ class LLMClient:
         images: list[BinaryContent] | None = None,
         waiting_since: datetime | None = None,
         history: list[str] | None = None,
+        shared_ending: str | None = None,
         commitments: list[Commitment] | None = None,
         trigger: str | None = None,
         server_emojis: list[str] | None = None,
@@ -162,6 +164,8 @@ class LLMClient:
             parts.append(_build_server_emojis_block(server_emojis))
         if history:
             parts.append(_build_history_block(history))
+        if shared_ending:
+            parts.append(_build_shared_ending_block(shared_ending))
         parts.append(
             trigger if trigger is not None else _build_new_messages_block(user_messages)
         )
@@ -437,6 +441,26 @@ def _build_history_block(history: list[str]) -> str:
         "coherent with what you already said — not as a style to copy. Don't recycle the "
         "wording, the emoji or the shape of your last message just because it is in "
         "front of you.\n\n"
+    )
+
+
+def _is_own_message(line: str) -> bool:
+    header = line.split(": ", 1)[0]
+    return header.endswith(OWN_MESSAGE_MARKER)
+
+
+def own_messages(history: list[str]) -> list[str]:
+    return [line for line in history if _is_own_message(line)][
+        -config.RECENT_OWN_MESSAGE_LIMIT :
+    ]
+
+
+def _build_shared_ending_block(shared_ending: str) -> str:
+    return (
+        f"Every one of your last few messages ends the same way: {shared_ending}. That "
+        "is a habit now, and one more would make it your voice rather than a thing you "
+        "happened to do. This reply ends some other way — finish on the plain thing you "
+        "meant, or on whatever this particular message actually calls for.\n\n"
     )
 
 

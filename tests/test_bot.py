@@ -164,6 +164,12 @@ def make_commitment_timing_judge() -> MagicMock:
     return judge
 
 
+def make_reply_shape_labeller() -> MagicMock:
+    labeller = MagicMock()
+    labeller.label = AsyncMock(return_value=None)
+    return labeller
+
+
 def make_scheduled_post_store(posts: ScheduledPosts | None = None) -> MagicMock:
     store = MagicMock()
     store.load = MagicMock(return_value=posts or ScheduledPosts())
@@ -189,6 +195,7 @@ def make_bot(
     photo_cooldown_store: MagicMock | None = None,
     commitment_store: MagicMock | None = None,
     commitment_timing_judge: MagicMock | None = None,
+    reply_shape_labeller: MagicMock | None = None,
     scheduled_post_store: MagicMock | None = None,
 ) -> LivingBot:
     intents = discord.Intents.default()
@@ -212,6 +219,7 @@ def make_bot(
         commitment_store=commitment_store or make_commitment_store(),
         commitment_timing_judge=commitment_timing_judge
         or make_commitment_timing_judge(),
+        reply_shape_labeller=reply_shape_labeller or make_reply_shape_labeller(),
         scheduled_post_store=scheduled_post_store,
         intents=intents,
     )
@@ -588,6 +596,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         images=[],
         waiting_since=ANY,
         history=[],
+        shared_ending=None,
         commitments=[],
         directory=ANY,
     )

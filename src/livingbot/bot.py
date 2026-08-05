@@ -18,7 +18,8 @@ from livingbot.directory import Directory
 from livingbot.commitments import Commitment, CommitmentStatus, CommitmentStore
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryStore
-from livingbot.llm import LLMClient
+from livingbot.llm import LLMClient, own_messages
+from livingbot.reply_shapes import ReplyShapeLabeller
 from livingbot.memory import MemoryStore
 from livingbot.mood import (
     FATIGUE_MAX,
@@ -141,6 +142,7 @@ class LivingBot(discord.Client):
         photo_cooldown_store: PhotoCooldownStore,
         commitment_store: CommitmentStore,
         commitment_timing_judge: CommitmentTimingJudge,
+        reply_shape_labeller: ReplyShapeLabeller,
         spontaneous_store: SpontaneousStore | None = None,
         scheduled_post_store: ScheduledPostStore | None = None,
         **kwargs: Any,
@@ -170,6 +172,7 @@ class LivingBot(discord.Client):
         self._photo_cooldown_store = photo_cooldown_store
         self._commitment_store = commitment_store
         self._commitment_timing_judge = commitment_timing_judge
+        self._reply_shape_labeller = reply_shape_labeller
         self._spontaneous_store = spontaneous_store
         self._scheduled_post_store = scheduled_post_store
 
@@ -802,6 +805,10 @@ class LivingBot(discord.Client):
                     ]
                     span.set_attribute("memories", len(memories))
                     span.set_attribute("images", len(images))
+                    shared_ending = await self._reply_shape_labeller.label(
+                        own_messages(history)
+                    )
+                    span.set_attribute("shared_ending", shared_ending or "")
                     directory = self._directory()
                     result = await self._llm_client.complete(
                         formatted,
@@ -826,6 +833,7 @@ class LivingBot(discord.Client):
                             clock.to_local(m.created_at) for m in messages
                         ),
                         history=history,
+                        shared_ending=shared_ending,
                         commitments=commitments,
                         directory=directory,
                     )
@@ -992,6 +1000,7 @@ def build() -> LivingBot:
     photo_cooldown_store = PhotoCooldownStore(config.PHOTO_COOLDOWN_DATA_PATH)
     commitment_store = CommitmentStore(config.COMMITMENT_DATA_PATH)
     commitment_timing_judge = CommitmentTimingJudge.create()
+    reply_shape_labeller = ReplyShapeLabeller.create()
     spontaneous_store = SpontaneousStore(config.SPONTANEOUS_DATA_PATH)
     scheduled_post_store = ScheduledPostStore(config.SCHEDULED_POST_DATA_PATH)
     return LivingBot(
@@ -1012,6 +1021,7 @@ def build() -> LivingBot:
         photo_cooldown_store=photo_cooldown_store,
         commitment_store=commitment_store,
         commitment_timing_judge=commitment_timing_judge,
+        reply_shape_labeller=reply_shape_labeller,
         spontaneous_store=spontaneous_store,
         scheduled_post_store=scheduled_post_store,
         intents=intents,

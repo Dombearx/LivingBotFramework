@@ -15,7 +15,9 @@ from livingbot.llm import (
     _build_recent_block,
     _build_relations_block,
     _build_server_emojis_block,
+    _build_shared_ending_block,
     _build_stories_block,
+    own_messages,
 )
 from livingbot.relations import _ATTITUDE_BEHAVIOURS, Relation, attitude_behaviour
 from livingbot.stories import Story
@@ -284,3 +286,43 @@ def test_build_relations_block_omits_the_bands_a_user_does_not_fall_into() -> No
         if description != attitude_behaviour(4)
     ]
     assert not [description for description in unmatched if description in result]
+
+
+def test_build_shared_ending_block_names_the_ending_she_must_not_repeat() -> None:
+    block = _build_shared_ending_block("a joke after you have already made your point")
+
+    assert "a joke after you have already made your point" in block
+
+
+def test_own_messages_returns_only_her_lines_in_order() -> None:
+    lines = own_messages(
+        [
+            "[id:1] [2026-06-03 14:00:00] Kuba: hey",
+            "[id:2] [2026-06-03 14:01:00] Mugda (you): siema",
+            "[id:3] [2026-06-03 14:02:00] Ola: co tam",
+            "[id:4] [2026-06-03 14:03:00] Mugda (you): nic, leżę",
+        ]
+    )
+
+    assert lines == [
+        "[id:2] [2026-06-03 14:01:00] Mugda (you): siema",
+        "[id:4] [2026-06-03 14:03:00] Mugda (you): nic, leżę",
+    ]
+
+
+def test_own_messages_keeps_only_the_most_recent_ones() -> None:
+    history = [
+        f"[id:{i}] [2026-06-03 14:0{i}:00] Mugda (you): wiadomość {i}"
+        for i in range(config.RECENT_OWN_MESSAGE_LIMIT + 2)
+    ]
+
+    lines = own_messages(history)
+
+    assert len(lines) == config.RECENT_OWN_MESSAGE_LIMIT
+    assert "wiadomość 0" not in lines[0]
+
+
+def test_own_messages_does_not_mistake_a_quoted_marker_for_her_own_line() -> None:
+    lines = own_messages(["[id:1] [2026-06-03 14:00:00] Kuba: haha (you): nope"])
+
+    assert lines == []
