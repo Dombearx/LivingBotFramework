@@ -410,6 +410,32 @@ async def test_rest_and_respond_loops_until_random_favors_response(
     assert bot._resting is False
 
 
+@patch("livingbot.bot.clock")
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("random.uniform", return_value=5.0)
+@patch.object(
+    LivingBot,
+    "_attempt_response",
+    new_callable=AsyncMock,
+    side_effect=RuntimeError("the LLM fell over"),
+)
+async def test_rest_and_respond_when_attempt_raises_clears_resting(
+    mock_attempt: AsyncMock,
+    mock_uniform: MagicMock,
+    mock_sleep: AsyncMock,
+    mock_clock: MagicMock,
+) -> None:
+    """Nothing outside this task ever clears _resting, so leaving it set would
+    silence her permanently rather than for one failed attempt."""
+    mock_clock.now.return_value = STABLE_NOW
+    bot = make_bot()
+    bot._resting = True
+
+    await bot._rest_and_respond()
+
+    assert bot._resting is False
+
+
 @patch.object(LivingBot, "guilds", new_callable=PropertyMock)
 def test_onboarding_active_when_no_guilds_returns_false(
     mock_guilds: PropertyMock,
@@ -905,6 +931,27 @@ async def test_update_relations_includes_bot_response_in_conversation(
     contents = [turn["content"] for turn in conversation]
     assert roles[-1] == "assistant"
     assert contents[-1] == "my reply"
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_update_relations_when_a_relation_fails_swallows_the_error(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    """It runs as a detached task, so a raised error would surface only as a
+    'Task exception was never retrieved' warning at garbage-collection time."""
+    user = bot_user()
+    mock_user.return_value = user
+    relation_store = make_relation_store()
+    relation_updater = make_relation_updater()
+    relation_updater.update = AsyncMock(side_effect=RuntimeError("judge fell over"))
+    bot = make_bot(relation_store=relation_store, relation_updater=relation_updater)
+    msg = make_message(author=other_user(), mentions=[user])
+
+    await bot._update_relations([Relation(user_id="aaa")], [msg], "bot reply")
+
+    relation_store.save.assert_not_called()
 
 
 @patch("livingbot.bot.clock")
@@ -1411,6 +1458,25 @@ async def test_generate_week_story_adds_story_with_rendered_image_path(
 
 async def test_generate_week_story_when_generation_returns_none_adds_nothing() -> None:
     generator = make_story_generator()
+    story_store = make_story_store()
+    bot = make_bot(story_generator=generator, story_store=story_store)
+
+    await bot._generate_week_story(
+        Calendar(home_location="home"),
+        ["gym"],
+        date(2026, 6, 1),
+        datetime(2026, 6, 1),
+        [],
+    )
+
+    story_store.add.assert_not_awaited()
+
+
+async def test_generate_week_story_when_generator_raises_swallows_the_error() -> None:
+    """It runs as a detached task, so a raised error would surface only as a
+    'Task exception was never retrieved' warning at garbage-collection time."""
+    generator = make_story_generator()
+    generator.generate = AsyncMock(side_effect=RuntimeError("generator fell over"))
     story_store = make_story_store()
     bot = make_bot(story_generator=generator, story_store=story_store)
 
