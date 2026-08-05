@@ -6,6 +6,7 @@ from livingbot import clock
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
 from livingbot.bot import LivingBot
+from livingbot.hobbies import experience_progress
 
 
 def register(context: AdminContext) -> None:
@@ -89,7 +90,9 @@ def _hobbies_card(context: AdminContext) -> None:
         if not hobbies.entries:
             ui.label("None")
         for hobby in hobbies.entries:
-            ui.label(f"{hobby.name} — {hobby.level.value} ({hobby.experience} xp)")
+            ui.label(
+                f"{hobby.name} — {hobby.level.value} ({experience_progress(hobby)})"
+            )
 
 
 def _spending_card(context: AdminContext) -> None:

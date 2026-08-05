@@ -2,7 +2,7 @@ from nicegui import ui
 
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
-from livingbot.hobbies import Hobby, HobbyLevel
+from livingbot.hobbies import Hobby, HobbyLevel, experience_progress
 
 
 def register(context: AdminContext) -> None:
@@ -28,7 +28,7 @@ def register(context: AdminContext) -> None:
                         with ui.column().classes("gap-0"):
                             ui.label(hobby.name).classes("font-semibold")
                             ui.label(
-                                f"{hobby.level.value} · {hobby.experience} xp"
+                                f"{hobby.level.value} · {experience_progress(hobby)}"
                             ).classes("text-sm text-gray-500")
                         with ui.row():
                             ui.button(
