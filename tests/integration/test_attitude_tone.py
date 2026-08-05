@@ -189,7 +189,7 @@ async def test_default_attitude_reply_is_ordinary_rather_than_sarcastic() -> Non
 
 
 async def test_default_attitude_reply_does_not_end_on_a_banned_move() -> None:
-    """The four moves named in the prompt are barred outright, not merely rationed."""
+    """The five moves named in the prompt are barred outright, not merely rationed."""
     message = "Stoisz i patrzysz na to pranie?"
 
     response = await _get_response(message, attitude=4.0)
@@ -198,12 +198,14 @@ async def test_default_attitude_reply_does_not_end_on_a_banned_move() -> None:
         message,
         response,
         rubric=(
-            "The response does NOT close on any of these four moves: an ordinary "
+            "The response does NOT close on any of these five moves: an ordinary "
             "thing inflated into something grand or dramatic (laundry as cinema, an "
             "epic battle, a performance), a dig at the person it is addressed to, a "
-            "'nie X, tylko Y' self-correction, or a mock title for that person (e.g. "
-            "'kierowniku'). Any other ending matches the rubric, including a light "
-            "joke — only those four are barred."
+            "'nie X, tylko Y' self-correction, a mock title for that person (e.g. "
+            "'kierowniku'), or a wry general truth about how things always go used as "
+            "a capper ('najgorsze, że...'). Any other ending matches the rubric: a "
+            "plain sentence, an ordinary reaction, or a question put back to the "
+            "person — only those five endings are barred."
         ),
     )
     assert verdict.matches, (
