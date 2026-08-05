@@ -278,7 +278,8 @@ Rules:
     * anything the bot said, did, offered or suggested — this field is about the user;
     * a subject they merely talked about. That belongs in new_topics_of_interest.
   Worked example of that last trap: the user asks whether they should play a game
-  together and then says he does not feel like it after all. The correct output is null.
+  together and then says they do not feel like it after all. The correct output is
+  null.
   They did not play it, and writing that they did puts a false memory into her head that
   she will bring up later as if it were real. Max 200 characters.
 - new_topics_of_interest: subjects this user genuinely cares about, evidenced in this
