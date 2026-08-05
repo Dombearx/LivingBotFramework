@@ -37,6 +37,7 @@ from livingbot.tools import (
     show_story_image,
     take_photo,
 )
+from livingbot.directory import Directory
 from livingbot.stories import Story
 
 
@@ -729,6 +730,7 @@ def make_commitment_ctx(tmp_path) -> SimpleNamespace:
             story_store=make_story_store(),
             preference_store=MagicMock(),
             commitment_store=CommitmentStore(tmp_path / "commitments"),
+            directory=Directory({"42": "Kuba"}),
         )
     )
 
@@ -736,7 +738,7 @@ def make_commitment_ctx(tmp_path) -> SimpleNamespace:
 async def test_add_commitment_persists_promise_to_store(tmp_path) -> None:
     ctx = make_commitment_ctx(tmp_path)
 
-    await add_commitment(ctx, "42", "show a screenshot", "next time at her computer")
+    await add_commitment(ctx, "Kuba", "show a screenshot", "next time at her computer")
 
     saved = ctx.deps.commitment_store.load().entries[0]
     assert saved.user_id == "42"
@@ -747,7 +749,7 @@ async def test_add_commitment_persists_promise_to_store(tmp_path) -> None:
 async def test_add_commitment_stamps_channel_from_deps(tmp_path) -> None:
     ctx = make_commitment_ctx(tmp_path)
 
-    await add_commitment(ctx, "42", "show a screenshot", "soon")
+    await add_commitment(ctx, "Kuba", "show a screenshot", "soon")
 
     saved = ctx.deps.commitment_store.load().entries[0]
     assert saved.channel_id == 555
@@ -756,7 +758,7 @@ async def test_add_commitment_stamps_channel_from_deps(tmp_path) -> None:
 async def test_add_commitment_defaults_to_open_status(tmp_path) -> None:
     ctx = make_commitment_ctx(tmp_path)
 
-    await add_commitment(ctx, "42", "show a screenshot", "soon")
+    await add_commitment(ctx, "Kuba", "show a screenshot", "soon")
 
     saved = ctx.deps.commitment_store.load().entries[0]
     assert saved.status == "open"
@@ -765,15 +767,15 @@ async def test_add_commitment_defaults_to_open_status(tmp_path) -> None:
 async def test_add_commitment_returns_confirmation_with_id(tmp_path) -> None:
     ctx = make_commitment_ctx(tmp_path)
 
-    result = await add_commitment(ctx, "42", "show a screenshot", "soon")
+    result = await add_commitment(ctx, "Kuba", "show a screenshot", "soon")
 
     saved = ctx.deps.commitment_store.load().entries[0]
-    assert result == f"Noted [id:{saved.id}] promise to <@42>: show a screenshot."
+    assert result == f"Noted [id:{saved.id}] promise to Kuba: show a screenshot."
 
 
 async def test_resolve_commitment_when_present_marks_it_fulfilled(tmp_path) -> None:
     ctx = make_commitment_ctx(tmp_path)
-    await add_commitment(ctx, "42", "show a screenshot", "soon")
+    await add_commitment(ctx, "Kuba", "show a screenshot", "soon")
     commitment_id = ctx.deps.commitment_store.load().entries[0].id
 
     await resolve_commitment(ctx, commitment_id)
@@ -818,7 +820,7 @@ def make_link_message(
     msg.id = 42
     msg.created_at = datetime(2024, 6, 1, 8, 0, tzinfo=timezone.utc)
     msg.author.display_name = "Ola"
-    msg.content = content
+    msg.clean_content = content
     msg.embeds = embeds
     msg.attachments = attachments or []
     return msg
@@ -1028,3 +1030,37 @@ async def test_fetch_link_when_no_readable_text_returns_message(
     result = await fetch_link("https://example.com/empty")
 
     assert result == "Opened the link but there was no readable text on it."
+
+
+async def test_add_commitment_resolves_the_persons_name_to_their_user_id(
+    tmp_path,
+) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+
+    await add_commitment(ctx, "Kuba", "show a screenshot", "soon")
+
+    assert ctx.deps.commitment_store.load().entries[0].user_id == "42"
+
+
+async def test_add_commitment_for_an_unknown_person_records_nothing(tmp_path) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+
+    await add_commitment(ctx, "Zenon", "show a screenshot", "soon")
+
+    assert ctx.deps.commitment_store.load().entries == []
+
+
+async def test_add_commitment_for_an_unknown_person_says_so(tmp_path) -> None:
+    ctx = make_commitment_ctx(tmp_path)
+
+    result = await add_commitment(ctx, "Zenon", "show a screenshot", "soon")
+
+    assert result == "No one called Zenon is here, so there's nothing to record."
+
+
+def test_format_message_shows_a_mention_as_a_name_not_a_raw_id() -> None:
+    msg = make_link_message([], content="@Mugda idziesz?")
+
+    result = format_message(msg)
+
+    assert "@Mugda idziesz?" in result

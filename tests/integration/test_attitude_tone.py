@@ -21,6 +21,7 @@ from livingbot.calendar import Calendar
 from livingbot.commitments import Commitments
 from livingbot.hobbies import Hobby, Hobbies
 from livingbot.llm import LLMClient
+from livingbot.directory import Directory
 from livingbot.mood import Mood
 from livingbot.preferences import Preferences
 from livingbot.relations import Relation
@@ -32,6 +33,7 @@ pytestmark = pytest.mark.skipif(
 
 CHANNEL_ID = 1234
 USER_ID = "555"
+DIRECTORY = Directory({USER_ID: "Jack"})
 
 # Held steady across every test here so the only thing moving is attitude.
 NEUTRAL_MOOD = 55.0
@@ -132,6 +134,7 @@ async def _get_response(message: str, attitude: float) -> str:
         now,
         relations=[Relation(user_id=USER_ID, attitude=attitude)],
         mood=Mood(value=NEUTRAL_MOOD),
+        directory=DIRECTORY,
     )
     return result.output
 

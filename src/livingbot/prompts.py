@@ -109,7 +109,7 @@ SPONTANEOUS_TRIGGER_MESSAGE = (
     "- talk about what you're up to right now or one of your hobbies;\n"
     "- or pick ONE person from your relationships above and ask them a genuine question "
     "based on what you know about them — their interests, an inside joke, something you "
-    "remember. Write <@their id> using the id shown so they get pinged.\n"
+    "remember. Write @ and their name exactly as it is shown so they get pinged.\n"
     "Stay true to where you are and what you're doing right now, but let it come through "
     "in what you're actually saying rather than as an announcement — never open with a "
     "location or status label like 'At home, just back from the gym, ...' or 'W domu, "
@@ -119,7 +119,7 @@ SPONTANEOUS_TRIGGER_MESSAGE = (
 )
 
 
-def build_scheduled_post_trigger(topic: str, mention_user_id: str | None = None) -> str:
+def build_scheduled_post_trigger(topic: str, mention_name: str | None = None) -> str:
     trigger = (
         "Nobody has just messaged you here — you decided on your own that it's time to "
         f"post about something: {topic}. Write a single short, casual message about it, "
@@ -127,12 +127,11 @@ def build_scheduled_post_trigger(topic: str, mention_user_id: str | None = None)
         "you are and what you're doing right now, but let it come through naturally "
         "rather than as an announcement."
     )
-    if mention_user_id is not None:
+    if mention_name is not None:
         trigger += (
-            f" Direct the message at <@{mention_user_id}> — write <@{mention_user_id}> "
-            "using that id somewhere in your message so they get pinged, the way you "
-            "would when you're specifically calling someone out or asking them "
-            "something."
+            f" Direct the message at {mention_name} — write @{mention_name} somewhere "
+            "in your message so they get pinged, the way you would when you're "
+            "specifically calling someone out or asking them something."
         )
     return trigger
 

@@ -12,6 +12,7 @@ from nicegui.elements.mixins.value_element import ValueElement
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
 from livingbot.bot import LivingBot
+from livingbot.directory import Directory
 from livingbot.tools import (
     BotDeps,
     add_activity_note,
@@ -121,6 +122,7 @@ def register(context: AdminContext) -> None:
                     story_store=context.story_store,
                     preference_store=context.preference_store,
                     commitment_store=context.commitment_store,
+                    directory=Directory(context.discord_names()),
                 )
                 ctx = SimpleNamespace(deps=deps)
                 with result_area:

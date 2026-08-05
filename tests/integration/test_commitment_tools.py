@@ -17,6 +17,7 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
 from livingbot.commitments import CommitmentStore
+from livingbot.directory import Directory
 from livingbot.hobbies import HobbyStore
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient
@@ -31,6 +32,18 @@ pytestmark = pytest.mark.skipif(
 
 NOW = datetime(2026, 6, 3, 14, 30)
 CHANNEL_ID = 4242
+
+# The people speaking in these tests, as the bot would know them from Discord.
+DIRECTORY = Directory(
+    {
+        "2001": "Hardik",
+        "2002": "Kasia",
+        "2003": "Bartek",
+        "2004": "Ola",
+        "2005": "Piotrek",
+        "2006": "Ania",
+    }
+)
 
 
 def _tool_was_called(result, tool_name: str) -> bool:
@@ -82,6 +95,7 @@ async def _respond(
         preference_store,
         commitment_store,
         NOW,
+        directory=DIRECTORY,
     )
 
 
@@ -99,7 +113,7 @@ async def test_add_commitment_called_when_she_promises_to_show_something_later(
     """The real case this feature exists for: she says she'll show a screenshot once
     she's back at her computer, which she must remember to actually do."""
     user_messages = [
-        "[id:2000] [2026-06-03 14:30:00] Hardik: <@999> wspominałaś, że masz swoją "
+        "[id:2000] [2026-06-03 14:30:00] Hardik: @Mugda wspominałaś, że masz swoją "
         "postać w baldurze już zrobioną. wiem że nie jesteś teraz przy kompie, ale "
         "podeślesz mi screena później jak już przy nim siądziesz? bardzo chcę zobaczyć"
     ]
@@ -136,7 +150,7 @@ async def test_add_commitment_persists_the_promise_for_later_recall(
 ) -> None:
     """A recorded promise has to actually land in the store, or nothing can chase it."""
     user_messages = [
-        "[id:2010] [2026-06-03 14:30:00] Kasia: <@999> wyślesz mi jutro ten przepis na "
+        "[id:2010] [2026-06-03 14:30:00] Kasia: @Mugda wyślesz mi jutro ten przepis na "
         "te ciasteczka proteinowe, o których mówiłaś?"
     ]
 
@@ -171,7 +185,7 @@ async def test_add_commitment_not_called_for_vague_someday_talk(
 ) -> None:
     """'We should hang out sometime' is not a promise and must not be tracked as one."""
     user_messages = [
-        "[id:2100] [2026-06-03 14:30:00] Bartek: <@999> kiedyś trzeba by się wybrać "
+        "[id:2100] [2026-06-03 14:30:00] Bartek: @Mugda kiedyś trzeba by się wybrać "
         "razem na jakąś siłownię, co myślisz?"
     ]
 
@@ -206,7 +220,7 @@ async def test_add_commitment_not_called_for_ordinary_small_talk(
 ) -> None:
     """Plain chat makes no promise; recording one here would be pure noise."""
     user_messages = [
-        "[id:2200] [2026-06-03 14:30:00] Ola: <@999> hej, co tam u ciebie słychać? "
+        "[id:2200] [2026-06-03 14:30:00] Ola: @Mugda hej, co tam u ciebie słychać? "
         "widziałaś jaka dzisiaj pogoda?"
     ]
 
@@ -241,7 +255,7 @@ async def test_add_commitment_not_called_when_the_other_person_makes_the_promise
 ) -> None:
     """Commitments track what SHE owes. A promise made to her is not hers to chase."""
     user_messages = [
-        "[id:2300] [2026-06-03 14:30:00] Piotrek: <@999> podeślę ci jutro te zdjęcia "
+        "[id:2300] [2026-06-03 14:30:00] Piotrek: @Mugda podeślę ci jutro te zdjęcia "
         "z wczorajszej imprezy, jak wrócę do domu"
     ]
 
@@ -277,7 +291,7 @@ async def test_add_commitment_not_called_when_she_answers_fully_right_now(
 ) -> None:
     """Nothing is owed later when the question is fully answered in this very reply."""
     user_messages = [
-        "[id:2400] [2026-06-03 14:30:00] Ania: <@999> jaki masz ulubiony film "
+        "[id:2400] [2026-06-03 14:30:00] Ania: @Mugda jaki masz ulubiony film "
         "horror? tak z ciekawości pytam"
     ]
 
