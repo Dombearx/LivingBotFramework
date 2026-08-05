@@ -804,9 +804,8 @@ class LivingBot(discord.Client):
                     if result.photo is not None:
                         self._on_photo_taken()
                     await _send_chunked(channel, result.output, photo=result.photo)
-                    sole_author = author_ids[0] if len(author_ids) == 1 else None
                     asyncio.create_task(
-                        self._store_memories(messages, result.output, sole_author)
+                        self._store_memories(messages, result.output, author_ids)
                     )
                     asyncio.create_task(
                         self._update_relations(relations, messages, result.output)
@@ -814,16 +813,16 @@ class LivingBot(discord.Client):
             return True
 
     async def _store_memories(
-        self, messages: list[discord.Message], bot_response: str, user_id: str | None
+        self, messages: list[discord.Message], bot_response: str, user_ids: list[str]
     ) -> None:
         conversation = [
             {"role": "user", "content": format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
         try:
-            await self._memory_store.store(conversation, user_id=user_id)
+            await self._memory_store.store(conversation, user_ids=user_ids)
         except Exception:
-            logger.exception("Failed to store memories for user_id=%s", user_id)
+            logger.exception("Failed to store memories for user_ids=%s", user_ids)
 
     async def _update_relations(
         self,

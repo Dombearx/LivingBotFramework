@@ -29,7 +29,7 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Each "user" message's content is already prefixed with the speaker's Discord
 # display name (see tools.format_message, e.g. "Kuba: ..."), so the extractor
 # has what it needs to name the user too, once told to use it.
-_CUSTOM_FACT_EXTRACTION_INSTRUCTIONS = (
+_ATTRIBUTION_INSTRUCTIONS = (
     f"The 'assistant' role in this conversation is {PERSONA_NAME}, a Discord "
     "persona with her own opinions, tastes, and daily life — not a generic AI "
     f"assistant. When a fact comes from her own messages, attribute it to "
@@ -39,6 +39,49 @@ _CUSTOM_FACT_EXTRACTION_INSTRUCTIONS = (
     "followed by a colon, e.g. 'Kuba: ...'. Use that display name to "
     'attribute facts (e.g. "Kuba prefers dark chocolate") instead of the '
     "generic word 'User'."
+)
+
+# ADDITIVE_EXTRACTION_PROMPT tells the model to extract when in doubt and treats
+# casual chat as prime material, which on a Discord server fills the store with
+# greetings, banter and one-off jokes. These instructions raise the bar back to
+# durable facts; mem0 gives custom instructions "highest priority", so they win
+# over the base prompt's bias.
+_RELEVANCE_INSTRUCTIONS = (
+    "Extract only information that will still be useful weeks from now. "
+    "Worth remembering: who someone is and their stable circumstances (work, "
+    "studies, where they live, family, pets, health); lasting preferences, "
+    "tastes and strong opinions; relationships between people and who is the "
+    'person to ask about what (e.g. "for anything about the server setup, ask '
+    'Kuba"); standing instructions about how to behave towards someone; '
+    "ongoing projects and plans, with their dates; promises made and things "
+    "someone is waiting for; and significant events in someone's life. "
+    "Never extract: greetings, goodbyes and other phatic messages; jokes, "
+    "banter, memes, teasing and wordplay; how someone phrased something or "
+    "which emoji they used; momentary states and moods; what the conversation "
+    "is currently about; or facts about the exchange itself (e.g. "
+    f'"{PERSONA_NAME} greeted Kuba", "Kuba made a joke about cats"). '
+    "Most casual chat contains nothing worth keeping — returning an empty "
+    "list is the normal outcome, and one solid fact beats five weak ones. "
+    "This overrides any instruction above to extract when in doubt."
+)
+
+# The per-user banks and the shared global bank are written by separate
+# extraction passes over the same conversation, each told which facts belong to
+# it, so the global bank holds what stays true no matter who is talking.
+_PERSONAL_MEMORY_INSTRUCTIONS = (
+    f"{_ATTRIBUTION_INSTRUCTIONS} {_RELEVANCE_INSTRUCTIONS} "
+    "This memory bank belongs to the people taking part in this conversation. "
+    "Extract only facts about them: their lives, their preferences, their "
+    f"plans, and what {PERSONA_NAME} has agreed or promised them."
+)
+
+_GLOBAL_MEMORY_INSTRUCTIONS = (
+    f"{_ATTRIBUTION_INSTRUCTIONS} {_RELEVANCE_INSTRUCTIONS} "
+    "This is the shared memory bank, read back during conversations with "
+    "everyone. Extract only facts that are not about one particular "
+    f"participant: facts about {PERSONA_NAME} herself, about the server and "
+    "the group as a whole, and about the world that came up in the "
+    "conversation. Skip anything that only matters to the person who said it."
 )
 
 
@@ -58,7 +101,7 @@ class MemoryStore:
     def create(cls, data_path: Path) -> "MemoryStore":
         data_path.mkdir(parents=True, exist_ok=True)
         config = {
-            "custom_instructions": _CUSTOM_FACT_EXTRACTION_INSTRUCTIONS,
+            "custom_instructions": _PERSONAL_MEMORY_INSTRUCTIONS,
             "vector_store": {
                 "provider": "chroma",
                 "config": {
@@ -151,18 +194,28 @@ class MemoryStore:
         await loop.run_in_executor(None, lambda: self._memory.delete(memory_id))
 
     async def store(
-        self, conversation: list[dict[str, Any]], user_id: str | None = None
+        self, conversation: list[dict[str, Any]], user_ids: list[str]
     ) -> None:
         loop = asyncio.get_event_loop()
-        targets = [GLOBAL_USER_ID] if user_id is None else [user_id]
-        with logfire.span("memory.store", targets=targets, turns=len(conversation)):
+        targets = [(uid, _PERSONAL_MEMORY_INSTRUCTIONS) for uid in user_ids]
+        targets.append((GLOBAL_USER_ID, _GLOBAL_MEMORY_INSTRUCTIONS))
+        with logfire.span(
+            "memory.store",
+            targets=[uid for uid, _ in targets],
+            turns=len(conversation),
+        ):
             await asyncio.gather(
                 *[
                     loop.run_in_executor(
                         None,
-                        functools.partial(self._memory.add, conversation, user_id=uid),
+                        functools.partial(
+                            self._memory.add,
+                            conversation,
+                            user_id=uid,
+                            prompt=instructions,
+                        ),
                     )
-                    for uid in targets
+                    for uid, instructions in targets
                 ]
             )
-        logger.debug("Stored memories for %s", targets)
+        logger.debug("Stored memories for %s", [uid for uid, _ in targets])

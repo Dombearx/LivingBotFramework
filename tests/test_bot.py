@@ -703,7 +703,7 @@ async def test_attempt_response_passes_retrieved_memories_to_llm(
 
 @patch("random.random", return_value=0.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_attempt_response_stores_memories_with_user_id_for_single_author(
+async def test_attempt_response_stores_memories_for_the_single_author(
     mock_user: PropertyMock,
     mock_random: MagicMock,
 ) -> None:
@@ -722,12 +722,12 @@ async def test_attempt_response_stores_memories_with_user_id_for_single_author(
     for t in tasks:
         await t
 
-    assert memory_store.store.call_args.kwargs["user_id"] == str(author.id)
+    assert memory_store.store.call_args.kwargs["user_ids"] == [str(author.id)]
 
 
 @patch("random.random", return_value=0.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
-async def test_attempt_response_stores_memories_globally_for_multiple_authors(
+async def test_attempt_response_stores_memories_for_every_author(
     mock_user: PropertyMock,
     mock_random: MagicMock,
 ) -> None:
@@ -747,7 +747,10 @@ async def test_attempt_response_stores_memories_globally_for_multiple_authors(
     for t in tasks:
         await t
 
-    assert memory_store.store.call_args.kwargs["user_id"] is None
+    assert memory_store.store.call_args.kwargs["user_ids"] == [
+        str(msg1.author.id),
+        str(msg2.author.id),
+    ]
 
 
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
