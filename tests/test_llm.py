@@ -12,9 +12,11 @@ from livingbot.llm import (
     _build_inventory_block,
     _build_new_messages_block,
     _build_recent_block,
+    _build_relations_block,
     _build_server_emojis_block,
     _build_stories_block,
 )
+from livingbot.relations import _ATTITUDE_BEHAVIOURS, Relation, attitude_behaviour
 from livingbot.stories import Story
 
 NOW = datetime(2026, 6, 3, 14, 30)
@@ -255,3 +257,28 @@ def test_build_server_emojis_block_asks_for_the_token_written_verbatim() -> None
     block = _build_server_emojis_block(["<:mugda_lift:111>"])
 
     assert "exactly as shown" in block
+
+
+def test_build_relations_block_describes_how_she_feels_about_each_user() -> None:
+    relations = [
+        Relation(user_id="111", attitude=4),
+        Relation(user_id="222", attitude=65),
+    ]
+
+    result = _build_relations_block(relations)
+
+    assert attitude_behaviour(4) in result
+    assert attitude_behaviour(65) in result
+
+
+def test_build_relations_block_omits_the_bands_a_user_does_not_fall_into() -> None:
+    relations = [Relation(user_id="111", attitude=4)]
+
+    result = _build_relations_block(relations)
+
+    unmatched = [
+        description
+        for _, description in _ATTITUDE_BEHAVIOURS
+        if description != attitude_behaviour(4)
+    ]
+    assert not [description for description in unmatched if description in result]

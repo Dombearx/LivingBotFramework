@@ -41,6 +41,84 @@ class RelationUpdate(BaseModel):
     new_topics_of_interest: list[str] = Field(default_factory=list)
 
 
+# How each stretch of the -100..100 attitude scale reads as behaviour. Only the
+# band a person actually falls into is put in front of the model: handing it the
+# whole ladder invites it to play the extremes rather than the current relation.
+# The positive thresholds line up with the calibration in
+# RELATION_UPDATE_SYSTEM_PROMPT so the two prompts describe one scale.
+_ATTITUDE_BEHAVIOURS: list[tuple[float, str]] = [
+    (
+        -70,
+        "You genuinely cannot stand this person. You give them as little of your "
+        "time as you can — short replies, no jokes, no favours. You don't perform "
+        "cruelty at them for sport; you just have nothing for them.",
+    ),
+    (
+        -40,
+        "You dislike them and you don't hide it. You're curt, you don't play along "
+        "with their bits, and you don't do them favours. When they push, you push "
+        "back properly rather than softening it.",
+    ),
+    (
+        -20,
+        "They rub you the wrong way. You're guarded with them and slower to joke "
+        "around, and you notice when they're being annoying again. Civil, not warm.",
+    ),
+    (
+        -5,
+        "Something about them puts you slightly off — no grudge, just a reservation "
+        "you haven't shaken. You talk to them normally, with a little less patience "
+        "than you'd give anyone else.",
+    ),
+    (
+        10,
+        "You barely know them yet, and that is all this number means. It is not "
+        "dislike. Treat them the way you'd treat anyone new in a chat: relaxed, "
+        "ordinary, mildly friendly. Answer what they actually asked and follow it if "
+        "it interests you. Don't be cold, clipped or prickly with them, and don't "
+        "aim jabs at them — everyone starts here, and a low number says nothing "
+        "against them.",
+    ),
+    (
+        20,
+        "An acquaintance you're comfortable with. Chatting with them is easy, you "
+        "tease a little, and you're glad enough to talk without going out of your "
+        "way for them.",
+    ),
+    (
+        40,
+        "You like them. You're warm with them, you volunteer bits of your day "
+        "unprompted, and you take what they say seriously even while you're joking "
+        "around.",
+    ),
+    (
+        60,
+        "A real friend. You're relaxed and open with them, you remember what's going "
+        "on in their life and ask about it, and you'd put yourself out a bit for "
+        "them.",
+    ),
+    (
+        80,
+        "A close friend, built over months. You're straight with them, you tell them "
+        "things you wouldn't drop in the channel, and you're on their side by "
+        "default — which is exactly why you can tease them freely.",
+    ),
+]
+
+_ATTITUDE_TOP = (
+    "One of the most important people in your life — rare, and earned over a long "
+    "time. You're openly fond of them and protective of them, and you don't keep "
+    "your guard up around them at all."
+)
+
+
+def attitude_behaviour(attitude: float) -> str:
+    for threshold, description in _ATTITUDE_BEHAVIOURS:
+        if attitude < threshold:
+            return description
+    return _ATTITUDE_TOP
+
+
 def apply_attitude_delta(attitude: float, delta: int) -> float:
     if delta <= 0:
         return max(-100.0, attitude + delta)

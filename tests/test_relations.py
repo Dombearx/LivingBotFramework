@@ -5,12 +5,15 @@ from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
 from livingbot.relations import (
+    _ATTITUDE_BEHAVIOURS,
+    _ATTITUDE_TOP,
     Relation,
     RelationStore,
     RelationUpdate,
     RelationUpdater,
     apply_attitude_delta,
     apply_update,
+    attitude_behaviour,
 )
 
 
@@ -224,3 +227,37 @@ async def test_relation_updater_returns_none_when_the_model_call_fails(
     )
 
     assert result is None
+
+
+def test_attitude_behaviour_at_the_default_starting_attitude_is_the_newcomer_band() -> (
+    None
+):
+    result = attitude_behaviour(4.0)
+
+    assert result == _ATTITUDE_BEHAVIOURS[4][1]
+
+
+def test_attitude_behaviour_at_a_band_threshold_returns_the_band_above_it() -> None:
+    threshold = _ATTITUDE_BEHAVIOURS[4][0]
+
+    result = attitude_behaviour(threshold)
+
+    assert result == _ATTITUDE_BEHAVIOURS[5][1]
+
+
+def test_attitude_behaviour_at_the_hostile_floor_is_the_lowest_band() -> None:
+    result = attitude_behaviour(-100.0)
+
+    assert result == _ATTITUDE_BEHAVIOURS[0][1]
+
+
+def test_attitude_behaviour_above_the_highest_threshold_is_the_top_band() -> None:
+    result = attitude_behaviour(100.0)
+
+    assert result == _ATTITUDE_TOP
+
+
+def test_attitude_behaviour_bands_are_ordered_by_ascending_threshold() -> None:
+    thresholds = [threshold for threshold, _ in _ATTITUDE_BEHAVIOURS]
+
+    assert thresholds == sorted(thresholds)

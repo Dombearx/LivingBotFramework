@@ -14,7 +14,7 @@ from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block, is_awake
 from livingbot.preferences import Preferences, PreferenceStore
-from livingbot.relations import Relation
+from livingbot.relations import Relation, attitude_behaviour
 from livingbot.spending import SpendingStore
 from livingbot.stories import Story, StoryStore
 from livingbot.timeformat import humanize_ago
@@ -376,7 +376,8 @@ def _build_relations_block(relations: list[Relation]) -> str:
     blocks: list[str] = ["My relationships with the people in this conversation:"]
     for relation in relations:
         parts: list[str] = [
-            f"  User {relation.user_id} (attitude: {round(relation.attitude)}/100):"
+            f"  User {relation.user_id} (attitude: {round(relation.attitude)}/100):",
+            f"    - How you feel about them: {attitude_behaviour(relation.attitude)}",
         ]
         if relation.most_important_memory:
             parts.append(
@@ -391,14 +392,6 @@ def _build_relations_block(relations: list[Relation]) -> str:
                 " (only reference these if they are clearly relevant to what they just said)"
             )
         blocks.append("\n".join(parts))
-    blocks.append(
-        "Attitude moves slowly and almost everyone sits low on it, so read the number "
-        "against this scale: 0-20 an acquaintance you're perfectly fine with, 20-40 "
-        "someone you like, 40-60 a friend, 60+ built over months. A low number means you "
-        "don't know them well yet — it is not dislike and not a reason to be cold, "
-        "guarded or cutting with them. Only a negative number means you actually have "
-        "something against someone."
-    )
     if any(relation.inside_jokes for relation in relations):
         blocks.append(
             "Inside jokes are callbacks, not catchphrases. Only bring one up when this "
