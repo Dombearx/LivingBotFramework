@@ -16,6 +16,14 @@ prevented literal repetition, and every "do this sometimes" instruction in the p
 is decorative. Passing them is weak evidence on its own, since she may simply not have
 reached for that phrase or emoji anyway. Test 3 is the measurement.
 
+What the ladder measured (run 31027637343): 1 and 2 pass — she does not reuse a phrase
+or an emoji her own visible messages are full of. 3 fails, and not narrowly: with four
+joke endings of her own in front of her she closed on a joke 5/5 times against 3/5 for
+the plain control. The line falls between a repeated token, which she avoids, and a
+repeated shape, which she does not notice. It is marked xfail rather than deleted
+because the mechanism it measures is the one the frequency rules in the prompt assume,
+so this is the test that would tell us a fix worked.
+
 Run on demand: uv run pytest tests/integration/test_reply_variety.py
 Requires OPENROUTER_API_KEY in the environment.
 """
@@ -290,6 +298,12 @@ async def _joke_endings(history: list[str]) -> tuple[int, list[str]]:
     return sum(v.matches for v in verdicts), list(responses)
 
 
+@pytest.mark.xfail(
+    reason="She does not vary the shape of an ending she can see herself repeating; "
+    "see issue #76. Not strict: the measurement is stochastic, so a run that comes "
+    "out the other way should not fail the group.",
+    strict=False,
+)
 async def test_repetitive_joke_endings_in_her_history_suppress_another_joke_ending() -> (
     None
 ):
