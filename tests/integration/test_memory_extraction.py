@@ -1,8 +1,8 @@
 """
 Integration tests that send real requests to mem0's fact extractor and verify
-the custom_instructions in MemoryStore.create actually change how memories are
-attributed — persona by name instead of "Assistant", Discord display name
-instead of "User".
+the instructions in MemoryStore actually change what gets stored — memories
+attributed by name rather than "Assistant"/"User", durable facts kept, small
+talk dropped, and the global bank filled with what is not about one person.
 
 Run on demand: uv run pytest tests/integration/
 Requires OPENROUTER_API_KEY in the environment.
@@ -13,7 +13,7 @@ import re
 
 import pytest
 
-from livingbot.memory import MemoryStore
+from livingbot.memory import GLOBAL_USER_ID, MemoryStore
 from livingbot.prompts import PERSONA_NAME
 
 pytestmark = pytest.mark.skipif(
@@ -29,8 +29,9 @@ def _joined_memory_texts(memories: list[dict]) -> str:
 async def test_bot_opinion_is_attributed_to_the_persona_not_generic_assistant(
     tmp_path,
 ) -> None:
-    """A personal opinion Mugda shares about herself should be attributed to
-    her by name, not stored as a generic "Assistant" fact."""
+    """A personal opinion Mugda shares about herself lands in the global bank
+    and is attributed to her by name, not stored as a generic "Assistant"
+    fact."""
     store = MemoryStore.create(tmp_path)
     conversation = [
         {
@@ -49,10 +50,10 @@ async def test_bot_opinion_is_attributed_to_the_persona_not_generic_assistant(
         },
     ]
 
-    await store.store(conversation, user_id="test-bot-opinion-user")
-    memories = await store.all("test-bot-opinion-user")
+    await store.store(conversation, user_ids=["test-bot-opinion-user"])
+    memories = await store.all(GLOBAL_USER_ID)
 
-    assert memories, "Expected at least one memory to be extracted"
+    assert memories, "Expected at least one memory in the global bank"
     joined = _joined_memory_texts(memories)
     assert not re.search(r"\bassistant\b", joined, re.IGNORECASE), (
         f"Expected no generic 'Assistant' attribution, got memories: {memories}"
@@ -83,7 +84,7 @@ async def test_user_personal_fact_is_attributed_by_discord_display_name(
         },
     ]
 
-    await store.store(conversation, user_id="test-user-fact-user")
+    await store.store(conversation, user_ids=["test-user-fact-user"])
     memories = await store.all("test-user-fact-user")
 
     assert memories, "Expected at least one memory to be extracted"
@@ -93,4 +94,80 @@ async def test_user_personal_fact_is_attributed_by_discord_display_name(
     )
     assert re.search(r"\bkuba\b", joined, re.IGNORECASE), (
         f"Expected the fact attributed to Kuba by name, got memories: {memories}"
+    )
+
+
+async def test_standing_instruction_about_who_to_ask_is_remembered(tmp_path) -> None:
+    """Being told who to ask about a topic is exactly the kind of durable,
+    long-term useful fact that must survive extraction."""
+    store = MemoryStore.create(tmp_path)
+    conversation = [
+        {
+            "role": "user",
+            "content": (
+                "[id:3] [2026-07-27 11:00:00] Kuba: jakbyś chciała cokolwiek "
+                "wiedzieć o naszym serwerze minecraft, to pytaj Weroniki, ona "
+                "to wszystko ogarnia"
+            ),
+        },
+        {"role": "assistant", "content": "spoko, będę wiedziała do kogo lecieć"},
+    ]
+
+    await store.store(conversation, user_ids=["test-who-to-ask-user"])
+    memories = await store.all("test-who-to-ask-user")
+
+    joined = _joined_memory_texts(memories)
+    assert re.search(r"weronik", joined, re.IGNORECASE), (
+        "Expected a memory recording that Weronika is the person to ask about "
+        f"the Minecraft server, got memories: {memories}"
+    )
+
+
+async def test_small_talk_produces_no_memories(tmp_path) -> None:
+    """A greeting and a throwaway joke carry nothing worth remembering weeks
+    later, so nothing should be stored at all."""
+    store = MemoryStore.create(tmp_path)
+    conversation = [
+        {
+            "role": "user",
+            "content": "[id:4] [2026-07-27 12:00:00] Kuba: siemka, co tam",
+        },
+        {"role": "assistant", "content": "hejka, nuda jak zwykle"},
+        {
+            "role": "user",
+            "content": (
+                "[id:5] [2026-07-27 12:01:00] Kuba: haha klasyk, chyba pójdę "
+                "poudawać że pracuję"
+            ),
+        },
+        {"role": "assistant", "content": "powodzenia w tym udawaniu 😄"},
+    ]
+
+    await store.store(conversation, user_ids=["test-small-talk-user"])
+    memories = await store.all("test-small-talk-user")
+
+    assert memories == [], f"Expected no memories from small talk, got: {memories}"
+
+
+async def test_personal_fact_stays_out_of_the_global_bank(tmp_path) -> None:
+    """The global bank is read back in conversations with everyone, so a fact
+    that only concerns one person must not be copied into it."""
+    store = MemoryStore.create(tmp_path)
+    conversation = [
+        {
+            "role": "user",
+            "content": (
+                "[id:6] [2026-07-27 13:00:00] Kuba: od września zaczynam pracę "
+                "jako fizjoterapeuta w klinice na Mokotowie"
+            ),
+        },
+        {"role": "assistant", "content": "o kurde, gratki, to duża zmiana"},
+    ]
+
+    await store.store(conversation, user_ids=["test-no-leak-user"])
+    memories = await store.all(GLOBAL_USER_ID)
+
+    joined = _joined_memory_texts(memories)
+    assert not re.search(r"fizjoterapeut", joined, re.IGNORECASE), (
+        f"Expected Kuba's new job to stay out of the global bank, got: {memories}"
     )
