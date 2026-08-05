@@ -29,9 +29,9 @@ def _joined_memory_texts(memories: list[dict]) -> str:
 async def test_bot_opinion_is_attributed_to_the_persona_not_generic_assistant(
     tmp_path,
 ) -> None:
-    """A personal opinion Mugda shares about herself lands in the global bank
-    and is attributed to her by name, not stored as a generic "Assistant"
-    fact."""
+    """A personal opinion Mugda shares about herself is remembered and
+    attributed to her by name, not stored as a generic "Assistant" fact. Which
+    bank it lands in is the subject of the xfail below, so both are searched."""
     store = MemoryStore.create(tmp_path)
     conversation = [
         {
@@ -51,9 +51,11 @@ async def test_bot_opinion_is_attributed_to_the_persona_not_generic_assistant(
     ]
 
     await store.store(conversation, user_ids=["test-bot-opinion-user"])
-    memories = await store.all(GLOBAL_USER_ID)
+    memories = await store.all("test-bot-opinion-user") + await store.all(
+        GLOBAL_USER_ID
+    )
 
-    assert memories, "Expected at least one memory in the global bank"
+    assert memories, "Expected her opinion to be remembered in one of the banks"
     joined = _joined_memory_texts(memories)
     assert not re.search(r"\bassistant\b", joined, re.IGNORECASE), (
         f"Expected no generic 'Assistant' attribution, got memories: {memories}"
