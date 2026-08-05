@@ -615,23 +615,27 @@ class LivingBot(discord.Client):
         new_hobbies: list[str],
     ) -> None:
         with logfire.span("generate_week_story", week_start=str(week_start)):
-            occurs_at, anchor = _pick_story_slot(calendar, week_start, now)
-            avoid = await self._story_store.recent_summaries(
-                config.STORY_AVOID_RECENT_LIMIT
-            )
-            story = await self._story_generator.generate(
-                week_start,
-                hobbies,
-                calendar.home_location,
-                occurs_at,
-                anchor,
-                avoid,
-                new_hobbies,
-            )
-            if story is None:
+            try:
+                occurs_at, anchor = _pick_story_slot(calendar, week_start, now)
+                avoid = await self._story_store.recent_summaries(
+                    config.STORY_AVOID_RECENT_LIMIT
+                )
+                story = await self._story_generator.generate(
+                    week_start,
+                    hobbies,
+                    calendar.home_location,
+                    occurs_at,
+                    anchor,
+                    avoid,
+                    new_hobbies,
+                )
+                if story is None:
+                    return
+                story.image_path = await self._render_story_image(story)
+                await self._story_store.add(story)
+            except Exception:
+                logger.exception("Failed to generate story for week %s", week_start)
                 return
-            story.image_path = await self._render_story_image(story)
-            await self._story_store.add(story)
             logger.info("Story for week %s happens %s", week_start, occurs_at)
 
     async def _render_story_image(self, story: Story) -> str | None:
@@ -804,9 +808,8 @@ class LivingBot(discord.Client):
                     if result.photo is not None:
                         self._on_photo_taken()
                     await _send_chunked(channel, result.output, photo=result.photo)
-                    sole_author = author_ids[0] if len(author_ids) == 1 else None
                     asyncio.create_task(
-                        self._store_memories(messages, result.output, sole_author)
+                        self._store_memories(messages, result.output, author_ids)
                     )
                     asyncio.create_task(
                         self._update_relations(relations, messages, result.output)
@@ -814,16 +817,16 @@ class LivingBot(discord.Client):
             return True
 
     async def _store_memories(
-        self, messages: list[discord.Message], bot_response: str, user_id: str | None
+        self, messages: list[discord.Message], bot_response: str, user_ids: list[str]
     ) -> None:
         conversation = [
             {"role": "user", "content": format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
         try:
-            await self._memory_store.store(conversation, user_id=user_id)
+            await self._memory_store.store(conversation, user_ids=user_ids)
         except Exception:
-            logger.exception("Failed to store memories for user_id=%s", user_id)
+            logger.exception("Failed to store memories for user_ids=%s", user_ids)
 
     async def _update_relations(
         self,
@@ -835,67 +838,85 @@ class LivingBot(discord.Client):
             {"role": "user", "content": format_message(m)} for m in messages
         ]
         conversation.append({"role": "assistant", "content": bot_response})
-        own_interests = [hobby.name for hobby in self._hobby_store.load().entries] + [
-            f"{preference.topic}: {preference.stance}"
-            for preference in self._preference_store.load().entries
-        ]
-        for relation in relations:
-            with logfire.span("update_relation", user_id=relation.user_id) as span:
-                update = await self._relation_updater.update(
-                    relation, conversation, own_interests
-                )
-                if update is None:
-                    continue
-                updated = apply_update(relation, update)
-                self._relation_store.save(updated)
-                span.set_attribute("attitude_delta", update.attitude_delta)
-                span.set_attribute("attitude", updated.attitude)
-                span.set_attribute("reason", update.reason)
-                logger.debug(
-                    "Updated relation for user_id=%s: attitude %.1f -> %.1f (%+d: %s)",
-                    relation.user_id,
-                    relation.attitude,
-                    updated.attitude,
-                    update.attitude_delta,
-                    update.reason,
-                )
-                # Mood reacts to the moment, so it gets the raw judged delta rather
-                # than the deliberately slow change actually applied to attitude.
-                if update.attitude_delta != 0:
-                    async with self._state_lock:
-                        mood = apply_interaction_delta(
-                            self._mood_store.load(), update.attitude_delta
-                        )
-                        self._mood_store.save(mood)
-                    logger.debug(
-                        "Mood adjusted by interaction delta=%d: %.1f",
-                        update.attitude_delta,
-                        mood.value,
+        try:
+            own_interests = [
+                hobby.name for hobby in self._hobby_store.load().entries
+            ] + [
+                f"{preference.topic}: {preference.stance}"
+                for preference in self._preference_store.load().entries
+            ]
+            for relation in relations:
+                with logfire.span("update_relation", user_id=relation.user_id) as span:
+                    update = await self._relation_updater.update(
+                        relation, conversation, own_interests
                     )
+                    if update is None:
+                        continue
+                    updated = apply_update(relation, update)
+                    self._relation_store.save(updated)
+                    span.set_attribute("attitude_delta", update.attitude_delta)
+                    span.set_attribute("attitude", updated.attitude)
+                    span.set_attribute("reason", update.reason)
+                    logger.debug(
+                        "Updated relation for user_id=%s: attitude %.1f -> %.1f "
+                        "(%+d: %s)",
+                        relation.user_id,
+                        relation.attitude,
+                        updated.attitude,
+                        update.attitude_delta,
+                        update.reason,
+                    )
+                    # Mood reacts to the moment, so it gets the raw judged delta
+                    # rather than the deliberately slow change actually applied to
+                    # attitude.
+                    if update.attitude_delta != 0:
+                        async with self._state_lock:
+                            mood = apply_interaction_delta(
+                                self._mood_store.load(), update.attitude_delta
+                            )
+                            self._mood_store.save(mood)
+                        logger.debug(
+                            "Mood adjusted by interaction delta=%d: %.1f",
+                            update.attitude_delta,
+                            mood.value,
+                        )
+        except Exception:
+            logger.exception(
+                "Failed to update relations for user_ids=%s",
+                [relation.user_id for relation in relations],
+            )
 
     async def _rest_and_respond(self) -> None:
-        while True:
-            mood = self._mood_store.load()
-            mood_rest_factor = 1.5 - (mood.value / 100.0)
-            max_delay = max(3.0, 5.0 * mood.fatigue * mood_rest_factor)
-            delay_divisor = (
-                config.ONBOARDING_REST_DELAY_DIVISOR
-                if self._onboarding_active()
-                else 1.0
-            )
-            actual_delay = random.uniform(
-                3.0 / delay_divisor, max_delay / delay_divisor
-            )
-            self._next_attempt_at = clock.now() + timedelta(minutes=actual_delay)
-            await asyncio.sleep(actual_delay * 60.0)
+        # Runs detached, and _resting is set before it starts. Clearing the flag
+        # in `finally` rather than only on success is what keeps a failure here
+        # from wedging her into permanent silence: every reply path checks
+        # _resting first, and nothing else ever resets it.
+        try:
+            while True:
+                mood = self._mood_store.load()
+                mood_rest_factor = 1.5 - (mood.value / 100.0)
+                max_delay = max(3.0, 5.0 * mood.fatigue * mood_rest_factor)
+                delay_divisor = (
+                    config.ONBOARDING_REST_DELAY_DIVISOR
+                    if self._onboarding_active()
+                    else 1.0
+                )
+                actual_delay = random.uniform(
+                    3.0 / delay_divisor, max_delay / delay_divisor
+                )
+                self._next_attempt_at = clock.now() + timedelta(minutes=actual_delay)
+                await asyncio.sleep(actual_delay * 60.0)
 
-            # Fatigue recovers on its own while she waits: each attempt refreshes
-            # the mood, which decays fatigue over the elapsed time.
-            async with self._response_lock:
-                if await self._attempt_response():
-                    self._resting = False
-                    self._next_attempt_at = None
-                    return
+                # Fatigue recovers on its own while she waits: each attempt refreshes
+                # the mood, which decays fatigue over the elapsed time.
+                async with self._response_lock:
+                    if await self._attempt_response():
+                        return
+        except Exception:
+            logger.exception("Rest loop failed; going back to replying normally")
+        finally:
+            self._resting = False
+            self._next_attempt_at = None
 
     async def _is_directed_at_bot(self, message: discord.Message) -> bool:
         if self.user is not None and self.user in message.mentions:

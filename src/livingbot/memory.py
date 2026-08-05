@@ -29,7 +29,7 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Each "user" message's content is already prefixed with the speaker's Discord
 # display name (see tools.format_message, e.g. "Kuba: ..."), so the extractor
 # has what it needs to name the user too, once told to use it.
-_CUSTOM_FACT_EXTRACTION_INSTRUCTIONS = (
+_ATTRIBUTION_INSTRUCTIONS = (
     f"The 'assistant' role in this conversation is {PERSONA_NAME}, a Discord "
     "persona with her own opinions, tastes, and daily life — not a generic AI "
     f"assistant. When a fact comes from her own messages, attribute it to "
@@ -38,7 +38,85 @@ _CUSTOM_FACT_EXTRACTION_INSTRUCTIONS = (
     "Each 'user' message starts with the speaker's Discord display name "
     "followed by a colon, e.g. 'Kuba: ...'. Use that display name to "
     'attribute facts (e.g. "Kuba prefers dark chocolate") instead of the '
-    "generic word 'User'."
+    "generic word 'User'. "
+    "All of the above is a rule for wording memories, not something to "
+    "remember: never store a memory about what someone is called or which "
+    'display name they use (e.g. "Kuba is named Kuba"). '
+    "Write every memory in the language the conversation is in, so that a "
+    "Polish exchange yields Polish memories."
+)
+
+# ADDITIVE_EXTRACTION_PROMPT tells the model to extract when in doubt and treats
+# casual chat as prime material, which on a Discord server fills the store with
+# greetings, banter and one-off jokes. These instructions raise the bar back to
+# durable facts; mem0 gives custom instructions "highest priority", so they win
+# over the base prompt's bias. The keep list leads and is marked as mandatory
+# because leading with the rejections instead made the extractor discard even
+# plain "I love dark chocolate"; the rejections carry the override marker so
+# they still beat the base prompt, which otherwise yields entries like
+# "Mugda reacted to Kuba's plan by wishing him luck".
+_REJECTION_INSTRUCTIONS = (
+    "OVERRIDE — the rules below beat every instruction above them, including "
+    "the guidance to extract when in doubt and the claim that casual chat is "
+    "valuable. Never extract:\n"
+    "- greetings, goodbyes, reactions and filler\n"
+    "- jokes, banter, teasing, sarcasm, memes and wordplay\n"
+    "- any statement describing the exchange itself — anything shaped like "
+    f'"X said/asked/replied/reacted/joked/wished...", and in particular every '
+    f"sentence about what {PERSONA_NAME} said or how she reacted\n"
+    "- what someone is doing right now or in the next few minutes, and "
+    "momentary moods\n"
+    "- how something was phrased, which emoji, slang or spelling was used\n"
+    "A message carrying nothing from the keep list yields no memory at all."
+)
+
+# The per-user banks and the shared global bank are written by separate
+# extraction passes over the same conversation, so the global bank holds what
+# stays true no matter who is talking. Each pass gets its own keep list rather
+# than a shared one plus a scope caveat: a shared list ordering "capture
+# everyone's job" and a caveat saying "but not for the people here" contradict
+# each other, and the mandatory-sounding list won — Kuba's new job kept landing
+# in the global bank.
+_PERSONAL_MEMORY_INSTRUCTIONS = (
+    f"{_ATTRIBUTION_INSTRUCTIONS}\n"
+    "This bank is read back whenever {name} talks with the people in this "
+    "conversation, and holds facts about them — never about {name} herself. "
+    "Capture every one of these whenever it appears; none may be dropped:\n"
+    "- who they are and their stable circumstances: work, studies, where they "
+    "live, family, pets, health\n"
+    "- their lasting preferences, tastes and strong opinions, including food, "
+    "drink, music, games and anything else they say they love or hate\n"
+    "- who to ask about what, even when that person is not in the "
+    'conversation (e.g. "for anything about the Minecraft server, ask '
+    'Weronika")\n'
+    "- standing instructions they gave about how {name} should behave towards "
+    "them\n"
+    "- their ongoing projects and plans with dates\n"
+    "- promises made to them and things they are waiting for\n"
+    "- significant events in their lives\n"
+    "{rejections}".format(name=PERSONA_NAME, rejections=_REJECTION_INSTRUCTIONS)
+)
+
+_GLOBAL_MEMORY_INSTRUCTIONS = (
+    f"{_ATTRIBUTION_INSTRUCTIONS}\n"
+    "This bank is read back in conversations with everyone on the server, so "
+    "it holds only what stays true regardless of who is talking. Capture:\n"
+    "- {name}'s habits and routines, and things she has already done\n"
+    "- how the server and the group work: recurring events, rules, roles, who "
+    "runs what\n"
+    "- facts about the world that came up and are worth knowing later\n"
+    "Three things about her belong to other tools and must not be captured "
+    "here, because those tools can change or retract them and a copy left in "
+    "this bank would go stale and contradict them: her settled tastes and "
+    "opinions (record_preference), the belongings she owns (add_item and "
+    "remove_item), and her upcoming plans (add_plan and remove_plan). A past "
+    "event is different — nothing can retract it, so keep those.\n"
+    "The people in this conversation each have their own bank. Their jobs, "
+    "homes, families, tastes and plans go there, never here — extracting a "
+    "fact about one of them into this bank is an error, however durable that "
+    "fact is. If the conversation says nothing about {name}, the server or "
+    "the world, extract nothing.\n"
+    "{rejections}".format(name=PERSONA_NAME, rejections=_REJECTION_INSTRUCTIONS)
 )
 
 
@@ -58,7 +136,11 @@ class MemoryStore:
     def create(cls, data_path: Path) -> "MemoryStore":
         data_path.mkdir(parents=True, exist_ok=True)
         config = {
-            "custom_instructions": _CUSTOM_FACT_EXTRACTION_INSTRUCTIONS,
+            "custom_instructions": _PERSONAL_MEMORY_INSTRUCTIONS,
+            # mem0 defaults this to ~/.mem0/history.db, outside data_path — the
+            # extractor reads recent messages from it, so leaving it there ties
+            # extraction quality to a directory nothing else backs up or mounts.
+            "history_db_path": str(data_path / "history.db"),
             "vector_store": {
                 "provider": "chroma",
                 "config": {
@@ -66,11 +148,13 @@ class MemoryStore:
                     "path": str(data_path),
                 },
             },
+            # reasoning_effort is deliberately absent: mem0 only forwards it for
+            # models its _is_reasoning_model() recognises, and that check
+            # excludes the gpt-5.x family, so setting it here does nothing.
             "llm": {
                 "provider": "openai",
                 "config": {
-                    "model": "gpt-5.4-nano",
-                    "reasoning_effort": "low",
+                    "model": "openai/gpt-5.6-luna",
                 },
             },
             "embedder": {
@@ -151,18 +235,28 @@ class MemoryStore:
         await loop.run_in_executor(None, lambda: self._memory.delete(memory_id))
 
     async def store(
-        self, conversation: list[dict[str, Any]], user_id: str | None = None
+        self, conversation: list[dict[str, Any]], user_ids: list[str]
     ) -> None:
         loop = asyncio.get_event_loop()
-        targets = [GLOBAL_USER_ID] if user_id is None else [user_id]
-        with logfire.span("memory.store", targets=targets, turns=len(conversation)):
+        targets = [(uid, _PERSONAL_MEMORY_INSTRUCTIONS) for uid in user_ids]
+        targets.append((GLOBAL_USER_ID, _GLOBAL_MEMORY_INSTRUCTIONS))
+        with logfire.span(
+            "memory.store",
+            targets=[uid for uid, _ in targets],
+            turns=len(conversation),
+        ):
             await asyncio.gather(
                 *[
                     loop.run_in_executor(
                         None,
-                        functools.partial(self._memory.add, conversation, user_id=uid),
+                        functools.partial(
+                            self._memory.add,
+                            conversation,
+                            user_id=uid,
+                            prompt=instructions,
+                        ),
                     )
-                    for uid in targets
+                    for uid, instructions in targets
                 ]
             )
-        logger.debug("Stored memories for %s", targets)
+        logger.debug("Stored memories for %s", [uid for uid, _ in targets])

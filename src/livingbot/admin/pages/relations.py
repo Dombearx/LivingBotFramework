@@ -2,7 +2,6 @@ from nicegui import ui
 
 from livingbot.admin.context import AdminContext
 from livingbot.admin.pages.layout import page_layout
-from livingbot.bot import LivingBot
 from livingbot.relations import Relation
 
 
@@ -12,7 +11,7 @@ def register(context: AdminContext) -> None:
     @ui.page("/relations")
     def relations_page() -> None:
         with page_layout("Relations"):
-            names = _discord_names(context.bot)
+            names = context.discord_names()
 
             def _name_for(user_id: str) -> str:
                 return names.get(user_id, f"User {user_id}")
@@ -111,13 +110,3 @@ def register(context: AdminContext) -> None:
                 dialog.open()
 
             relation_list()
-
-
-def _discord_names(bot: LivingBot) -> dict[str, str]:
-    if not bot.is_ready():
-        return {}
-    return {
-        str(member.id): member.display_name
-        for guild in bot.guilds
-        for member in guild.members
-    }

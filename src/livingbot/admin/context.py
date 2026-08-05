@@ -71,3 +71,13 @@ class AdminContext:
     @property
     def scheduled_post_store(self) -> ScheduledPostStore | None:
         return self.bot.scheduled_post_store
+
+    def discord_names(self) -> dict[str, str]:
+        """Discord display names by user id, empty until the bot has connected."""
+        if not self.bot.is_ready():
+            return {}
+        return {
+            str(member.id): member.display_name
+            for guild in self.bot.guilds
+            for member in guild.members
+        }
