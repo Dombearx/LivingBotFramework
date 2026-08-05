@@ -38,7 +38,12 @@ _ATTRIBUTION_INSTRUCTIONS = (
     "Each 'user' message starts with the speaker's Discord display name "
     "followed by a colon, e.g. 'Kuba: ...'. Use that display name to "
     'attribute facts (e.g. "Kuba prefers dark chocolate") instead of the '
-    "generic word 'User'."
+    "generic word 'User'. "
+    "All of the above is a rule for wording memories, not something to "
+    "remember: never store a memory about what someone is called or which "
+    'display name they use (e.g. "Kuba is named Kuba"). '
+    "Write every memory in the language the conversation is in, so that a "
+    "Polish exchange yields Polish memories."
 )
 
 # ADDITIVE_EXTRACTION_PROMPT tells the model to extract when in doubt and treats

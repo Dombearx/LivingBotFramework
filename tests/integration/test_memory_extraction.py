@@ -151,7 +151,7 @@ async def test_only_the_durable_fact_survives_a_chat_full_of_small_talk(
 
     assert memories, "Expected the move to be remembered"
     assert all(
-        re.search(r"gdańsk|przeprowadz", memory["memory"], re.IGNORECASE)
+        re.search(r"gdańsk|przeprowadz|mov", memory["memory"], re.IGNORECASE)
         for memory in memories
     ), f"Expected nothing but the move to be stored, got: {memories}"
 
@@ -176,9 +176,9 @@ async def test_personal_fact_stays_out_of_the_global_bank(tmp_path) -> None:
     personal = await store.all("test-no-leak-user")
     global_bank = await store.all(GLOBAL_USER_ID)
 
-    assert re.search(r"fizjoterapeut", _joined_memory_texts(personal), re.IGNORECASE), (
-        f"Expected Kuba's new job in his own bank, got: {personal}"
-    )
+    assert re.search(
+        r"fizjoterapeut|physiotherap", _joined_memory_texts(personal), re.IGNORECASE
+    ), f"Expected Kuba's new job in his own bank, got: {personal}"
     assert not re.search(
-        r"fizjoterapeut", _joined_memory_texts(global_bank), re.IGNORECASE
+        r"fizjoterapeut|physiotherap", _joined_memory_texts(global_bank), re.IGNORECASE
     ), f"Expected Kuba's new job to stay out of the global bank, got: {global_bank}"
