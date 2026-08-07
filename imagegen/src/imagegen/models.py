@@ -1,9 +1,15 @@
 from pydantic import BaseModel, Field
 
 
+class Lora(BaseModel):
+    path: str = Field(min_length=1)
+    scale: float = 1.0
+
+
 class GenerateRequest(BaseModel):
     prompt: str = Field(min_length=1)
     seed: int = -1
+    loras: list[Lora] = Field(default_factory=list)
 
 
 class GenerateWithReferenceRequest(BaseModel):

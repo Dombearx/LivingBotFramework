@@ -19,6 +19,8 @@ DOWNLOAD_TIMEOUT_SECONDS = 60.0
 REFERENCE_ENDPOINT = "https://api.runpod.ai/v2/nano-banana-edit"
 # Plain text-to-image, nothing to keep consistent.
 TEXT_TO_IMAGE_ENDPOINT = "https://api.runpod.ai/v2/qwen-image-t2i"
+# Same model, but a separate endpoint: the plain one above rejects `loras`.
+TEXT_TO_IMAGE_LORA_ENDPOINT = "https://api.runpod.ai/v2/qwen-image-t2i-lora"
 
 
 async def run_job(

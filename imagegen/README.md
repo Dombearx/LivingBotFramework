@@ -8,15 +8,25 @@ style — callers send the finished prompt and get back an image.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/generate` | Text-to-image (RunPod `qwen-image-t2i`). |
+| `POST` | `/generate` | Text-to-image (RunPod `qwen-image-t2i`, or `qwen-image-t2i-lora` when LoRAs are supplied). |
 | `POST` | `/generate-with-reference` | Image edit guided by reference images, which keeps a subject's identity consistent (RunPod `nano-banana-edit`). |
 | `GET` | `/health` | Reports that the service is reachable. |
 
 `POST /generate`
 
 ```json
-{ "prompt": "a quiet park path at dusk", "seed": -1 }
+{
+  "prompt": "a quiet park path at dusk",
+  "seed": -1,
+  "loras": [{ "path": "https://civitai.com/api/download/models/...", "scale": 1.0 }]
+}
 ```
+
+`loras` is optional and defaults to empty. Supplying it switches the job to
+RunPod's `qwen-image-t2i-lora` endpoint, since the plain `qwen-image-t2i` one
+rejects the field; leaving it out keeps the plain endpoint. `scale` defaults to
+`1.0`. There is no equivalent on `/generate-with-reference`: `nano-banana-edit`
+is a hosted Gemini model that takes only a prompt and images.
 
 `POST /generate-with-reference`
 

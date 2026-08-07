@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+from typing import Any
 
 import logfire
 import uvicorn
@@ -40,15 +41,21 @@ def health() -> PlainTextResponse:
 
 @app.post("/generate")
 async def generate(request: GenerateRequest) -> GenerateResponse:
-    payload = {
+    payload: dict[str, Any] = {
         "prompt": request.prompt,
         "seed": request.seed,
         "enable_safety_checker": False,
     }
-    with logfire.span("generate", prompt=request.prompt) as span:
-        image_bytes, cost = await runpod.generate(
-            runpod.TEXT_TO_IMAGE_ENDPOINT, _api_key(), payload
-        )
+    if request.loras:
+        payload["loras"] = [lora.model_dump() for lora in request.loras]
+        base_url = runpod.TEXT_TO_IMAGE_LORA_ENDPOINT
+    else:
+        base_url = runpod.TEXT_TO_IMAGE_ENDPOINT
+
+    with logfire.span(
+        "generate", prompt=request.prompt, lora_count=len(request.loras)
+    ) as span:
+        image_bytes, cost = await runpod.generate(base_url, _api_key(), payload)
         span.set_attribute("cost", cost)
         span.set_attribute("image_bytes", len(image_bytes))
     return _response(image_bytes, cost)
