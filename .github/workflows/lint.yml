@@ -23,3 +23,11 @@ jobs:
 
       - name: Check linting
         run: uv run ruff check .
+
+      - name: Install image service dependencies
+        working-directory: imagegen
+        run: uv sync --all-groups
+
+      - name: Check image service types
+        working-directory: imagegen
+        run: uv run mypy

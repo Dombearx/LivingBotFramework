@@ -1,14 +1,12 @@
 import base64
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from livingbot.image import (
     _enhance_prompt,
     _reference_images,
-    _run_job,
     generate_image,
 )
+from livingbot.prompts import IMAGE_STYLE_PREFIX, MUGDA_IMAGE_IDENTITY
 
 # ---------------------------------------------------------------------------
 # _enhance_prompt
@@ -128,143 +126,128 @@ def test_reference_images_returns_base64_data_uri_per_configured_path(
 
 
 # ---------------------------------------------------------------------------
-# _run_job
-# ---------------------------------------------------------------------------
-
-
-def _mock_response(json_data: dict) -> MagicMock:
-    response = MagicMock()
-    response.raise_for_status = MagicMock()
-    response.json.return_value = json_data
-    return response
-
-
-async def test_run_job_returns_output_when_job_completes_immediately() -> None:
-    client = AsyncMock()
-    client.post = AsyncMock(
-        return_value=_mock_response(
-            {"id": "job-1", "status": "COMPLETED", "output": {"result": "url"}}
-        )
-    )
-
-    output = await _run_job(client, "https://example.com", "key", {"prompt": "x"})
-
-    assert output == {"result": "url"}
-    client.get.assert_not_called()
-
-
-@patch("livingbot.image.asyncio.sleep", new_callable=AsyncMock)
-async def test_run_job_polls_status_until_completed(
-    mock_sleep: AsyncMock,
-) -> None:
-    client = AsyncMock()
-    client.post = AsyncMock(
-        return_value=_mock_response({"id": "job-2", "status": "IN_QUEUE"})
-    )
-    client.get = AsyncMock(
-        side_effect=[
-            _mock_response({"id": "job-2", "status": "IN_PROGRESS"}),
-            _mock_response(
-                {"id": "job-2", "status": "COMPLETED", "output": {"result": "done"}}
-            ),
-        ]
-    )
-
-    output = await _run_job(client, "https://example.com", "key", {"prompt": "x"})
-
-    assert output == {"result": "done"}
-
-
-async def test_run_job_raises_when_job_fails() -> None:
-    client = AsyncMock()
-    client.post = AsyncMock(
-        return_value=_mock_response({"id": "job-3", "status": "FAILED"})
-    )
-
-    with pytest.raises(RuntimeError, match="FAILED"):
-        await _run_job(client, "https://example.com", "key", {"prompt": "x"})
-
-
-# ---------------------------------------------------------------------------
 # generate_image
 # ---------------------------------------------------------------------------
 
+SERVICE_URL = "http://image-service:8000"
 
-def _download_client(image_bytes: bytes) -> AsyncMock:
+
+def _service_client(response_json: dict) -> AsyncMock:
     response = MagicMock()
     response.raise_for_status = MagicMock()
-    response.content = image_bytes
+    response.json.return_value = response_json
 
     client = AsyncMock()
-    client.get = AsyncMock(return_value=response)
+    client.post = AsyncMock(return_value=response)
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
     return client
 
 
-@patch.dict("os.environ", {"RUNPOD_API_KEY": "key"})
+def _service_response(image_bytes: bytes = b"image-bytes") -> dict:
+    return {"image_base64": base64.b64encode(image_bytes).decode(), "cost": 0.02}
+
+
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
 @patch("livingbot.image.httpx.AsyncClient")
-@patch("livingbot.image._run_job")
 @patch("livingbot.image._reference_images", return_value=["data:image/png;base64,AAAA"])
 @patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
-async def test_generate_image_with_mugda_calls_selfie_endpoint_with_reference_images(
+async def test_generate_image_with_mugda_posts_to_reference_endpoint(
     mock_enhance: AsyncMock,
     mock_reference_images: MagicMock,
-    mock_run_job: AsyncMock,
     mock_httpx_cls: MagicMock,
 ) -> None:
     mock_enhance.return_value = "a sunny gym scene"
-    mock_run_job.return_value = {"result": "https://img.example/out.jpg", "cost": 0.02}
-    mock_httpx_cls.return_value = _download_client(b"image-bytes")
+    client = _service_client(_service_response())
+    mock_httpx_cls.return_value = client
 
     await generate_image("at the gym", include_mugda=True)
 
-    call_args = mock_run_job.call_args.args
-    assert call_args[1] == "https://api.runpod.ai/v2/nano-banana-edit"
-    payload = call_args[3]
-    assert payload["images"] == ["data:image/png;base64,AAAA"]
-    assert payload["enable_safety_checker"] is False
-    assert "Studio Ghibli" in payload["prompt"]
-    assert "same woman shown in the reference photos" in payload["prompt"]
-    assert "a sunny gym scene" in payload["prompt"]
+    assert client.post.call_args.args[0] == f"{SERVICE_URL}/generate-with-reference"
 
 
-@patch.dict("os.environ", {"RUNPOD_API_KEY": "key"})
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
 @patch("livingbot.image.httpx.AsyncClient")
-@patch("livingbot.image._run_job")
+@patch("livingbot.image._reference_images", return_value=["data:image/png;base64,AAAA"])
 @patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
-async def test_generate_image_without_mugda_calls_scenery_endpoint_without_images(
+async def test_generate_image_with_mugda_sends_reference_images(
     mock_enhance: AsyncMock,
-    mock_run_job: AsyncMock,
+    mock_reference_images: MagicMock,
+    mock_httpx_cls: MagicMock,
+) -> None:
+    mock_enhance.return_value = "a sunny gym scene"
+    client = _service_client(_service_response())
+    mock_httpx_cls.return_value = client
+
+    await generate_image("at the gym", include_mugda=True)
+
+    payload = client.post.call_args.kwargs["json"]
+    assert payload["reference_images"] == ["data:image/png;base64,AAAA"]
+
+
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
+@patch("livingbot.image.httpx.AsyncClient")
+@patch("livingbot.image._reference_images", return_value=["data:image/png;base64,AAAA"])
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_with_mugda_prefixes_style_and_identity_to_scene(
+    mock_enhance: AsyncMock,
+    mock_reference_images: MagicMock,
+    mock_httpx_cls: MagicMock,
+) -> None:
+    mock_enhance.return_value = "a sunny gym scene"
+    client = _service_client(_service_response())
+    mock_httpx_cls.return_value = client
+
+    await generate_image("at the gym", include_mugda=True)
+
+    prompt = client.post.call_args.kwargs["json"]["prompt"]
+    assert prompt == (IMAGE_STYLE_PREFIX + MUGDA_IMAGE_IDENTITY + "a sunny gym scene")
+
+
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
+@patch("livingbot.image.httpx.AsyncClient")
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_without_mugda_posts_to_generate_endpoint(
+    mock_enhance: AsyncMock,
     mock_httpx_cls: MagicMock,
 ) -> None:
     mock_enhance.return_value = "an empty park path"
-    mock_run_job.return_value = {"result": "https://img.example/out.jpg", "cost": 0.02}
-    mock_httpx_cls.return_value = _download_client(b"image-bytes")
+    client = _service_client(_service_response())
+    mock_httpx_cls.return_value = client
 
     await generate_image("a quiet park", include_mugda=False)
 
-    call_args = mock_run_job.call_args.args
-    assert call_args[1] == "https://api.runpod.ai/v2/qwen-image-t2i"
-    payload = call_args[3]
-    assert "images" not in payload
-    assert payload["seed"] == -1
-    assert payload["enable_safety_checker"] is False
-    assert "same woman shown in the reference photos" not in payload["prompt"]
+    assert client.post.call_args.args[0] == f"{SERVICE_URL}/generate"
 
 
-@patch.dict("os.environ", {"RUNPOD_API_KEY": "key"})
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
 @patch("livingbot.image.httpx.AsyncClient")
-@patch("livingbot.image._run_job")
 @patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
-async def test_generate_image_returns_downloaded_image_bytes(
+async def test_generate_image_without_mugda_omits_identity_clause(
     mock_enhance: AsyncMock,
-    mock_run_job: AsyncMock,
+    mock_httpx_cls: MagicMock,
+) -> None:
+    mock_enhance.return_value = "an empty park path"
+    client = _service_client(_service_response())
+    mock_httpx_cls.return_value = client
+
+    await generate_image("a quiet park", include_mugda=False)
+
+    prompt = client.post.call_args.kwargs["json"]["prompt"]
+    assert prompt == IMAGE_STYLE_PREFIX + "an empty park path"
+
+
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
+@patch("livingbot.image.httpx.AsyncClient")
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_returns_decoded_image_bytes(
+    mock_enhance: AsyncMock,
     mock_httpx_cls: MagicMock,
 ) -> None:
     mock_enhance.return_value = "a scene"
-    mock_run_job.return_value = {"result": "https://img.example/out.jpg", "cost": 0.02}
-    mock_httpx_cls.return_value = _download_client(b"final-image-bytes")
+    mock_httpx_cls.return_value = _service_client(
+        _service_response(b"final-image-bytes")
+    )
 
     result = await generate_image("a quiet park", include_mugda=False)
 

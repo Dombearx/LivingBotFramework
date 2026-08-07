@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import logging
 import os
@@ -18,18 +17,16 @@ from livingbot.prompts import (
 
 logger = logging.getLogger(__name__)
 
-_POLL_INTERVAL_SECONDS = 3.0
-_POLL_TIMEOUT_SECONDS = 180.0
-# /runsync blocks server-side for up to ~90s before returning IN_QUEUE/IN_PROGRESS,
-# so the client timeout has to be higher than that.
-_RUNSYNC_TIMEOUT_SECONDS = 100.0
-
-# Character present: reference-image edit model, keeps her identity consistent.
-_SELFIE_ENDPOINT = "https://api.runpod.ai/v2/nano-banana-edit"
-# No character: plain text-to-image, nothing to keep consistent.
-_SCENERY_ENDPOINT = "https://api.runpod.ai/v2/qwen-image-t2i"
+DEFAULT_IMAGE_SERVICE_URL = "http://localhost:8100"
+# The service polls RunPod for up to three minutes before giving up, so this has
+# to be longer than its own timeout or we abandon jobs that would have finished.
+_REQUEST_TIMEOUT_SECONDS = 300.0
 
 _MIME_TYPES = {".png": "image/png", ".jpeg": "image/jpeg", ".jpg": "image/jpeg"}
+
+
+def _image_service_url() -> str:
+    return os.environ.get("IMAGE_SERVICE_URL", DEFAULT_IMAGE_SERVICE_URL)
 
 
 def _build_enhancer_agent() -> Agent[None, str]:
@@ -70,45 +67,16 @@ def _reference_images() -> list[str]:
     return images
 
 
-async def _run_job(
-    client: httpx.AsyncClient, base_url: str, api_key: str, payload: dict[str, Any]
-) -> dict[str, Any]:
-    headers = {"Authorization": f"Bearer {api_key}"}
-    with logfire.span("run_runpod_job", base_url=base_url) as span:
-        response = await client.post(
-            f"{base_url}/runsync",
-            json={"input": payload},
-            headers=headers,
-            timeout=_RUNSYNC_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        job_id = data["id"]
-        status = data["status"]
-        deadline = asyncio.get_event_loop().time() + _POLL_TIMEOUT_SECONDS
-        polls = 0
-        while status in ("IN_QUEUE", "IN_PROGRESS"):
-            if asyncio.get_event_loop().time() > deadline:
-                span.set_attribute("polls", polls)
-                raise TimeoutError(f"RunPod job {job_id} timed out")
-            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-            polls += 1
-            response = await client.get(
-                f"{base_url}/status/{job_id}", headers=headers, timeout=10.0
+async def _request_image(endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+    url = f"{_image_service_url()}{endpoint}"
+    with logfire.span("call_image_service", endpoint=endpoint):
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url, json=payload, timeout=_REQUEST_TIMEOUT_SECONDS
             )
             response.raise_for_status()
-            data = response.json()
-            status = data["status"]
-
-        span.set_attribute("polls", polls)
-        if status != "COMPLETED":
-            raise RuntimeError(
-                f"RunPod job {job_id} ended with status {status}: {data}"
-            )
-
-        output: dict[str, Any] = data["output"]
-        return output
+            result: dict[str, Any] = response.json()
+            return result
 
 
 async def generate_image(
@@ -116,8 +84,6 @@ async def generate_image(
     include_mugda: bool,
     outfit_description: str = "",
 ) -> bytes:
-    api_key = os.environ["RUNPOD_API_KEY"]
-
     with logfire.span(
         "generate_image",
         include_mugda=include_mugda,
@@ -132,29 +98,17 @@ async def generate_image(
             prompt += MUGDA_IMAGE_IDENTITY
         prompt += scene
 
-        async with httpx.AsyncClient() as client:
-            if include_mugda:
-                payload: dict[str, Any] = {
-                    "prompt": prompt,
-                    "images": _reference_images(),
-                    "enable_safety_checker": False,
-                }
-                output = await _run_job(client, _SELFIE_ENDPOINT, api_key, payload)
-            else:
-                payload = {
-                    "prompt": prompt,
-                    "seed": -1,
-                    "enable_safety_checker": False,
-                }
-                output = await _run_job(client, _SCENERY_ENDPOINT, api_key, payload)
+        if include_mugda:
+            result = await _request_image(
+                "/generate-with-reference",
+                {"prompt": prompt, "reference_images": _reference_images()},
+            )
+        else:
+            result = await _request_image("/generate", {"prompt": prompt})
 
-            span.set_attribute("cost", output.get("cost"))
-            logger.info("RunPod job completed, cost=$%s", output.get("cost"))
+        span.set_attribute("cost", result["cost"])
+        logger.info("Image generated, cost=$%s", result["cost"])
 
-            image_response = await client.get(output["result"], timeout=60.0)
-            image_response.raise_for_status()
-            image_bytes = image_response.content
-
+        image_bytes = base64.b64decode(result["image_base64"])
         span.set_attribute("image_bytes", len(image_bytes))
-        logger.info("Image generated (%d bytes)", len(image_bytes))
         return image_bytes

@@ -1,14 +1,8 @@
-.git
 .venv
 __pycache__
 *.py[cod]
 .env
 .env.*
-!.env.example
-data/
-images/generated/
-imagegen/
-scripts/
 tests/
 .pytest_cache
 .ruff_cache

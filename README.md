@@ -36,7 +36,7 @@ The bot is configured entirely through environment variables:
 | `DISCORD_BOT_TOKEN` | yes | Discord bot token used to connect. |
 | `OPENROUTER_API_KEY` | yes | API key for the chat and helper models (via OpenRouter). |
 | `OPENROUTER_BASE_URL` | no | Override the OpenRouter base URL. |
-| `RUNPOD_API_KEY` | for photos | RunPod API key (calls RunPod's public nano-banana-edit and qwen-image-t2i endpoints). |
+| `IMAGE_SERVICE_URL` | for photos | Base URL of the image generation service (default `http://localhost:8100`). `docker compose` sets this itself. |
 
 The memory subsystem (mem0) is configured to route its LLM calls and
 embeddings through OpenRouter using `OPENROUTER_API_KEY` above — no separate
@@ -61,12 +61,24 @@ To run the bot together with the local admin dashboard (NiceGUI, served on
 uv run livingbot-admin
 ```
 
+## Image generation service
+
+Her photos are produced by a standalone HTTP service in [`imagegen/`](imagegen/),
+which runs in its own container and knows nothing about Mugda: it takes a
+finished prompt (plus reference images, on the endpoint that accepts them) and
+returns the generated image. Mugda keeps the parts that are hers — the prompt
+enhancer, the Ghibli style prefix, the identity clause and her reference photos
+— and calls the service over HTTP. Anything else that needs images can call the
+same two endpoints. See [`imagegen/README.md`](imagegen/README.md) for the
+request and response shapes.
+
 ## Deployment
 
 `docker compose up -d` (or `make up`) builds and runs the bot together with
-the admin dashboard, matching `uv run livingbot-admin` above. `data/` is
-mounted as a volume so persistent state survives rebuilds. See the `Makefile`
-for `up`/`down`/`build`/`restart`/`logs` targets.
+the admin dashboard, matching `uv run livingbot-admin` above, plus the image
+generation service on `http://localhost:8100`. `data/` is mounted as a volume
+so persistent state survives rebuilds. See the `Makefile` for
+`up`/`down`/`build`/`restart`/`logs` targets.
 
 ### Update server
 
@@ -110,3 +122,10 @@ uv run pytest
 
 Both must pass before committing. Integration tests live under
 `tests/integration/` and are excluded from the default `pytest` run.
+
+`ruff` covers `imagegen/` too, but its tests are a separate project and are run
+on their own:
+
+```bash
+cd imagegen && uv run pytest
+```
