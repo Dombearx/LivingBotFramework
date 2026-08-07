@@ -9,43 +9,16 @@ style — callers send the finished prompt and get back an image.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/generate` | Text-to-image (RunPod `qwen-image-t2i`, or `qwen-image-t2i-lora` when LoRAs are supplied). |
-| `POST` | `/generate-with-reference` | Image edit guided by reference images, which keeps a subject's identity consistent (RunPod `nano-banana-edit`). |
+| `POST` | `/generate-with-reference` | Image guided by reference images, which keeps a subject's identity consistent (RunPod `nano-banana-edit`). |
 | `GET` | `/health` | Reports that the service is reachable. |
 
-`POST /generate`
+**[`API.md`](API.md) is the integration contract** — request and response
+schemas, error semantics, the timeout budget, worked client examples in several
+languages, and an integration checklist. Read that before writing a client.
 
-```json
-{
-  "prompt": "a quiet park path at dusk",
-  "seed": -1,
-  "loras": [{ "path": "https://civitai.com/api/download/models/...", "scale": 1.0 }]
-}
-```
-
-`loras` is optional and defaults to empty. Supplying it switches the job to
-RunPod's `qwen-image-t2i-lora` endpoint, since the plain `qwen-image-t2i` one
-rejects the field; leaving it out keeps the plain endpoint. `scale` defaults to
-`1.0`. There is no equivalent on `/generate-with-reference`: `nano-banana-edit`
-is a hosted Gemini model that takes only a prompt and images.
-
-`POST /generate-with-reference`
-
-```json
-{
-  "prompt": "she is sitting on a bench, ...",
-  "reference_images": ["data:image/jpeg;base64,..."]
-}
-```
-
-Both return
-
-```json
-{ "image_base64": "...", "cost": 0.021 }
-```
-
-`cost` is what RunPod charged for the job, and is `null` when RunPod doesn't
-report one. Generation polls RunPod for up to three minutes, so clients need a
-request timeout longer than that.
+The service also publishes its own OpenAPI spec, generated from the code so it
+cannot drift: `/openapi.json` for the raw spec, `/docs` for Swagger UI, `/redoc`
+for a read-only reference.
 
 ## Configuration
 
