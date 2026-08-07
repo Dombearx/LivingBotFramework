@@ -18,9 +18,10 @@ from livingbot.prompts import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_IMAGE_SERVICE_URL = "http://localhost:8100"
-# The service polls RunPod for up to three minutes before giving up, so this has
-# to be longer than its own timeout or we abandon jobs that would have finished.
-_REQUEST_TIMEOUT_SECONDS = 300.0
+# The service's own worst case is ~353s: up to 100s submitting the RunPod job,
+# 180s polling it, then 60s downloading the result. Giving up before that
+# abandons a job RunPod bills for whether or not we are still waiting.
+_REQUEST_TIMEOUT_SECONDS = 360.0
 
 _MIME_TYPES = {".png": "image/png", ".jpeg": "image/jpeg", ".jpg": "image/jpeg"}
 
