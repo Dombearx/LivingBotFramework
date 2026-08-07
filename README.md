@@ -69,8 +69,9 @@ finished prompt (plus reference images, on the endpoint that accepts them) and
 returns the generated image. Mugda keeps the parts that are hers — the prompt
 enhancer, the Ghibli style prefix, the identity clause and her reference photos
 — and calls the service over HTTP. Anything else that needs images can call the
-same two endpoints. See [`imagegen/README.md`](imagegen/README.md) for the
-request and response shapes.
+same two endpoints — [`imagegen/API.md`](imagegen/API.md) is the integration
+contract for doing so, and the service publishes its own OpenAPI spec at
+`/openapi.json`, with Swagger UI at `/docs`.
 
 ## Deployment
 
