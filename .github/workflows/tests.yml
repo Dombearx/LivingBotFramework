@@ -20,3 +20,11 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+      - name: Install image service dependencies
+        working-directory: imagegen
+        run: uv sync --all-groups
+
+      - name: Run image service tests
+        working-directory: imagegen
+        run: uv run pytest

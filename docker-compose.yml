@@ -2,15 +2,29 @@ services:
   livingbot:
     env_file:
       - ./.env
+    environment:
+      IMAGE_SERVICE_URL: http://image-service:8000
     build:
       context: ./
       dockerfile: ./Dockerfile
     restart: unless-stopped
+    depends_on:
+      - image-service
     ports:
       - "9080:9080"
     volumes:
       - ./data:/app/data
       - chroma_cache:/root/.cache/chroma
+
+  image-service:
+    env_file:
+      - ./.env
+    build:
+      context: ./imagegen
+      dockerfile: ./Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8100:8000"
 
 volumes:
   chroma_cache:
