@@ -84,6 +84,6 @@ async def generate_with_reference(
 
 
 def run() -> None:
-    configure_logfire()
+    configure_logfire(app)
     port = int(os.environ.get("IMAGE_SERVICE_PORT", DEFAULT_PORT))
     uvicorn.run(app, host=HOST, port=port)
