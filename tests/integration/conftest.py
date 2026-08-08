@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-from pydantic_ai import Agent
+from pydantic_ai import Agent, capture_run_messages
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot import image
@@ -105,14 +105,22 @@ def _estimate_cost(
     return (input_tokens * input_price + output_tokens * output_price) / 1_000_000
 
 
-def _tools_called(result) -> list[str]:
+def _tools_called(messages) -> list[str]:
     tools: list[str] = []
-    for message in result.all_messages():
+    for message in messages:
         if isinstance(message, ModelResponse):
             for part in message.parts:
                 if isinstance(part, ToolCallPart):
                     tools.append(part.tool_name)
     return tools
+
+
+def _usage_of(messages) -> tuple[int, int]:
+    responses = [m for m in messages if isinstance(m, ModelResponse)]
+    return (
+        sum(m.usage.input_tokens for m in responses),
+        sum(m.usage.output_tokens for m in responses),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -124,25 +132,48 @@ def record_agent_calls(request, monkeypatch):
     _records[request.node.nodeid] = record
     original_run = Agent.run
 
-    async def recording_run(self, *args, **kwargs):
-        start = time.perf_counter()
-        result = await original_run(self, *args, **kwargs)
-        duration = time.perf_counter() - start
-        usage = result.usage
-        model_name = getattr(self.model, "model_name", str(self.model))
+    def _record(agent, duration, input_tokens, output_tokens, messages, output):
+        model_name = getattr(agent.model, "model_name", str(agent.model))
         record.calls.append(
             AgentCall(
-                agent_name=self.name or model_name,
+                agent_name=agent.name or model_name,
                 model_name=model_name,
                 duration=duration,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-                cost=_estimate_cost(
-                    model_name, usage.input_tokens, usage.output_tokens
-                ),
-                tools_called=_tools_called(result),
-                output=str(result.output),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost=_estimate_cost(model_name, input_tokens, output_tokens),
+                tools_called=_tools_called(messages),
+                output=output,
             )
+        )
+
+    async def recording_run(self, *args, **kwargs):
+        start = time.perf_counter()
+        # Answering with silence or a bare reaction ends the turn with no text, which
+        # the agent raises on. The call still happened and still cost money, so it is
+        # recorded from the messages exchanged rather than dropped from the summary.
+        with capture_run_messages() as messages:
+            try:
+                result = await original_run(self, *args, **kwargs)
+            except Exception:
+                input_tokens, output_tokens = _usage_of(messages)
+                _record(
+                    self,
+                    time.perf_counter() - start,
+                    input_tokens,
+                    output_tokens,
+                    messages,
+                    "(no text — she answered without words)",
+                )
+                raise
+        usage = result.usage
+        _record(
+            self,
+            time.perf_counter() - start,
+            usage.input_tokens,
+            usage.output_tokens,
+            result.all_messages(),
+            str(result.output),
         )
         return result
 

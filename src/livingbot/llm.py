@@ -139,6 +139,7 @@ class LLMClient:
             commitment_store=commitment_store,
             directory=directory,
             can_ignore=can_ignore,
+            can_react=bool(user_messages),
         )
         parts: list[str] = []
         if photo_hint:

@@ -520,3 +520,23 @@ async def test_complete_when_she_said_nothing_wordless_lets_the_error_through(
 
     with pytest.raises(UnexpectedModelBehavior):
         await make_llm_client().complete(**make_complete_kwargs())
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_answering_messages_lets_her_react(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs())
+
+    assert mock_run.await_args.kwargs["deps"].can_react is True
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_posting_unprompted_does_not_let_her_react(
+    mock_run: AsyncMock,
+) -> None:
+    kwargs = make_complete_kwargs() | {"user_messages": []}
+
+    await make_llm_client().complete(**kwargs, trigger="Post something.")
+
+    assert mock_run.await_args.kwargs["deps"].can_react is False

@@ -52,6 +52,9 @@ class BotDeps:
     # Whether ignore_message is allowed to bite this time; the caller decides, so
     # the model can't talk its way into silence it hasn't earned.
     can_ignore: bool = False
+    # A reaction replaces a reply, so it only means anything when she is answering
+    # someone. Off when she is the one starting the conversation.
+    can_react: bool = False
     ignored: bool = False
     reaction: str | None = None
 
@@ -635,6 +638,11 @@ async def react_to_message(
     the message, and one emoji: either a plain one or a server emoji written exactly
     as <:name:id>. This is your whole response — nothing you write afterwards gets
     sent, so reply with words instead whenever you actually have something to say."""
+    if not ctx.deps.can_react:
+        return (
+            "There's nothing to react to here — you're the one starting this, not "
+            "answering anyone. Say what you wanted to say instead."
+        )
     try:
         message = await ctx.deps.channel.fetch_message(int(message_id))
     except (ValueError, discord.HTTPException):

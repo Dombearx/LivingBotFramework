@@ -1223,7 +1223,9 @@ async def test_take_photo_with_an_unknown_hobby_leaves_no_photo_attached(
 # ---------------------------------------------------------------------------
 
 
-def make_silence_ctx(can_ignore: bool = False) -> SimpleNamespace:
+def make_silence_ctx(
+    can_ignore: bool = False, can_react: bool = True
+) -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         channel_id=1,
@@ -1236,6 +1238,7 @@ def make_silence_ctx(can_ignore: bool = False) -> SimpleNamespace:
         preference_store=MagicMock(),
         commitment_store=MagicMock(),
         can_ignore=can_ignore,
+        can_react=can_react,
     )
     return SimpleNamespace(deps=deps)
 
@@ -1322,3 +1325,24 @@ async def test_ignore_message_when_not_allowed_tells_her_to_answer_them() -> Non
     result = await ignore_message(ctx)
 
     assert "Answer them" in result
+
+
+async def test_react_to_message_when_she_is_not_answering_anyone_leaves_it_alone() -> (
+    None
+):
+    ctx = make_silence_ctx(can_react=False)
+    ctx.deps.channel.fetch_message = AsyncMock()
+
+    await react_to_message(ctx, "77", "🔥")
+
+    ctx.deps.channel.fetch_message.assert_not_awaited()
+
+
+async def test_react_to_message_when_she_is_not_answering_anyone_tells_her_to_speak() -> (
+    None
+):
+    ctx = make_silence_ctx(can_react=False)
+
+    result = await react_to_message(ctx, "77", "🔥")
+
+    assert "nothing to react to here" in result
