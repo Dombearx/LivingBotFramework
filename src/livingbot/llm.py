@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Self
 
 import discord
-from pydantic_ai import Agent, AgentRunResult, BinaryContent
+from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.models.openai import OpenAIChatModel
 
@@ -22,6 +22,7 @@ from livingbot.timeformat import humanize_ago
 from livingbot.tools import (
     OWN_MESSAGE_MARKER,
     BotDeps,
+    MessageImage,
     add_activity_note,
     add_commitment,
     add_hobby,
@@ -108,7 +109,7 @@ class LLMClient:
         relations: list[Relation] | None = None,
         mood: Mood | None = None,
         photo_hint: str = "",
-        images: list[BinaryContent] | None = None,
+        images: list[MessageImage] | None = None,
         waiting_since: datetime | None = None,
         history: list[str] | None = None,
         shared_ending: str | None = None,
@@ -169,7 +170,13 @@ class LLMClient:
         parts.append(
             trigger if trigger is not None else _build_new_messages_block(user_messages)
         )
-        prompt: list[UserContent] = ["".join(parts), *(images or [])]
+        images = images or []
+        if images:
+            parts.append(_build_images_block(images))
+        prompt: list[UserContent] = [
+            "".join(parts),
+            *(image.content for image in images),
+        ]
         run_result = await self._agent.run(prompt, deps=deps)
         return LLMResult(run_result, deps)
 
@@ -455,3 +462,17 @@ def _build_server_emojis_block(emojis: list[str]) -> str:
 def _build_new_messages_block(user_messages: list[str]) -> str:
     messages_text = "\n".join(user_messages)
     return f"New message(s) to respond to:\n{messages_text}"
+
+
+def _build_images_block(images: list[MessageImage]) -> str:
+    lines = "\n".join(
+        f"- image {position}: attached to message [id:{image.message_id}]"
+        for position, image in enumerate(images, start=1)
+    )
+    return (
+        f"\n\nThe {len(images)} images at the end of this message are, in order:\n"
+        f"{lines}\n"
+        "Look up each id above to see who sent that picture and when — some are from "
+        "earlier in the conversation, including photos you took yourself. When you say "
+        "anything about what is in one, go by what you can actually see in it."
+    )

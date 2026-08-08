@@ -8,7 +8,6 @@ from typing import Any
 
 import discord
 import logfire
-from pydantic_ai import BinaryContent
 
 from livingbot import clock, config, prompts
 from livingbot.activity_notes import ActivityNotesStore
@@ -48,7 +47,7 @@ from livingbot.scheduled_posts import ScheduledPostStore
 from livingbot.spontaneous import SpontaneousStore
 from livingbot.stories import Story, StoryGenerator, StoryStore
 from livingbot.timeformat import humanize_ago
-from livingbot.tools import extract_images, format_message
+from livingbot.tools import format_message, message_images, recent_message_images
 
 logger = logging.getLogger(__name__)
 
@@ -768,17 +767,22 @@ class LivingBot(discord.Client):
                     message_count=len(messages),
                 ) as span:
                     formatted = [format_message(m) for m in messages]
-                    history = [
-                        format_message(m, own=m.author == self.user)
+                    history_messages = [
+                        m
                         async for m in channel.history(
                             limit=config.CHANNEL_HISTORY_LIMIT,
                             before=discord.Object(id=messages[0].id),
                         )
                     ]
-                    history.reverse()
-                    images: list[BinaryContent] = []
+                    history = [
+                        format_message(m, own=m.author == self.user)
+                        for m in reversed(history_messages)
+                    ]
+                    images = await recent_message_images(
+                        history_messages, config.HISTORY_IMAGE_LIMIT
+                    )
                     for m in messages:
-                        images.extend(await extract_images(m))
+                        images.extend(await message_images(m))
                     author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
                     memories = await self._memory_store.retrieve(
                         [
