@@ -54,6 +54,10 @@ CHANNEL_HISTORY_LIMIT = 20
 # again. Every one of them is re-uploaded to the model on each reply, so this
 # stays small — only the most recent pictures are worth seeing twice.
 HISTORY_IMAGE_LIMIT = 4
+# How many images to pull off the messages someone replied to. Separate from the
+# history budget above: a reply to a picture is a direct request to look at it, so
+# it is worth attaching even when the picture is too old to still be in history.
+REPLY_IMAGE_LIMIT = 4
 # How many of her own recent messages the reply-shape labeller reads when deciding
 # whether they have all started ending the same way.
 RECENT_OWN_MESSAGE_LIMIT = 4

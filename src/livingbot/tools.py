@@ -154,6 +154,26 @@ async def recent_message_images(
     return [image for images in reversed(newest_first) for image in images]
 
 
+async def reply_target_images(
+    targets: list[discord.Message], already_gathered: set[int], limit: int
+) -> list[MessageImage]:
+    """Gather images from the messages being replied to, keeping at most `limit`.
+
+    Messages in `already_gathered` are skipped: replying to a picture that is still
+    in the recent history would otherwise send the same image to the model twice.
+    """
+    images: list[MessageImage] = []
+    seen = set(already_gathered)
+    for target in targets:
+        if len(images) >= limit:
+            break
+        if target.id in seen:
+            continue
+        seen.add(target.id)
+        images.extend((await message_images(target))[: limit - len(images)])
+    return images
+
+
 async def extract_images(message: discord.Message) -> list[BinaryContent]:
     """Download image attachments and images shared as links for the VLM to look at."""
     images: list[BinaryContent] = []

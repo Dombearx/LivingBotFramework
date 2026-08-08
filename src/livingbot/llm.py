@@ -473,6 +473,7 @@ def _build_images_block(images: list[MessageImage]) -> str:
         f"\n\nThe {len(images)} images at the end of this message are, in order:\n"
         f"{lines}\n"
         "Look up each id above to see who sent that picture and when — some are from "
-        "earlier in the conversation, including photos you took yourself. When you say "
-        "anything about what is in one, go by what you can actually see in it."
+        "earlier in the conversation, including photos you took yourself, and some are "
+        "the picture someone is replying to. When you say anything about what is in "
+        "one, go by what you can actually see in it."
     )
