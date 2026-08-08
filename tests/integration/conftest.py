@@ -8,6 +8,7 @@ import pytest
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
+from livingbot import image
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
@@ -51,18 +52,34 @@ class AgentCall:
 
 
 @dataclass
+class ImageCall:
+    endpoint: str
+    duration: float
+    cost: float | None
+
+
+@dataclass
 class TestRecord:
     nodeid: str
     description: str
     calls: list[AgentCall] = field(default_factory=list)
+    image_calls: list[ImageCall] = field(default_factory=list)
     images: list[GeneratedImage] = field(default_factory=list)
     outcome: str = "not run"
     duration: float = 0.0
     failure: str = ""
 
     @property
-    def cost(self) -> float:
+    def llm_cost(self) -> float:
         return sum(call.cost or 0.0 for call in self.calls)
+
+    @property
+    def image_cost(self) -> float:
+        return sum(call.cost or 0.0 for call in self.image_calls)
+
+    @property
+    def cost(self) -> float:
+        return self.llm_cost + self.image_cost
 
     @property
     def llm_time(self) -> float:
@@ -124,6 +141,25 @@ def record_agent_calls(request, monkeypatch):
         return result
 
     monkeypatch.setattr(Agent, "run", recording_run)
+
+    # Rendering costs real money on top of the tokens, and the image service
+    # reports what each job actually cost, so this is measured rather than
+    # estimated from a price table the way the model calls are.
+    original_request_image = image._request_image
+
+    async def recording_request_image(endpoint, payload):
+        start = time.perf_counter()
+        result = await original_request_image(endpoint, payload)
+        record.image_calls.append(
+            ImageCall(
+                endpoint=endpoint,
+                duration=time.perf_counter() - start,
+                cost=result.get("cost"),
+            )
+        )
+        return result
+
+    monkeypatch.setattr(image, "_request_image", recording_request_image)
     yield
 
 
@@ -190,6 +226,20 @@ def _snippet(text: str) -> str:
     return text
 
 
+def _image_cost(call: ImageCall) -> str:
+    return f"${call.cost:.4f}" if call.cost is not None else "cost not reported"
+
+
+def _total_cost(records: list[TestRecord]) -> str:
+    """Total spend, split when rendering contributed — the two differ by orders
+    of magnitude, and a single number hides which one a run actually cost."""
+    llm = sum(r.llm_cost for r in records)
+    images = sum(r.image_cost for r in records)
+    if not images:
+        return f"~${llm:.4f}"
+    return f"~${llm + images:.4f} (models ~${llm:.4f}, images ~${images:.4f})"
+
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     records = [r for r in _records.values() if r.outcome != "not run"]
     if not records:
@@ -218,28 +268,32 @@ def _write_console_summary(terminalreporter, records: list[TestRecord]) -> None:
             tr.line(f"   why it failed: {record.failure}")
         for call in record.calls:
             tr.line(f"   {call.agent_name} said: {_snippet(call.output)}")
-        for image in record.images:
-            tr.line(f"   image: {image.filename} — {image.caption}")
-    total_cost = sum(r.cost for r in records)
+        for call in record.image_calls:
+            tr.line(
+                f"   rendered {call.endpoint} in {call.duration:.1f}s, "
+                f"{_image_cost(call)}"
+            )
+        for generated in record.images:
+            tr.line(f"   image: {generated.filename} — {generated.caption}")
     total_time = sum(r.duration for r in records)
     passed = sum(1 for r in records if r.outcome == "passed")
     tr.line("")
     tr.line(
-        f"Total: {passed}/{len(records)} passed, {total_time:.1f}s, ~${total_cost:.4f}"
+        f"Total: {passed}/{len(records)} passed, {total_time:.1f}s, "
+        f"{_total_cost(records)}"
     )
-    images = [image for record in records for image in record.images]
-    if images:
-        tr.line(f"{len(images)} image(s) written to {IMAGE_DIR}/")
+    generated = [image for record in records for image in record.images]
+    if generated:
+        tr.line(f"{len(generated)} image(s) written to {IMAGE_DIR}/")
 
 
 def _markdown_summary(records: list[TestRecord]) -> str:
     lines = ["## Integration test summary", ""]
     passed = sum(1 for r in records if r.outcome == "passed")
-    total_cost = sum(r.cost for r in records)
     total_time = sum(r.duration for r in records)
     lines.append(
         f"**{passed}/{len(records)} passed** · "
-        f"total {total_time:.1f}s · estimated cost ~${total_cost:.4f}"
+        f"total {total_time:.1f}s · cost {_total_cost(records)}"
     )
     lines.append("")
     lines.append("| Test | Result | Time | LLM calls | Tokens (in/out) | Est. cost |")
@@ -282,9 +336,9 @@ def _markdown_images(records: list[TestRecord]) -> list[str]:
         "Download the **integration-images** artifact from this run to view them.",
         "",
     ]
-    for record, image in images:
+    for record, generated in images:
         name = record.nodeid.split("::")[-1]
-        lines.append(f"- `{image.filename}` — {image.caption} (from `{name}`)")
+        lines.append(f"- `{generated.filename}` — {generated.caption} (from `{name}`)")
     lines.append("")
     return lines
 
@@ -299,9 +353,14 @@ def _markdown_test_details(record: TestRecord) -> list[str]:
     if record.failure:
         lines.append(f"**Why it failed:** {record.failure}")
         lines.append("")
-    for image in record.images:
-        lines.append(f"**Image:** `{image.filename}` — {image.caption}")
+    for generated in record.images:
+        lines.append(f"**Image:** `{generated.filename}` — {generated.caption}")
         lines.append("")
+    for i, call in enumerate(record.image_calls, 1):
+        lines.append(
+            f"- Render {i}: `{call.endpoint}` — {call.duration:.1f}s, "
+            f"{_image_cost(call)}"
+        )
     for i, call in enumerate(record.calls, 1):
         cost = f"${call.cost:.4f}" if call.cost is not None else "unknown"
         lines.append(
