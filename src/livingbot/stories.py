@@ -9,15 +9,17 @@ from typing import Any, Self
 
 import chromadb
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import clock, llm_config
+from livingbot.hobbies import Hobbies, reject_unknown_hobbies
 from livingbot.prompts import (
     STORY_GENERATOR_SYSTEM_PROMPT,
     STORY_TIER_NORMAL,
     STORY_TIER_UNBELIEVABLE,
     STORY_TIER_UNUSUAL,
+    build_hobby_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,7 @@ class Story(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     summary: str
     content: str
+    hobby: str = ""
     created_at: datetime = Field(default_factory=clock.now)
     occurs_at: datetime | None = None
     told_at: datetime | None = None
@@ -185,6 +188,14 @@ STORY_TIERS = [
 class GeneratedStory(BaseModel):
     summary: str
     content: str
+    hobby: str = ""
+
+
+def _validate_hobby(
+    ctx: RunContext[list[str]], story: GeneratedStory
+) -> GeneratedStory:
+    reject_unknown_hobbies([story.hobby], ctx.deps)
+    return story
 
 
 class StoryGenerator:
@@ -193,22 +204,28 @@ class StoryGenerator:
         return cls(llm_config.build_chat_model(llm_config.STORY_GENERATOR_MODEL))
 
     def __init__(self, model: OpenAIChatModel) -> None:
-        self._agent: Agent[None, GeneratedStory] = Agent(
+        # An invented hobby name would cost the story's picture its skill level, so
+        # the validator sends it back — but only twice, since exhausting the retries
+        # raises and generate() turns that into no story at all.
+        self._agent: Agent[list[str], GeneratedStory] = Agent(
             model,
             name="story_generator",
             instructions=STORY_GENERATOR_SYSTEM_PROMPT,
             output_type=GeneratedStory,
+            deps_type=list[str],
+            retries={"output": 2},
         )
+        self._agent.output_validator(_validate_hobby)
 
     async def generate(
         self,
         week_start: date,
-        hobbies: list[str],
+        hobbies: Hobbies,
         home_location: str,
         occurs_at: datetime,
         anchor: str | None,
         avoid: list[str],
-        new_hobbies: list[str] | None = None,
+        now: datetime,
     ) -> Story | None:
         tier = _choose_tier()
         context = (
@@ -216,9 +233,6 @@ class StoryGenerator:
             if anchor
             else "She has no plans then — it happens in a free moment of her week."
         )
-        new_block = ""
-        if new_hobbies:
-            new_block = f"\nShe recently took up: {', '.join(new_hobbies)}."
         avoid_block = ""
         if avoid:
             listed = "\n".join(f"- {summary}" for summary in avoid)
@@ -226,21 +240,23 @@ class StoryGenerator:
         prompt = (
             f"The episode happens on {occurs_at:%A %d %B at %H:%M}, during the week "
             f"starting Monday {week_start}.\n"
-            f"Her hobbies: {', '.join(hobbies)}.\n"
+            f"{build_hobby_context(hobbies, now)}\n"
             f"Her home base: {home_location}.\n"
-            f"{context}"
-            f"{new_block}\n"
+            f"{context}\n"
             f"Plausibility level — {tier.guidance}"
             f"{avoid_block}"
         )
         try:
-            result = await self._agent.run(prompt)
+            result = await self._agent.run(
+                prompt, deps=[hobby.name for hobby in hobbies.entries]
+            )
         except Exception:
             logger.exception("Failed to generate %s story for %s", tier.name, occurs_at)
             return None
         return Story(
             summary=result.output.summary,
             content=result.output.content,
+            hobby=result.output.hobby,
             occurs_at=occurs_at,
         )
 
@@ -253,6 +269,7 @@ def _metadata(story: Story) -> dict[str, str]:
     return {
         "summary": story.summary,
         "content": story.content,
+        "hobby": story.hobby,
         "created_at": story.created_at.isoformat(),
         "occurs_at": story.occurs_at.isoformat() if story.occurs_at else "",
         "told_at": story.told_at.isoformat() if story.told_at else "",
@@ -267,6 +284,7 @@ def _to_story(story_id: str, metadata: Mapping[str, Any]) -> Story:
         id=story_id,
         summary=metadata["summary"],
         content=metadata["content"],
+        hobby=metadata.get("hobby", ""),
         created_at=metadata["created_at"],
         occurs_at=occurs_at or None,
         told_at=told_at or None,

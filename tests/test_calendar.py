@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,10 +11,15 @@ from livingbot.calendar import (
     PlannedActivity,
     WeekPlan,
     WeekPlanner,
-    _reject_unknown_hobbies,
+    _validate_hobbies,
 )
+from livingbot.hobbies import Hobbies, Hobby
 
 NOW = datetime(2026, 6, 3, 14, 30)
+
+
+def hobbies(*names: str) -> Hobbies:
+    return Hobbies(entries=[Hobby(name=name) for name in names])
 
 
 def entry(
@@ -130,7 +135,9 @@ async def test_week_planner_converts_activities_to_entries(
     )
     planner = WeekPlanner("openai:gpt-4o")
 
-    result = await planner.plan(datetime(2026, 6, 1).date(), ["gym"], "home")
+    result = await planner.plan(
+        datetime(2026, 6, 1).date(), hobbies("gym"), "home", NOW
+    )
 
     assert len(result) == 1
     assert result[0].activity == "gym"
@@ -145,7 +152,9 @@ async def test_week_planner_returns_empty_list_when_agent_raises(
     agent.run = AsyncMock(side_effect=RuntimeError("model error"))
     planner = WeekPlanner("openai:gpt-4o")
 
-    result = await planner.plan(datetime(2026, 6, 1).date(), ["gym"], "home")
+    result = await planner.plan(
+        datetime(2026, 6, 1).date(), hobbies("gym"), "home", NOW
+    )
 
     assert result == []
 
@@ -158,15 +167,14 @@ async def test_week_planner_includes_new_hobbies_note_in_prompt(
     agent.run = AsyncMock(return_value=MagicMock(output=WeekPlan(activities=[])))
     planner = WeekPlanner("openai:gpt-4o")
 
-    await planner.plan(
-        datetime(2026, 6, 1).date(),
-        ["gym", "pottery"],
-        "home",
-        ["pottery (took up 8 days ago)"],
+    just_taken_up = Hobbies(
+        entries=[Hobby(name="pottery", acquired_at=NOW - timedelta(days=8))]
     )
 
+    await planner.plan(datetime(2026, 6, 1).date(), just_taken_up, "home", NOW)
+
     prompt = agent.run.call_args.args[0]
-    assert "pottery (took up 8 days ago)" in prompt
+    assert "She only recently took up: pottery (1 week ago)." in prompt
 
 
 @patch("livingbot.calendar.Agent")
@@ -177,7 +185,7 @@ async def test_week_planner_without_new_hobbies_omits_recent_mention(
     agent.run = AsyncMock(return_value=MagicMock(output=WeekPlan(activities=[])))
     planner = WeekPlanner("openai:gpt-4o")
 
-    await planner.plan(datetime(2026, 6, 1).date(), ["gym"], "home")
+    await planner.plan(datetime(2026, 6, 1).date(), hobbies("gym"), "home", NOW)
 
     prompt = agent.run.call_args.args[0]
     assert "recently took up" not in prompt
@@ -191,7 +199,9 @@ async def test_week_planner_passes_hobbies_as_deps(
     agent.run = AsyncMock(return_value=MagicMock(output=WeekPlan(activities=[])))
     planner = WeekPlanner("openai:gpt-4o")
 
-    await planner.plan(datetime(2026, 6, 1).date(), ["gym", "pottery"], "home")
+    await planner.plan(
+        datetime(2026, 6, 1).date(), hobbies("gym", "pottery"), "home", NOW
+    )
 
     assert agent.run.call_args.kwargs["deps"] == ["gym", "pottery"]
 
@@ -206,33 +216,33 @@ def planned(activity: str = "gym session", hobby: str = "") -> PlannedActivity:
     )
 
 
-def test_reject_unknown_hobbies_raises_when_hobby_is_not_hers() -> None:
+def test_validate_hobbies_raises_when_hobby_is_not_hers() -> None:
     plan = WeekPlan(activities=[planned(hobby="Gym")])
 
     with pytest.raises(ModelRetry):
-        _reject_unknown_hobbies(MagicMock(deps=["gym"]), plan)
+        _validate_hobbies(MagicMock(deps=["gym"]), plan)
 
 
-def test_reject_unknown_hobbies_retry_message_names_her_actual_hobbies() -> None:
+def test_validate_hobbies_retry_message_names_her_actual_hobbies() -> None:
     plan = WeekPlan(activities=[planned(hobby="Gym")])
 
     with pytest.raises(ModelRetry) as error:
-        _reject_unknown_hobbies(MagicMock(deps=["gym", "pottery"]), plan)
+        _validate_hobbies(MagicMock(deps=["gym", "pottery"]), plan)
 
     assert "gym, pottery" in str(error.value)
 
 
-def test_reject_unknown_hobbies_returns_plan_when_every_hobby_is_hers() -> None:
+def test_validate_hobbies_returns_plan_when_every_hobby_is_hers() -> None:
     plan = WeekPlan(activities=[planned(hobby="gym")])
 
-    result = _reject_unknown_hobbies(MagicMock(deps=["gym"]), plan)
+    result = _validate_hobbies(MagicMock(deps=["gym"]), plan)
 
     assert result is plan
 
 
-def test_reject_unknown_hobbies_allows_activities_with_no_hobby() -> None:
+def test_validate_hobbies_allows_activities_with_no_hobby() -> None:
     plan = WeekPlan(activities=[planned(activity="groceries", hobby="")])
 
-    result = _reject_unknown_hobbies(MagicMock(deps=["gym"]), plan)
+    result = _validate_hobbies(MagicMock(deps=["gym"]), plan)
 
     assert result is plan

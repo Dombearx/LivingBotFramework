@@ -10,7 +10,7 @@ from livingbot import config, llm_config, prompts
 from livingbot.activity_notes import ActivityNotes, ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.commitments import Commitment, CommitmentStore
-from livingbot.hobbies import Hobbies, HobbyLevel, HobbyStore, recent_hobbies
+from livingbot.hobbies import Hobbies, HobbyStore, recent_hobbies
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.mood import Mood, build_mood_block, is_awake
 from livingbot.preferences import Preferences, PreferenceStore
@@ -260,41 +260,13 @@ def _build_activity_notes_block(notes: ActivityNotes) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-_HOBBY_LEVEL_TONE: dict[HobbyLevel, str] = {
-    HobbyLevel.novice: (
-        "you're still new to it — curious, a little unsure of yourself, "
-        "easily impressed by people who are better at it"
-    ),
-    HobbyLevel.beginner: (
-        "you've got the basics down — more confident, but still learning "
-        "and happy to ask questions"
-    ),
-    HobbyLevel.intermediate: (
-        "you're comfortable with it — you know your way around and have "
-        "your own preferences and little routines"
-    ),
-    HobbyLevel.advanced: (
-        "you're quite skilled — you can speak with real authority and "
-        "notice details that beginners wouldn't"
-    ),
-    HobbyLevel.expert: (
-        "you're an expert — you talk about it with deep, casual knowledge "
-        "and don't hold back your opinions"
-    ),
-}
-
-
 def _build_hobbies_block(hobbies: Hobbies) -> str:
     if not hobbies.entries:
         return "You don't have any particular hobbies right now.\n\n"
     lines = ["Your hobbies, and how skilled you are at each:"]
-    for hobby in hobbies.entries:
-        lines.append(
-            f"  {hobby.name} — {hobby.level.value}: {_HOBBY_LEVEL_TONE[hobby.level]}"
-        )
+    lines.extend(prompts.hobby_skill_lines(hobbies))
     lines.append(
-        "Your skill shows in what you make, not just how you talk about it. When you "
-        "photograph something you made or did with one of these, pass its name to "
+        "When you photograph something you made or did with one of these, name it in "
         "take_photo so the picture is as good — or as rough — as you actually are."
     )
     return "\n".join(lines) + "\n\n"

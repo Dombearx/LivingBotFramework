@@ -12,6 +12,7 @@ from datetime import date, datetime
 import pytest
 
 from livingbot.calendar import WeekPlanner
+from livingbot.hobbies import Hobbies, Hobby
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -19,6 +20,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 WEEK_START = date(2026, 6, 1)
+NOW = datetime(2026, 6, 1, 9, 0)
+HOBBIES = Hobbies(entries=[Hobby(name="gym")])
 WEEK_END = datetime(2026, 6, 7, 23, 59)
 
 
@@ -29,14 +32,14 @@ def planner() -> WeekPlanner:
 
 async def test_plan_produces_entries(planner: WeekPlanner) -> None:
     """A week plan should not come back empty for a bot that goes to the gym."""
-    entries = await planner.plan(WEEK_START, ["gym"], "home")
+    entries = await planner.plan(WEEK_START, HOBBIES, "home", NOW)
 
     assert len(entries) > 0
 
 
 async def test_plan_includes_a_gym_session(planner: WeekPlanner) -> None:
     """The gym is her main hobby, so it should appear in the week."""
-    entries = await planner.plan(WEEK_START, ["gym"], "home")
+    entries = await planner.plan(WEEK_START, HOBBIES, "home", NOW)
 
     text = " ".join(f"{e.activity} {e.location}".lower() for e in entries)
     assert "gym" in text or "siłown" in text, (
@@ -46,7 +49,7 @@ async def test_plan_includes_a_gym_session(planner: WeekPlanner) -> None:
 
 async def test_plan_entries_end_after_they_start(planner: WeekPlanner) -> None:
     """Each activity should have a positive duration."""
-    entries = await planner.plan(WEEK_START, ["gym"], "home")
+    entries = await planner.plan(WEEK_START, HOBBIES, "home", NOW)
 
     for entry in entries:
         assert entry.end > entry.start, (
@@ -58,7 +61,7 @@ async def test_plan_entries_fall_within_the_planned_week(
     planner: WeekPlanner,
 ) -> None:
     """Every scheduled activity should sit inside the week it was planned for."""
-    entries = await planner.plan(WEEK_START, ["gym"], "home")
+    entries = await planner.plan(WEEK_START, HOBBIES, "home", NOW)
 
     for entry in entries:
         assert datetime(2026, 6, 1) <= entry.start <= WEEK_END, (

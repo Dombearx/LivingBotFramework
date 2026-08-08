@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from livingbot.hobbies import Hobbies, Hobby
 from livingbot.stories import (
     RETIREMENT_PERIOD,
     STORY_TIERS,
@@ -14,6 +15,12 @@ from livingbot.stories import (
     StoryTier,
     _choose_tier,
 )
+
+NOW = datetime(2026, 6, 1, 12, 0)
+
+
+def hobbies(*names: str) -> Hobbies:
+    return Hobbies(entries=[Hobby(name=name) for name in names])
 
 
 @pytest.fixture
@@ -338,7 +345,7 @@ async def test_story_generator_generate_returns_story_with_requested_occurs_at(
     occurs_at = datetime(2026, 6, 4, 15, 0)
 
     story = await generator.generate(
-        date(2026, 6, 1), ["gym"], "home", occurs_at, None, []
+        date(2026, 6, 1), hobbies("gym"), "home", occurs_at, None, [], NOW
     )
 
     assert story.occurs_at == occurs_at
@@ -359,11 +366,12 @@ async def test_story_generator_generate_passes_avoid_summaries_in_prompt(
 
     await generator.generate(
         date(2026, 6, 1),
-        ["gym"],
+        hobbies("gym"),
         "home",
         datetime(2026, 6, 4),
         None,
         ["Fell in a lake"],
+        NOW,
     )
 
     prompt = generator._agent.run.call_args.args[0]
@@ -383,11 +391,12 @@ async def test_story_generator_generate_passes_anchor_in_prompt(
 
     await generator.generate(
         date(2026, 6, 1),
-        ["gym"],
+        hobbies("gym"),
         "home",
         datetime(2026, 6, 4),
         "gym session at gym",
         [],
+        NOW,
     )
 
     prompt = generator._agent.run.call_args.args[0]
@@ -402,7 +411,7 @@ async def test_story_generator_generate_returns_none_when_agent_fails(
     generator._agent.run = AsyncMock(side_effect=RuntimeError("model down"))
 
     story = await generator.generate(
-        date(2026, 6, 1), ["gym"], "home", datetime(2026, 6, 4), None, []
+        date(2026, 6, 1), hobbies("gym"), "home", datetime(2026, 6, 4), None, [], NOW
     )
 
     assert story is None
@@ -418,16 +427,13 @@ async def test_story_generator_generate_passes_new_hobbies_in_prompt(
     generator._agent.run = AsyncMock(
         return_value=SimpleNamespace(output=GeneratedStory(summary="s", content="c"))
     )
+    just_taken_up = Hobbies(
+        entries=[Hobby(name="pottery", acquired_at=NOW - timedelta(days=8))]
+    )
 
     await generator.generate(
-        date(2026, 6, 1),
-        ["gym", "pottery"],
-        "home",
-        datetime(2026, 6, 4),
-        None,
-        [],
-        ["pottery (took up 8 days ago)"],
+        date(2026, 6, 1), just_taken_up, "home", datetime(2026, 6, 4), None, [], NOW
     )
 
     prompt = generator._agent.run.call_args.args[0]
-    assert "pottery (took up 8 days ago)" in prompt
+    assert "She only recently took up: pottery (1 week ago)." in prompt

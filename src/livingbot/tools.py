@@ -16,7 +16,7 @@ from livingbot.activity_notes import ActivityNote, ActivityNotesStore
 from livingbot.calendar import CalendarStore, PlanEntry
 from livingbot.commitments import Commitment, CommitmentStore
 from livingbot.directory import Directory
-from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore
+from livingbot.hobbies import EXPERIENCE_PER_SESSION, Hobby, HobbyStore, find_hobby
 from livingbot.inventory import InventoryItem, InventoryStore
 from livingbot.preferences import PreferenceStore
 from livingbot.spending import POINT_COST, SpendCategory, SpendingStore
@@ -508,9 +508,9 @@ async def take_photo(
     from livingbot.image import generate_image
 
     hobbies = ctx.deps.hobby_store.load()
-    hobby_entry = next((h for h in hobbies.entries if h.name == hobby), None)
+    hobby_entry = find_hobby(hobbies, hobby)
     if hobby and hobby_entry is None:
-        names = ", ".join(h.name for h in hobbies.entries) or "(none)"
+        names = ", ".join(entry.name for entry in hobbies.entries) or "(none)"
         return (
             f"You don't have a hobby called {hobby}. Your hobbies are: {names}. "
             "Take the photo again with one of those, or with no hobby at all."

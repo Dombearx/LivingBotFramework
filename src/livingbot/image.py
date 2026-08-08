@@ -14,7 +14,7 @@ from livingbot.prompts import (
     IMAGE_STYLE_PREFIX,
     MUGDA_IMAGE_IDENTITY,
     SELFIE_PERSONA,
-    build_hobby_skill_clause,
+    build_hobby_image_clause,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,11 +100,7 @@ async def generate_image(
         # Goes to the enhancer so it writes the scene around the right level of
         # craft, and again verbatim into the prompt so a reworded paragraph can't
         # quietly turn a beginner's daub into a masterpiece.
-        skill_clause = (
-            build_hobby_skill_clause(hobby.name, hobby.level)
-            if hobby is not None
-            else ""
-        )
+        skill_clause = build_hobby_image_clause(hobby) if hobby is not None else ""
         scene = await _enhance_prompt(
             description, include_mugda, outfit_description, skill_clause
         )

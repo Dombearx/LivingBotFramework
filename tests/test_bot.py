@@ -988,39 +988,38 @@ async def test_ensure_week_planned_when_week_unplanned_plans_and_saves(
     await bot._ensure_week_planned()
 
     week_start = datetime(2026, 6, 1).date()
-    week_planner.plan.assert_called_once_with(week_start, ["gym"], "home", [])
+    week_planner.plan.assert_called_once_with(
+        week_start, hobby_store.load(), "home", mock_clock.now.return_value
+    )
     saved = calendar_store.save.call_args.args[0]
     assert saved.entries == [entry]
     assert saved.planned_week_start == week_start
 
 
 @patch("livingbot.bot.clock")
-async def test_ensure_week_planned_passes_recently_acquired_hobby_note_to_planner(
+async def test_ensure_week_planned_passes_her_hobbies_to_planner(
     mock_clock: MagicMock,
 ) -> None:
     now = datetime(2026, 6, 3, 14, 30)
     mock_clock.now.return_value = now
     calendar_store = make_calendar_store(Calendar(home_location="home"))
     week_planner = make_week_planner()
-    hobby_store = make_hobby_store(
-        Hobbies(
-            entries=[
-                Hobby(name="gym"),
-                Hobby(name="pottery", acquired_at=now - timedelta(days=2)),
-            ]
-        )
+    hobbies = Hobbies(
+        entries=[
+            Hobby(name="gym"),
+            Hobby(name="pottery", acquired_at=now - timedelta(days=2)),
+        ]
     )
     bot = make_bot(
         calendar_store=calendar_store,
         week_planner=week_planner,
-        hobby_store=hobby_store,
+        hobby_store=make_hobby_store(hobbies),
     )
 
     await bot._ensure_week_planned()
 
-    week_start = datetime(2026, 6, 1).date()
     week_planner.plan.assert_called_once_with(
-        week_start, ["gym", "pottery"], "home", ["pottery (took up 2 days ago)"]
+        datetime(2026, 6, 1).date(), hobbies, "home", now
     )
 
 
@@ -1456,11 +1455,7 @@ async def test_generate_week_story_adds_story_with_rendered_image_path(
     bot = make_bot(story_generator=generator, story_store=story_store)
 
     await bot._generate_week_story(
-        Calendar(home_location="home"),
-        ["gym"],
-        date(2026, 6, 1),
-        datetime(2026, 6, 1),
-        [],
+        Calendar(home_location="home"), date(2026, 6, 1), datetime(2026, 6, 1)
     )
 
     story_store.add.assert_awaited_once()
@@ -1473,11 +1468,7 @@ async def test_generate_week_story_when_generation_returns_none_adds_nothing() -
     bot = make_bot(story_generator=generator, story_store=story_store)
 
     await bot._generate_week_story(
-        Calendar(home_location="home"),
-        ["gym"],
-        date(2026, 6, 1),
-        datetime(2026, 6, 1),
-        [],
+        Calendar(home_location="home"), date(2026, 6, 1), datetime(2026, 6, 1)
     )
 
     story_store.add.assert_not_awaited()
@@ -1492,31 +1483,26 @@ async def test_generate_week_story_when_generator_raises_swallows_the_error() ->
     bot = make_bot(story_generator=generator, story_store=story_store)
 
     await bot._generate_week_story(
-        Calendar(home_location="home"),
-        ["gym"],
-        date(2026, 6, 1),
-        datetime(2026, 6, 1),
-        [],
+        Calendar(home_location="home"), date(2026, 6, 1), datetime(2026, 6, 1)
     )
 
     story_store.add.assert_not_awaited()
 
 
-async def test_generate_week_story_passes_new_hobbies_to_generator() -> None:
+async def test_generate_week_story_passes_her_hobbies_to_generator() -> None:
     generator = make_story_generator()
-    story_store = make_story_store()
-    bot = make_bot(story_generator=generator, story_store=story_store)
-
-    await bot._generate_week_story(
-        Calendar(home_location="home"),
-        ["gym", "pottery"],
-        date(2026, 6, 1),
-        datetime(2026, 6, 1),
-        ["pottery (took up 2 days ago)"],
+    hobbies = Hobbies(entries=[Hobby(name="gym"), Hobby(name="pottery")])
+    bot = make_bot(
+        story_generator=generator,
+        story_store=make_story_store(),
+        hobby_store=make_hobby_store(hobbies),
     )
 
-    new_hobbies = generator.generate.call_args.args[-1]
-    assert new_hobbies == ["pottery (took up 2 days ago)"]
+    await bot._generate_week_story(
+        Calendar(home_location="home"), date(2026, 6, 1), datetime(2026, 6, 1)
+    )
+
+    assert generator.generate.call_args.args[1] == hobbies
 
 
 @patch(
