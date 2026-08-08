@@ -47,7 +47,12 @@ from livingbot.scheduled_posts import ScheduledPostStore
 from livingbot.spontaneous import SpontaneousStore
 from livingbot.stories import Story, StoryGenerator, StoryStore
 from livingbot.timeformat import humanize_ago
-from livingbot.tools import format_message, message_images, recent_message_images
+from livingbot.tools import (
+    format_message,
+    message_images,
+    recent_message_images,
+    resolve_reply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -737,6 +742,15 @@ class LivingBot(discord.Client):
             return False
         return discord.utils.utcnow() - min(join_times) < config.ONBOARDING_PERIOD
 
+    async def _format(self, message: discord.Message) -> str:
+        replied_to = await resolve_reply(message)
+        return format_message(
+            message,
+            own=message.author == self.user,
+            replied_to=replied_to,
+            replied_to_own=replied_to is not None and replied_to.author == self.user,
+        )
+
     async def _attempt_response(self) -> bool:
         if len(self._queue) == 0:
             return True
@@ -775,7 +789,7 @@ class LivingBot(discord.Client):
                     channel_id=channel.id,
                     message_count=len(messages),
                 ) as span:
-                    formatted = [format_message(m) for m in messages]
+                    formatted = [await self._format(m) for m in messages]
                     history_messages = [
                         m
                         async for m in channel.history(
@@ -784,8 +798,7 @@ class LivingBot(discord.Client):
                         )
                     ]
                     history = [
-                        format_message(m, own=m.author == self.user)
-                        for m in reversed(history_messages)
+                        await self._format(m) for m in reversed(history_messages)
                     ]
                     images = await recent_message_images(
                         history_messages, config.HISTORY_IMAGE_LIMIT

@@ -26,6 +26,7 @@ from livingbot.timeformat import humanize_ago
 logger = logging.getLogger(__name__)
 
 MAX_LINK_PREVIEW_LENGTH = 300
+MAX_REPLY_QUOTE_LENGTH = 300
 MAX_EMBED_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_ARTICLE_CHARS = 6000
 _FETCH_USER_AGENT = (
@@ -55,18 +56,59 @@ class BotDeps:
 OWN_MESSAGE_MARKER = " (you)"
 
 
-def format_message(message: discord.Message, own: bool = False) -> str:
+def format_message(
+    message: discord.Message,
+    own: bool = False,
+    replied_to: discord.Message | None = None,
+    replied_to_own: bool = False,
+) -> str:
+    line = _format_line(message, own)
+    if replied_to is not None:
+        line += f"\n{_format_reply_quote(replied_to, replied_to_own)}"
+    previews = _format_link_previews(message)
+    if previews:
+        line += f"\n{previews}"
+    return line
+
+
+def _format_line(message: discord.Message, own: bool) -> str:
     timestamp = clock.to_local(message.created_at).strftime("%Y-%m-%d %H:%M:%S")
     author = message.author.display_name
     if own:
         author += OWN_MESSAGE_MARKER
     # clean_content is discord.py's own mention rendering: "<@123>" arrives as
     # "@Kuba", so the model never sees a raw user id.
-    line = f"[id:{message.id}] [{timestamp}] {author}: {message.clean_content}"
-    previews = _format_link_previews(message)
-    if previews:
-        line += f"\n{previews}"
-    return line
+    return f"[id:{message.id}] [{timestamp}] {author}: {message.clean_content}"
+
+
+def _format_reply_quote(replied_to: discord.Message, own: bool) -> str:
+    quoted = _format_line(replied_to, own)
+    if len(quoted) > MAX_REPLY_QUOTE_LENGTH:
+        quoted = quoted[:MAX_REPLY_QUOTE_LENGTH].rstrip() + "…"
+    return f"  [in reply to {quoted}]"
+
+
+async def resolve_reply(message: discord.Message) -> discord.Message | None:
+    """The message this one is a reply to, so she can see what was pointed at.
+
+    Discord ships the replied-to message alongside the reply in most payloads, but
+    not always, so fall back to fetching it — that is what makes a reply to a message
+    from weeks ago still readable.
+    """
+    reference = message.reference
+    if reference is None or reference.message_id is None:
+        return None
+    if reference.type is not discord.MessageReferenceType.default:
+        return None
+    if isinstance(reference.resolved, discord.Message):
+        return reference.resolved
+    if isinstance(reference.resolved, discord.DeletedReferencedMessage):
+        return None
+    try:
+        return await message.channel.fetch_message(reference.message_id)
+    except discord.HTTPException:
+        logger.warning("Could not fetch replied-to message %s", reference.message_id)
+        return None
 
 
 def _format_link_previews(message: discord.Message) -> str:
