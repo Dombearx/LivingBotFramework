@@ -115,6 +115,15 @@ def _random_free_moment(
     return _random_datetime_between(earliest, week_end)
 
 
+def _minutes_until_awake(now: datetime) -> float:
+    wake_up = now.replace(
+        hour=config.AWAKE_HOUR_START, minute=0, second=0, microsecond=0
+    )
+    if now >= wake_up:
+        wake_up += timedelta(days=1)
+    return (wake_up - now).total_seconds() / 60.0
+
+
 def _next_spontaneous_time(now: datetime) -> datetime:
     days_ahead = random.uniform(
         config.RANDOM_POST_MIN_DAYS, config.RANDOM_POST_MAX_DAYS
@@ -793,6 +802,11 @@ class LivingBot(discord.Client):
         if len(self._queue) == 0:
             return True
         now = clock.now()
+        if not is_awake(now):
+            logger.debug(
+                "Asleep; %d message(s) waiting until morning", len(self._queue)
+            )
+            return False
         async with self._state_lock:
             mood = refresh_mood(
                 self._mood_store.load(), now, self._calendar_store.load()
@@ -973,6 +987,21 @@ class LivingBot(discord.Client):
                 [relation.user_id for relation in relations],
             )
 
+    def _rest_delay_minutes(self, now: datetime) -> float:
+        if not is_awake(now):
+            # Sleeping through it in one go rather than waking every few minutes,
+            # and answering a little after she gets up rather than on the hour.
+            return _minutes_until_awake(now) + random.uniform(
+                0.0, config.WAKE_UP_JITTER_MINUTES
+            )
+        mood = self._mood_store.load()
+        mood_rest_factor = 1.5 - (mood.value / 100.0)
+        max_delay = max(3.0, 5.0 * mood.fatigue * mood_rest_factor)
+        delay_divisor = (
+            config.ONBOARDING_REST_DELAY_DIVISOR if self._onboarding_active() else 1.0
+        )
+        return random.uniform(3.0 / delay_divisor, max_delay / delay_divisor)
+
     async def _rest_and_respond(self) -> None:
         # Runs detached, and _resting is set before it starts. Clearing the flag
         # in `finally` rather than only on success is what keeps a failure here
@@ -980,17 +1009,7 @@ class LivingBot(discord.Client):
         # _resting first, and nothing else ever resets it.
         try:
             while True:
-                mood = self._mood_store.load()
-                mood_rest_factor = 1.5 - (mood.value / 100.0)
-                max_delay = max(3.0, 5.0 * mood.fatigue * mood_rest_factor)
-                delay_divisor = (
-                    config.ONBOARDING_REST_DELAY_DIVISOR
-                    if self._onboarding_active()
-                    else 1.0
-                )
-                actual_delay = random.uniform(
-                    3.0 / delay_divisor, max_delay / delay_divisor
-                )
+                actual_delay = self._rest_delay_minutes(clock.now())
                 self._next_attempt_at = clock.now() + timedelta(minutes=actual_delay)
                 await asyncio.sleep(actual_delay * 60.0)
 

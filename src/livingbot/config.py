@@ -46,6 +46,9 @@ STORY_TIED_TO_PLAN_PROBABILITY = 0.3
 # The hours she is awake and active; outside this window she is asleep.
 AWAKE_HOUR_START = 8
 AWAKE_HOUR_END = 23
+# Spread over which she gets to messages that waited overnight, so the backlog
+# isn't answered the second AWAKE_HOUR_START ticks over.
+WAKE_UP_JITTER_MINUTES = 45.0
 STORY_AVOID_RECENT_LIMIT = 20
 # How many prior channel messages to automatically pull in as context each
 # time she responds, so replies don't come out of nowhere.
