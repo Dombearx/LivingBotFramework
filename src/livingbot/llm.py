@@ -292,6 +292,11 @@ def _build_hobbies_block(hobbies: Hobbies) -> str:
         lines.append(
             f"  {hobby.name} — {hobby.level.value}: {_HOBBY_LEVEL_TONE[hobby.level]}"
         )
+    lines.append(
+        "Your skill shows in what you make, not just how you talk about it. When you "
+        "photograph something you made or did with one of these, pass its name to "
+        "take_photo so the picture is as good — or as rough — as you actually are."
+    )
     return "\n".join(lines) + "\n\n"
 
 

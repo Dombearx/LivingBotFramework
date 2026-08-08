@@ -1,3 +1,5 @@
+from livingbot.hobbies import HobbyLevel
+
 PERSONA_NAME = "Mugda"
 
 SYSTEM_PROMPT = (
@@ -392,3 +394,42 @@ MUGDA_IMAGE_IDENTITY = (
     "proportions consistent with the references, without exaggerating them "
     "further. "
 )
+
+HOBBY_SKILL_IN_IMAGE: dict[HobbyLevel, str] = {
+    HobbyLevel.novice: (
+        "is a rank beginner's: clumsy and badly executed, wrong proportions, muddy "
+        "and careless, with obvious mistakes left in -- it plainly looks bad, the "
+        "result of someone who only just started. "
+    ),
+    HobbyLevel.beginner: (
+        "is an early learner's: the basics are there, but the execution is shaky "
+        "and amateurish and the mistakes are easy to spot. "
+    ),
+    HobbyLevel.intermediate: (
+        "is a comfortable hobbyist's: decent and recognisably skilled, with a few "
+        "rough edges that stop it short of polished. "
+    ),
+    HobbyLevel.advanced: (
+        "is highly skilled: confident, precise and well executed, close to "
+        "professional quality. "
+    ),
+    HobbyLevel.expert: (
+        "is masterful: exquisitely executed, refined and beautiful, the work of "
+        "someone who has done this for years. "
+    ),
+}
+
+# Without this the skill level bleeds into the rendering itself and a novice's
+# painting comes back as a badly drawn picture rather than a good picture of a
+# badly painted canvas.
+HOBBY_SKILL_SCOPE = (
+    "This describes only that thing itself, never how the illustration is painted -- "
+    "the illustration stays a polished Studio Ghibli style painting either way. "
+)
+
+
+def build_hobby_skill_clause(hobby_name: str, level: HobbyLevel) -> str:
+    return (
+        f"Whatever she made or did with {hobby_name} in this picture "
+        f"{HOBBY_SKILL_IN_IMAGE[level]}{HOBBY_SKILL_SCOPE}"
+    )

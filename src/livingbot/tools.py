@@ -490,6 +490,7 @@ async def take_photo(
     description: str,
     include_mugda: bool,
     outfit_description: str = "",
+    hobby: str = "",
 ) -> str:
     """Take a photo. Use this when you want to share a picture of what you're doing
     or what's around you. Describe the scene or subject in plain language.
@@ -498,15 +499,29 @@ async def take_photo(
     When include_mugda=True, set outfit_description to what you are currently wearing
     (e.g. 'black sports bra, grey leggings, white sneakers') so the image shows
     you accurately — leave empty for non-selfie photos.
+    Set hobby to the exact name of one of your hobbies when the photo shows something
+    you made or did with it — a painting you painted, a cake you baked, a lift you hit —
+    so the picture comes out as good or as bad as you actually are at it. Leave it
+    empty for anything else.
     Only one photo can be attached per message; calling this more than once replaces
     the previous photo."""
     from livingbot.image import generate_image
+
+    hobbies = ctx.deps.hobby_store.load()
+    hobby_entry = next((h for h in hobbies.entries if h.name == hobby), None)
+    if hobby and hobby_entry is None:
+        names = ", ".join(h.name for h in hobbies.entries) or "(none)"
+        return (
+            f"You don't have a hobby called {hobby}. Your hobbies are: {names}. "
+            "Take the photo again with one of those, or with no hobby at all."
+        )
 
     try:
         image_bytes = await generate_image(
             description=description,
             include_mugda=include_mugda,
             outfit_description=outfit_description,
+            hobby=hobby_entry,
         )
     except Exception:
         logger.exception("Image generation failed")
