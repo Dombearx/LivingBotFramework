@@ -44,8 +44,37 @@ on:
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    env:
+      # Set this secret to render real pictures. Without it the tests that need
+      # an image service skip themselves, and the two steps below — which are
+      # the only reason this workflow touches the private network — don't run.
+      IMAGE_SERVICE_URL: ${{ secrets.IMAGE_SERVICE_URL }}
     steps:
       - uses: actions/checkout@v4
+
+      # The image service runs on the host's private network, so a run that
+      # renders pictures has to join it the same way the deploy workflow does.
+      - name: Join Netbird network
+        if: env.IMAGE_SERVICE_URL != ''
+        uses: hackiron/public-actions/netbird-connect@main
+        with:
+          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          hostname: github-actions-integration-tests
+          management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
+
+      - name: Wait for the image service
+        if: env.IMAGE_SERVICE_URL != ''
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null "$IMAGE_SERVICE_URL/health"; then
+              echo "Image service is available"
+              exit 0
+            fi
+            echo "Waiting for the image service to become available..."
+            sleep 10
+          done
+          echo "::error::Timed out waiting for the image service after 5 minutes"
+          exit 1
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -58,9 +87,6 @@ jobs:
       - name: Run integration tests
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # Optional. Without it the tests that render real pictures skip
-          # themselves and the run produces no images to review.
-          IMAGE_SERVICE_URL: ${{ secrets.IMAGE_SERVICE_URL }}
           INTEGRATION_IMAGE_DIR: integration-images
         run: |
           t=tests/integration
