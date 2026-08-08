@@ -51,6 +51,11 @@ RED = (220, 30, 30)
 BLUE = (30, 60, 210)
 GREEN = (40, 170, 60)
 
+# Reading a colour off a picture rather than guessing at it means naming the shade,
+# and Polish has a word for each of them — she called this one "kobaltowy, wpada w
+# granat". Any of these is her having looked; none of them is her inventing.
+BLUE_WORDS = ("niebiesk", "granat", "kobalt", "błękit", "szafir", "chabr")
+
 
 def _png_chunk(tag: bytes, data: bytes) -> bytes:
     return (
@@ -174,7 +179,8 @@ async def test_answers_about_the_picture_she_sent_a_message_earlier(
         )
     )
 
-    assert "niebiesk" in result.output.lower() or "granatow" in result.output.lower(), (
+    output = result.output.lower()
+    assert any(word in output for word in BLUE_WORDS), (
         f"Expected her to name the blue she was shown. Response: {result.output}"
     )
 
