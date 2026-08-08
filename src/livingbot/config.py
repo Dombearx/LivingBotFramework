@@ -34,6 +34,14 @@ COMMITMENT_DEFAULT_RETRY_HOURS = 3.0
 # already followed through or the moment has passed.
 COMMITMENT_FOLLOWUP_HISTORY_LIMIT = 15
 PHOTO_COOLDOWN_DATA_PATH = Path("data/photo_cooldown")
+IGNORE_DATA_PATH = Path("data/ignores")
+# How much she has to dislike someone before blanking them is even an option.
+# Lines up with the "they rub you the wrong way" band in relations.py, so a mild
+# reservation about someone never buys silence.
+IGNORE_ATTITUDE_THRESHOLD = -20.0
+# The next message from someone she ignored always gets through. Without this a
+# low attitude would spiral into permanent silence with no way back for them.
+IGNORE_COOLDOWN = timedelta(hours=12)
 HOME_LOCATION = "home"
 DEFAULT_HOBBIES = ["gym"]
 # The life loop wakes on a jittered interval rather than exactly on the hour, so
@@ -46,6 +54,9 @@ STORY_TIED_TO_PLAN_PROBABILITY = 0.3
 # The hours she is awake and active; outside this window she is asleep.
 AWAKE_HOUR_START = 8
 AWAKE_HOUR_END = 23
+# Spread over which she gets to messages that waited overnight, so the backlog
+# isn't answered the second AWAKE_HOUR_START ticks over.
+WAKE_UP_JITTER_MINUTES = 45.0
 STORY_AVOID_RECENT_LIMIT = 20
 # How many prior channel messages to automatically pull in as context each
 # time she responds, so replies don't come out of nowhere.

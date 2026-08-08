@@ -5,10 +5,13 @@ from pathlib import Path
 from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
+import pytest
 
-from livingbot import config, prompts
+from livingbot import clock, config, prompts
 from livingbot.bot import (
+    IGNORED_OUTCOME,
     LivingBot,
+    _minutes_until_awake,
     _pick_story_slot,
     _random_free_moment,
     _send_chunked,
@@ -19,6 +22,7 @@ from livingbot.commitment_timing import CommitmentTimingDecision
 from livingbot.commitments import Commitment, Commitments
 from livingbot.directory import Directory
 from livingbot.hobbies import Hobbies, Hobby, HobbyLevel
+from livingbot.ignoring import IgnoreLog
 from livingbot.mood import Mood
 from livingbot.photo import PhotoCooldown
 from livingbot.preferences import Preferences
@@ -31,6 +35,19 @@ from livingbot.stories import Story
 STABLE_NOW = datetime(2026, 6, 24, 15, 0)
 
 
+@pytest.fixture(autouse=True)
+def awake_clock():
+    """Pin the real clock to that afternoon for every test in this module.
+
+    She only answers messages while awake, so without this whether a test passes
+    would depend on the time of day the suite happens to run. Tests that patch
+    livingbot.bot.clock themselves — including the ones about sleeping — replace
+    the whole module and are unaffected by this.
+    """
+    with patch.object(clock, "now", return_value=STABLE_NOW):
+        yield
+
+
 def bot_user() -> MagicMock:
     return MagicMock(spec=discord.ClientUser)
 
@@ -39,10 +56,16 @@ def other_user() -> MagicMock:
     return MagicMock(spec=discord.User)
 
 
-def make_llm_client(response: str = "llm response") -> MagicMock:
+def make_llm_client(
+    response: str = "llm response",
+    ignored: bool = False,
+    reaction: str | None = None,
+) -> MagicMock:
     mock_result = MagicMock()
     mock_result.output = response
     mock_result.photo = None
+    mock_result.ignored = ignored
+    mock_result.reaction = reaction
     client = MagicMock()
     client.complete = AsyncMock(return_value=mock_result)
     return client
@@ -136,6 +159,15 @@ def make_photo_cooldown_store(
     return store
 
 
+def make_ignore_store(ignore_log: IgnoreLog | None = None) -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(
+        return_value=ignore_log if ignore_log is not None else IgnoreLog()
+    )
+    store.save = MagicMock()
+    return store
+
+
 def make_story_generator() -> MagicMock:
     generator = MagicMock()
     generator.generate = AsyncMock(return_value=None)
@@ -193,6 +225,7 @@ def make_bot(
     mood_store: MagicMock | None = None,
     preference_store: MagicMock | None = None,
     photo_cooldown_store: MagicMock | None = None,
+    ignore_store: MagicMock | None = None,
     commitment_store: MagicMock | None = None,
     commitment_timing_judge: MagicMock | None = None,
     reply_shape_labeller: MagicMock | None = None,
@@ -216,6 +249,7 @@ def make_bot(
         mood_store=mood_store or make_mood_store(),
         preference_store=preference_store or make_preference_store(),
         photo_cooldown_store=photo_cooldown_store or make_photo_cooldown_store(),
+        ignore_store=ignore_store or make_ignore_store(),
         commitment_store=commitment_store or make_commitment_store(),
         commitment_timing_judge=commitment_timing_judge
         or make_commitment_timing_judge(),
@@ -369,6 +403,7 @@ async def test_on_message_when_resting_queues_without_sending(
     channel.send.assert_not_called()
 
 
+@patch("livingbot.bot.clock")
 @patch("asyncio.sleep", new_callable=AsyncMock)
 @patch("random.random", return_value=0.0)
 @patch("random.uniform", return_value=5.0)
@@ -378,7 +413,9 @@ async def test_rest_and_respond_sends_llm_response_and_clears_resting(
     mock_uniform: MagicMock,
     mock_random: MagicMock,
     mock_sleep: AsyncMock,
+    mock_clock: MagicMock,
 ) -> None:
+    mock_clock.now.return_value = STABLE_NOW
     user = bot_user()
     mock_user.return_value = user
     bot = make_bot()
@@ -523,6 +560,7 @@ async def test_attempt_response_when_not_onboarding_skips_response_with_same_rol
     channel.send.assert_not_called()
 
 
+@patch("livingbot.bot.clock")
 @patch("asyncio.sleep", new_callable=AsyncMock)
 @patch("random.random", return_value=0.0)
 @patch("random.uniform", return_value=1.0)
@@ -532,7 +570,9 @@ async def test_rest_and_respond_when_onboarding_active_shrinks_delay_range(
     mock_uniform: MagicMock,
     mock_random: MagicMock,
     mock_sleep: AsyncMock,
+    mock_clock: MagicMock,
 ) -> None:
+    mock_clock.now.return_value = STABLE_NOW
     mock_guilds.return_value = [make_guild(discord.utils.utcnow() - timedelta(days=1))]
     bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=3.0)))
 
@@ -599,6 +639,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         shared_ending=None,
         commitments=[],
         directory=ANY,
+        can_ignore=False,
     )
 
 
@@ -2445,3 +2486,250 @@ async def test_send_chunked_turns_a_written_name_into_a_ping() -> None:
     await _send_chunked(channel, "hej @Kuba", Directory({"42": "Kuba"}))
 
     channel.send.assert_awaited_once_with("hej <@42>")
+
+
+# ---------------------------------------------------------------------------
+# sleeping through messages
+# ---------------------------------------------------------------------------
+
+ASLEEP = datetime(2026, 6, 24, 3, 0)
+
+
+@patch("livingbot.bot.clock")
+async def test_attempt_response_when_asleep_sends_nothing(
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = ASLEEP
+    bot = make_bot()
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), channel=channel))
+
+    await bot._attempt_response()
+
+    channel.send.assert_not_called()
+
+
+@patch("livingbot.bot.clock")
+async def test_attempt_response_when_asleep_keeps_the_messages_queued(
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = ASLEEP
+    bot = make_bot()
+    bot._queue.add(make_message(author=other_user(), channel=make_channel()))
+
+    await bot._attempt_response()
+
+    assert len(bot._queue) == 1
+
+
+@patch("livingbot.bot.clock")
+async def test_attempt_response_when_asleep_spends_no_fatigue(
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = ASLEEP
+    mood_store = make_mood_store(Mood(value=50.0, fatigue=0.0))
+    bot = make_bot(mood_store=mood_store)
+    bot._queue.add(make_message(author=other_user(), channel=make_channel()))
+
+    await bot._attempt_response()
+
+    mood_store.save.assert_not_called()
+
+
+def test_minutes_until_awake_before_dawn_counts_to_this_morning() -> None:
+    minutes = _minutes_until_awake(datetime(2026, 6, 24, 3, 0))
+
+    assert minutes == 300.0
+
+
+def test_minutes_until_awake_late_at_night_counts_to_tomorrow_morning() -> None:
+    minutes = _minutes_until_awake(datetime(2026, 6, 24, 23, 30))
+
+    assert minutes == 510.0
+
+
+@patch("random.uniform", return_value=0.0)
+def test_rest_delay_minutes_when_asleep_waits_until_she_wakes_up(
+    mock_uniform: MagicMock,
+) -> None:
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=10.0)))
+
+    delay = bot._rest_delay_minutes(ASLEEP)
+
+    assert delay == 300.0
+
+
+@patch.object(LivingBot, "guilds", new_callable=PropertyMock)
+@patch("random.uniform", return_value=7.0)
+def test_rest_delay_minutes_when_awake_uses_the_fatigue_delay(
+    mock_uniform: MagicMock,
+    mock_guilds: PropertyMock,
+) -> None:
+    mock_guilds.return_value = []
+    bot = make_bot(mood_store=make_mood_store(Mood(value=50.0, fatigue=3.0)))
+
+    delay = bot._rest_delay_minutes(STABLE_NOW)
+
+    assert delay == 7.0
+    mock_uniform.assert_called_once_with(3.0, 15.0)
+
+
+# ---------------------------------------------------------------------------
+# answering with silence or a reaction
+# ---------------------------------------------------------------------------
+
+
+@patch("livingbot.bot.clock")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+async def test_attempt_response_when_she_ignores_them_sends_nothing(
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = STABLE_NOW
+    bot = make_bot(llm_client=make_llm_client(ignored=True))
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), channel=channel))
+
+    await bot._attempt_response()
+
+    channel.send.assert_not_called()
+
+
+@patch("livingbot.bot.clock")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+async def test_attempt_response_when_she_ignores_them_starts_their_cooldown(
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = STABLE_NOW
+    ignore_store = make_ignore_store()
+    bot = make_bot(llm_client=make_llm_client(ignored=True), ignore_store=ignore_store)
+    author = other_user()
+    author.id = 456
+    bot._queue.add(make_message(author=author, channel=make_channel()))
+
+    await bot._attempt_response()
+
+    assert ignore_store.save.call_args.args[0].last_ignored_at == {"456": STABLE_NOW}
+
+
+@patch("livingbot.bot.clock")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "_update_relations", new_callable=AsyncMock)
+async def test_attempt_response_when_she_ignores_them_still_judges_the_exchange(
+    mock_update_relations: AsyncMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = STABLE_NOW
+    bot = make_bot(llm_client=make_llm_client(ignored=True))
+    bot._queue.add(make_message(author=other_user(), channel=make_channel()))
+
+    await bot._attempt_response()
+
+    assert mock_update_relations.call_args.args[2] == IGNORED_OUTCOME
+
+
+@patch("livingbot.bot.clock")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "_store_memories", new_callable=AsyncMock)
+async def test_attempt_response_when_she_ignores_them_remembers_nothing(
+    mock_store_memories: AsyncMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = STABLE_NOW
+    bot = make_bot(llm_client=make_llm_client(ignored=True))
+    bot._queue.add(make_message(author=other_user(), channel=make_channel()))
+
+    await bot._attempt_response()
+
+    mock_store_memories.assert_not_called()
+
+
+@patch("livingbot.bot.clock")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+async def test_attempt_response_when_she_reacts_writes_no_message(
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = STABLE_NOW
+    bot = make_bot(llm_client=make_llm_client(reaction="🔥"))
+    channel = make_channel()
+    bot._queue.add(make_message(author=other_user(), channel=channel))
+
+    await bot._attempt_response()
+
+    channel.send.assert_not_called()
+
+
+@patch("livingbot.bot.clock")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "_update_relations", new_callable=AsyncMock)
+async def test_attempt_response_when_she_reacts_tells_the_judge_what_she_did(
+    mock_update_relations: AsyncMock,
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = STABLE_NOW
+    bot = make_bot(llm_client=make_llm_client(reaction="🔥"))
+    bot._queue.add(make_message(author=other_user(), channel=make_channel()))
+
+    await bot._attempt_response()
+
+    assert "reacted with 🔥" in mock_update_relations.call_args.args[2]
+
+
+@patch("livingbot.bot.clock")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+async def test_attempt_response_when_she_ignores_them_does_not_reset_the_photo_cooldown(
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = STABLE_NOW
+    photo_cooldown_store = make_photo_cooldown_store()
+    bot = make_bot(
+        llm_client=make_llm_client(ignored=True),
+        photo_cooldown_store=photo_cooldown_store,
+    )
+    bot._queue.add(make_message(author=other_user(), channel=make_channel()))
+
+    await bot._attempt_response()
+
+    photo_cooldown_store.save.assert_not_called()
+
+
+@patch("livingbot.bot.clock")
+@patch("asyncio.create_task", side_effect=lambda coro: coro.close())
+@patch("random.random", return_value=0.0)
+async def test_attempt_response_when_she_dislikes_everyone_talking_allows_ignoring(
+    mock_random: MagicMock,
+    mock_create_task: MagicMock,
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = STABLE_NOW
+    llm_client = make_llm_client()
+    relation_store = MagicMock()
+    relation_store.load = MagicMock(
+        return_value=Relation(user_id="456", attitude=config.IGNORE_ATTITUDE_THRESHOLD)
+    )
+    bot = make_bot(llm_client=llm_client, relation_store=relation_store)
+    bot._queue.add(make_message(author=other_user(), channel=make_channel()))
+
+    await bot._attempt_response()
+
+    assert llm_client.complete.call_args.kwargs["can_ignore"] is True

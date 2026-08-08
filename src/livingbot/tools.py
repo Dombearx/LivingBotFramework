@@ -49,6 +49,14 @@ class BotDeps:
     commitment_store: CommitmentStore
     directory: Directory = field(default_factory=lambda: Directory({}))
     photo_result: bytes | None = None
+    # Whether ignore_message is allowed to bite this time; the caller decides, so
+    # the model can't talk its way into silence it hasn't earned.
+    can_ignore: bool = False
+    # A reaction replaces a reply, so it only means anything when she is answering
+    # someone. Off when she is the one starting the conversation.
+    can_react: bool = False
+    ignored: bool = False
+    reaction: str | None = None
 
 
 # Marks her own lines in a formatted history. The prompt builder reads it back out to
@@ -619,3 +627,46 @@ async def take_photo(
 
     ctx.deps.photo_result = image_bytes
     return "Photo taken and ready to attach."
+
+
+async def react_to_message(
+    ctx: RunContext[BotDeps], message_id: str, emoji: str
+) -> str:
+    """React to a message with a single emoji instead of writing a reply. Use it when
+    a message doesn't really need words — you're agreeing, acknowledging, or a joke
+    landed and anything you typed would be filler. Pass the id shown as [id:...] on
+    the message, and one emoji: either a plain one or a server emoji written exactly
+    as <:name:id>. This is your whole response — nothing you write afterwards gets
+    sent, so reply with words instead whenever you actually have something to say."""
+    if not ctx.deps.can_react:
+        return (
+            "There's nothing to react to here — you're the one starting this, not "
+            "answering anyone. Say what you wanted to say instead."
+        )
+    try:
+        message = await ctx.deps.channel.fetch_message(int(message_id))
+    except (ValueError, discord.HTTPException):
+        return f"There's no message with id {message_id} in this channel."
+    try:
+        await message.add_reaction(emoji)
+    except discord.HTTPException:
+        return f"Discord wouldn't take {emoji} as a reaction. Say it in words instead."
+    ctx.deps.reaction = emoji
+    return "Reaction added, and that's your whole response."
+
+
+async def ignore_message(ctx: RunContext[BotDeps]) -> str:
+    """Say nothing at all — no message, no reaction, they just get silence. This is
+    only for someone who has genuinely provoked you: an insult, a jab you've had
+    enough of, someone hammering you with messages. Being tired, busy or bored is not
+    a reason. Silence is a strong move and you make it rarely; if any part of you
+    would answer, answer, however short you keep it. Whatever you write after calling
+    this is discarded, so don't write it."""
+    if not ctx.deps.can_ignore:
+        return (
+            "You're not blanking them over this — either you don't dislike them "
+            "enough for that, or you already went silent on them recently. Answer "
+            "them, however short you want to keep it."
+        )
+    ctx.deps.ignored = True
+    return "You said nothing."

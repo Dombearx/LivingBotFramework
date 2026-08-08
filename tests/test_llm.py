@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pydantic_ai import Agent, BinaryContent
+import pytest
+from pydantic_ai import Agent, BinaryContent, UnexpectedModelBehavior
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import config
@@ -435,3 +436,107 @@ def test_own_messages_does_not_mistake_a_quoted_marker_for_her_own_line() -> Non
     lines = own_messages(["[id:1] [2026-06-03 14:00:00] Kuba: haha (you): nope"])
 
     assert lines == []
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_ignoring_is_allowed_offers_her_the_option(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs(), can_ignore=True)
+
+    prompt_text = mock_run.await_args.args[0][0]
+    assert "ignore_message" in prompt_text
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_ignoring_is_not_allowed_never_mentions_it(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs())
+
+    prompt_text = mock_run.await_args.args[0][0]
+    assert "ignore_message" not in prompt_text
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_passes_the_ignore_permission_to_the_tools(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs(), can_ignore=True)
+
+    assert mock_run.await_args.kwargs["deps"].can_ignore is True
+
+
+def _answer_wordlessly(ignored: bool = False, reaction: str | None = None):
+    """Stand in for a run where she picked a wordless answer and then ended her turn
+    with no text — which is what pydantic-ai retries into UnexpectedModelBehavior."""
+
+    async def run(prompt, deps=None, **kwargs):
+        deps.ignored = ignored
+        deps.reaction = reaction
+        raise UnexpectedModelBehavior("Exceeded maximum output retries (1)")
+
+    return run
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_she_ignores_them_survives_her_empty_turn(
+    mock_run: AsyncMock,
+) -> None:
+    mock_run.side_effect = _answer_wordlessly(ignored=True)
+
+    result = await make_llm_client().complete(**make_complete_kwargs(), can_ignore=True)
+
+    assert result.ignored is True
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_she_ignores_them_returns_no_text_to_send(
+    mock_run: AsyncMock,
+) -> None:
+    mock_run.side_effect = _answer_wordlessly(ignored=True)
+
+    result = await make_llm_client().complete(**make_complete_kwargs(), can_ignore=True)
+
+    assert result.output == ""
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_she_only_reacts_survives_her_empty_turn(
+    mock_run: AsyncMock,
+) -> None:
+    mock_run.side_effect = _answer_wordlessly(reaction="🔥")
+
+    result = await make_llm_client().complete(**make_complete_kwargs())
+
+    assert result.reaction == "🔥"
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_she_said_nothing_wordless_lets_the_error_through(
+    mock_run: AsyncMock,
+) -> None:
+    mock_run.side_effect = _answer_wordlessly()
+
+    with pytest.raises(UnexpectedModelBehavior):
+        await make_llm_client().complete(**make_complete_kwargs())
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_answering_messages_lets_her_react(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs())
+
+    assert mock_run.await_args.kwargs["deps"].can_react is True
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_posting_unprompted_does_not_let_her_react(
+    mock_run: AsyncMock,
+) -> None:
+    kwargs = make_complete_kwargs() | {"user_messages": []}
+
+    await make_llm_client().complete(**kwargs, trigger="Post something.")
+
+    assert mock_run.await_args.kwargs["deps"].can_react is False

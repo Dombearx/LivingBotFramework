@@ -29,7 +29,9 @@ from livingbot.tools import (
     extract_images,
     fetch_link,
     format_message,
+    ignore_message,
     message_images,
+    react_to_message,
     recent_message_images,
     remove_activity_note,
     remove_item,
@@ -1214,3 +1216,133 @@ async def test_take_photo_with_an_unknown_hobby_leaves_no_photo_attached(
     await take_photo(ctx, description="my pot", include_mugda=False, hobby="pottery")
 
     assert ctx.deps.photo_result is None
+
+
+# ---------------------------------------------------------------------------
+# react_to_message / ignore_message
+# ---------------------------------------------------------------------------
+
+
+def make_silence_ctx(
+    can_ignore: bool = False, can_react: bool = True
+) -> SimpleNamespace:
+    deps = BotDeps(
+        channel=MagicMock(),
+        channel_id=1,
+        calendar_store=MagicMock(),
+        activity_notes_store=MagicMock(),
+        inventory_store=make_inventory_store(),
+        spending_store=make_spending_store(),
+        hobby_store=make_hobby_store(),
+        story_store=make_story_store(),
+        preference_store=MagicMock(),
+        commitment_store=MagicMock(),
+        can_ignore=can_ignore,
+        can_react=can_react,
+    )
+    return SimpleNamespace(deps=deps)
+
+
+async def test_react_to_message_puts_the_emoji_on_the_message() -> None:
+    ctx = make_silence_ctx()
+    message = MagicMock()
+    message.add_reaction = AsyncMock()
+    ctx.deps.channel.fetch_message = AsyncMock(return_value=message)
+
+    await react_to_message(ctx, "77", "🔥")
+
+    message.add_reaction.assert_awaited_once_with("🔥")
+
+
+async def test_react_to_message_when_it_lands_makes_the_reaction_her_whole_reply() -> (
+    None
+):
+    ctx = make_silence_ctx()
+    message = MagicMock()
+    message.add_reaction = AsyncMock()
+    ctx.deps.channel.fetch_message = AsyncMock(return_value=message)
+
+    await react_to_message(ctx, "77", "🔥")
+
+    assert ctx.deps.reaction == "🔥"
+
+
+async def test_react_to_message_when_discord_rejects_the_emoji_still_lets_her_reply() -> (
+    None
+):
+    ctx = make_silence_ctx()
+    message = MagicMock()
+    message.add_reaction = AsyncMock(side_effect=discord.HTTPException(MagicMock(), ""))
+    ctx.deps.channel.fetch_message = AsyncMock(return_value=message)
+
+    await react_to_message(ctx, "77", "not-an-emoji")
+
+    assert ctx.deps.reaction is None
+
+
+async def test_react_to_message_with_an_unknown_message_id_still_lets_her_reply() -> (
+    None
+):
+    ctx = make_silence_ctx()
+    ctx.deps.channel.fetch_message = AsyncMock(
+        side_effect=discord.HTTPException(MagicMock(), "")
+    )
+
+    await react_to_message(ctx, "77", "🔥")
+
+    assert ctx.deps.reaction is None
+
+
+async def test_react_to_message_with_a_non_numeric_id_reports_the_message_is_missing() -> (
+    None
+):
+    ctx = make_silence_ctx()
+
+    result = await react_to_message(ctx, "the second one", "🔥")
+
+    assert result == "There's no message with id the second one in this channel."
+
+
+async def test_ignore_message_when_allowed_leaves_them_with_silence() -> None:
+    ctx = make_silence_ctx(can_ignore=True)
+
+    await ignore_message(ctx)
+
+    assert ctx.deps.ignored is True
+
+
+async def test_ignore_message_when_not_allowed_keeps_her_answering() -> None:
+    ctx = make_silence_ctx(can_ignore=False)
+
+    await ignore_message(ctx)
+
+    assert ctx.deps.ignored is False
+
+
+async def test_ignore_message_when_not_allowed_tells_her_to_answer_them() -> None:
+    ctx = make_silence_ctx(can_ignore=False)
+
+    result = await ignore_message(ctx)
+
+    assert "Answer them" in result
+
+
+async def test_react_to_message_when_she_is_not_answering_anyone_leaves_it_alone() -> (
+    None
+):
+    ctx = make_silence_ctx(can_react=False)
+    ctx.deps.channel.fetch_message = AsyncMock()
+
+    await react_to_message(ctx, "77", "🔥")
+
+    ctx.deps.channel.fetch_message.assert_not_awaited()
+
+
+async def test_react_to_message_when_she_is_not_answering_anyone_tells_her_to_speak() -> (
+    None
+):
+    ctx = make_silence_ctx(can_react=False)
+
+    result = await react_to_message(ctx, "77", "🔥")
+
+    assert "nothing to react to here" in result
