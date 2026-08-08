@@ -18,7 +18,7 @@ from livingbot.calendar import Calendar, PlanEntry
 from livingbot.commitment_timing import CommitmentTimingDecision
 from livingbot.commitments import Commitment, Commitments
 from livingbot.directory import Directory
-from livingbot.hobbies import Hobbies, Hobby
+from livingbot.hobbies import Hobbies, Hobby, HobbyLevel
 from livingbot.mood import Mood
 from livingbot.photo import PhotoCooldown
 from livingbot.preferences import Preferences
@@ -1532,6 +1532,34 @@ async def test_render_story_image_sends_story_content_to_image_service(
 
     assert mock_gen.call_args.kwargs["description"] == "A wild tale"
     assert mock_gen.call_args.kwargs["include_mugda"] is True
+
+
+@patch("livingbot.bot.generate_image", new_callable=AsyncMock, return_value=b"img")
+async def test_render_story_image_passes_the_hobby_the_story_is_about(
+    mock_gen: AsyncMock, tmp_path, monkeypatch
+) -> None:
+    """The picture has to be drawn at the level she has actually reached."""
+    monkeypatch.setattr(config, "STORY_IMAGE_PATH", tmp_path / "imgs")
+    painting = Hobby(name="painting", level=HobbyLevel.novice)
+    bot = make_bot(hobby_store=make_hobby_store(Hobbies(entries=[painting])))
+
+    await bot._render_story_image(
+        Story(summary="s", content="Her first canvas", hobby="painting")
+    )
+
+    assert mock_gen.call_args.kwargs["hobby"] == painting
+
+
+@patch("livingbot.bot.generate_image", new_callable=AsyncMock, return_value=b"img")
+async def test_render_story_image_for_a_story_about_no_hobby_passes_none(
+    mock_gen: AsyncMock, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "STORY_IMAGE_PATH", tmp_path / "imgs")
+    bot = make_bot(hobby_store=make_hobby_store(Hobbies(entries=[Hobby(name="gym")])))
+
+    await bot._render_story_image(Story(summary="s", content="A tram ride"))
+
+    assert mock_gen.call_args.kwargs["hobby"] is None
 
 
 @patch(

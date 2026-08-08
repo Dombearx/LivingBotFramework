@@ -9,7 +9,7 @@ from livingbot import config
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import Calendar, CalendarStore, PlanEntry
 from livingbot.commitments import CommitmentStore
-from livingbot.hobbies import Hobby, Hobbies
+from livingbot.hobbies import Hobbies, Hobby, HobbyLevel
 from livingbot.inventory import InventoryItem
 from datetime import date
 
@@ -79,9 +79,9 @@ def make_inventory_store() -> MagicMock:
     return store
 
 
-def make_hobby_store() -> MagicMock:
+def make_hobby_store(hobbies: Hobbies | None = None) -> MagicMock:
     store = MagicMock()
-    store.load = MagicMock(return_value=Hobbies())
+    store.load = MagicMock(return_value=hobbies if hobbies is not None else Hobbies())
     store.save = MagicMock()
     return store
 
@@ -324,7 +324,7 @@ async def test_buy_item_when_unaffordable_does_not_add_to_inventory() -> None:
 # ---------------------------------------------------------------------------
 
 
-def make_photo_ctx() -> SimpleNamespace:
+def make_photo_ctx(hobby_store: MagicMock | None = None) -> SimpleNamespace:
     deps = BotDeps(
         channel=MagicMock(),
         channel_id=1,
@@ -332,7 +332,7 @@ def make_photo_ctx() -> SimpleNamespace:
         activity_notes_store=MagicMock(),
         inventory_store=make_inventory_store(),
         spending_store=make_spending_store(),
-        hobby_store=make_hobby_store(),
+        hobby_store=hobby_store or make_hobby_store(),
         story_store=make_story_store(),
         preference_store=MagicMock(),
         commitment_store=MagicMock(),
@@ -1064,3 +1064,87 @@ def test_format_message_shows_a_mention_as_a_name_not_a_raw_id() -> None:
     result = format_message(msg)
 
     assert "@Mugda idziesz?" in result
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_with_a_hobby_passes_that_hobby_to_generate_image(
+    mock_gen: AsyncMock,
+) -> None:
+    painting = Hobby(name="painting", level=HobbyLevel.expert)
+    ctx = make_photo_ctx(make_hobby_store(Hobbies(entries=[painting])))
+
+    await take_photo(
+        ctx,
+        description="the canvas I just finished",
+        include_mugda=False,
+        hobby="painting",
+    )
+
+    assert mock_gen.call_args.kwargs["hobby"] == painting
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_without_a_hobby_passes_none_to_generate_image(
+    mock_gen: AsyncMock,
+) -> None:
+    ctx = make_photo_ctx(make_hobby_store(Hobbies(entries=[Hobby(name="painting")])))
+
+    await take_photo(ctx, description="a quiet park", include_mugda=False)
+
+    assert mock_gen.call_args.kwargs["hobby"] is None
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_with_an_unknown_hobby_does_not_generate_an_image(
+    mock_gen: AsyncMock,
+) -> None:
+    """Generating is slow and costs money, so a bad name is caught before the call."""
+    ctx = make_photo_ctx(make_hobby_store(Hobbies(entries=[Hobby(name="gym")])))
+
+    await take_photo(ctx, description="my pot", include_mugda=False, hobby="pottery")
+
+    mock_gen.assert_not_awaited()
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_with_an_unknown_hobby_names_her_actual_hobbies(
+    mock_gen: AsyncMock,
+) -> None:
+    ctx = make_photo_ctx(make_hobby_store(Hobbies(entries=[Hobby(name="gym")])))
+
+    result = await take_photo(
+        ctx, description="my pot", include_mugda=False, hobby="pottery"
+    )
+
+    assert "Your hobbies are: gym." in result
+
+
+@patch(
+    "livingbot.image.generate_image",
+    new_callable=AsyncMock,
+    return_value=b"image-bytes",
+)
+async def test_take_photo_with_an_unknown_hobby_leaves_no_photo_attached(
+    mock_gen: AsyncMock,
+) -> None:
+    ctx = make_photo_ctx(make_hobby_store(Hobbies(entries=[Hobby(name="gym")])))
+
+    await take_photo(ctx, description="my pot", include_mugda=False, hobby="pottery")
+
+    assert ctx.deps.photo_result is None

@@ -3,8 +3,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic_ai import ModelRetry
 
-from livingbot.hobbies import Hobbies, Hobby
+from livingbot.hobbies import Hobbies, Hobby, HobbyLevel
 from livingbot.stories import (
     RETIREMENT_PERIOD,
     STORY_TIERS,
@@ -14,6 +15,7 @@ from livingbot.stories import (
     StoryStore,
     StoryTier,
     _choose_tier,
+    _validate_hobby,
 )
 
 NOW = datetime(2026, 6, 1, 12, 0)
@@ -437,3 +439,80 @@ async def test_story_generator_generate_passes_new_hobbies_in_prompt(
 
     prompt = generator._agent.run.call_args.args[0]
     assert "She only recently took up: pottery (1 week ago)." in prompt
+
+
+@patch("livingbot.stories.Agent")
+async def test_story_generator_records_the_hobby_the_episode_is_about(
+    mock_agent_cls: MagicMock,
+) -> None:
+    generator = StoryGenerator(MagicMock())
+    generator._agent.run = AsyncMock(
+        return_value=SimpleNamespace(
+            output=GeneratedStory(
+                summary="First pot", content="It collapsed.", hobby="pottery"
+            )
+        )
+    )
+
+    story = await generator.generate(
+        date(2026, 6, 1),
+        hobbies("pottery"),
+        "home",
+        datetime(2026, 6, 4),
+        None,
+        [],
+        NOW,
+    )
+
+    assert story.hobby == "pottery"
+
+
+@patch("livingbot.stories._choose_tier")
+@patch("livingbot.stories.Agent")
+async def test_story_generator_tells_the_model_how_good_she_is(
+    mock_agent_cls: MagicMock, mock_choose_tier: MagicMock
+) -> None:
+    mock_choose_tier.return_value = StoryTier(name="normal", weight=75, guidance="g")
+    generator = StoryGenerator(MagicMock())
+    generator._agent.run = AsyncMock(
+        return_value=SimpleNamespace(output=GeneratedStory(summary="s", content="c"))
+    )
+    novice = Hobbies(entries=[Hobby(name="pottery", level=HobbyLevel.novice)])
+
+    await generator.generate(
+        date(2026, 6, 1), novice, "home", datetime(2026, 6, 4), None, [], NOW
+    )
+
+    prompt = generator._agent.run.call_args.args[0]
+    assert "pottery — novice:" in prompt
+
+
+def test_validate_hobby_raises_when_the_story_invents_a_hobby() -> None:
+    story = GeneratedStory(summary="s", content="c", hobby="pottery")
+
+    with pytest.raises(ModelRetry):
+        _validate_hobby(MagicMock(deps=["gym"]), story)
+
+
+def test_validate_hobby_returns_the_story_when_the_hobby_is_hers() -> None:
+    story = GeneratedStory(summary="s", content="c", hobby="gym")
+
+    result = _validate_hobby(MagicMock(deps=["gym"]), story)
+
+    assert result is story
+
+
+def test_validate_hobby_allows_a_story_about_no_hobby_at_all() -> None:
+    story = GeneratedStory(summary="s", content="c", hobby="")
+
+    result = _validate_hobby(MagicMock(deps=["gym"]), story)
+
+    assert result is story
+
+
+async def test_story_store_round_trips_the_hobby(story_store: StoryStore) -> None:
+    story = Story(summary="First pot", content="It collapsed.", hobby="pottery")
+
+    await story_store.add(story)
+
+    assert (await story_store.all())[0].hobby == "pottery"

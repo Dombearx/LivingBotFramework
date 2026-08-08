@@ -6,7 +6,12 @@ from livingbot.image import (
     _reference_images,
     generate_image,
 )
-from livingbot.prompts import IMAGE_STYLE_PREFIX, MUGDA_IMAGE_IDENTITY
+from livingbot.hobbies import Hobby, HobbyLevel
+from livingbot.prompts import (
+    IMAGE_STYLE_PREFIX,
+    MUGDA_IMAGE_IDENTITY,
+    build_hobby_image_clause,
+)
 
 # ---------------------------------------------------------------------------
 # _enhance_prompt
@@ -252,3 +257,116 @@ async def test_generate_image_returns_decoded_image_bytes(
     result = await generate_image("a quiet park", include_mugda=False)
 
     assert result == b"final-image-bytes"
+
+
+# ---------------------------------------------------------------------------
+# hobby skill level
+# ---------------------------------------------------------------------------
+
+
+@patch("livingbot.image._build_enhancer_agent")
+async def test_enhance_prompt_with_skill_clause_sends_it_to_the_enhancer(
+    mock_build_agent: MagicMock,
+) -> None:
+    agent = _make_enhancer_agent("a scene")
+    mock_build_agent.return_value = agent
+
+    await _enhance_prompt(
+        "the canvas she just finished",
+        include_mugda=True,
+        outfit_description="",
+        skill_clause="Her painting is a rank beginner's.",
+    )
+
+    user_content = agent.run.call_args.args[0]
+    assert "Her painting is a rank beginner's." in user_content
+
+
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
+@patch("livingbot.image.httpx.AsyncClient")
+@patch("livingbot.image._reference_images", return_value=["data:image/png;base64,AAAA"])
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_with_hobby_puts_its_skill_clause_in_the_prompt(
+    mock_enhance: AsyncMock,
+    mock_reference_images: MagicMock,
+    mock_httpx_cls: MagicMock,
+) -> None:
+    mock_enhance.return_value = "a sunlit studio"
+    client = _service_client(_service_response())
+    mock_httpx_cls.return_value = client
+    hobby = Hobby(name="painting", level=HobbyLevel.novice)
+
+    await generate_image("her finished canvas", include_mugda=True, hobby=hobby)
+
+    prompt = client.post.call_args.kwargs["json"]["prompt"]
+    assert prompt == (
+        IMAGE_STYLE_PREFIX
+        + MUGDA_IMAGE_IDENTITY
+        + build_hobby_image_clause(hobby)
+        + "a sunlit studio"
+    )
+
+
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
+@patch("livingbot.image.httpx.AsyncClient")
+@patch("livingbot.image._reference_images", return_value=["data:image/png;base64,AAAA"])
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_gives_the_enhancer_the_skill_clause_too(
+    mock_enhance: AsyncMock,
+    mock_reference_images: MagicMock,
+    mock_httpx_cls: MagicMock,
+) -> None:
+    """The enhancer writes the scene, so it has to know how good the work looks."""
+    mock_enhance.return_value = "a sunlit studio"
+    mock_httpx_cls.return_value = _service_client(_service_response())
+    hobby = Hobby(name="painting", level=HobbyLevel.expert)
+
+    await generate_image("her finished canvas", include_mugda=True, hobby=hobby)
+
+    assert mock_enhance.call_args.args[3] == build_hobby_image_clause(hobby)
+
+
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
+@patch("livingbot.image.httpx.AsyncClient")
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_without_hobby_omits_any_skill_clause(
+    mock_enhance: AsyncMock,
+    mock_httpx_cls: MagicMock,
+) -> None:
+    mock_enhance.return_value = "an empty park path"
+    client = _service_client(_service_response())
+    mock_httpx_cls.return_value = client
+
+    await generate_image("a quiet park", include_mugda=False)
+
+    prompt = client.post.call_args.kwargs["json"]["prompt"]
+    assert prompt == IMAGE_STYLE_PREFIX + "an empty park path"
+
+
+@patch.dict("os.environ", {"IMAGE_SERVICE_URL": SERVICE_URL})
+@patch("livingbot.image.httpx.AsyncClient")
+@patch("livingbot.image._reference_images", return_value=["data:image/png;base64,AAAA"])
+@patch("livingbot.image._enhance_prompt", new_callable=AsyncMock)
+async def test_generate_image_prompt_differs_between_novice_and_expert(
+    mock_enhance: AsyncMock,
+    mock_reference_images: MagicMock,
+    mock_httpx_cls: MagicMock,
+) -> None:
+    mock_enhance.return_value = "a sunlit studio"
+    client = _service_client(_service_response())
+    mock_httpx_cls.return_value = client
+
+    await generate_image(
+        "her canvas",
+        include_mugda=True,
+        hobby=Hobby(name="painting", level=HobbyLevel.novice),
+    )
+    novice_prompt = client.post.call_args.kwargs["json"]["prompt"]
+    await generate_image(
+        "her canvas",
+        include_mugda=True,
+        hobby=Hobby(name="painting", level=HobbyLevel.expert),
+    )
+    expert_prompt = client.post.call_args.kwargs["json"]["prompt"]
+
+    assert novice_prompt != expert_prompt
