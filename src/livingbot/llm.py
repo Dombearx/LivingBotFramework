@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Self
 
 import discord
-from pydantic_ai import Agent, AgentRunResult
+from pydantic_ai import Agent, AgentRunResult, UnexpectedModelBehavior
 from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.models.openai import OpenAIChatModel
 
@@ -48,15 +48,15 @@ from livingbot.tools import (
 
 
 class LLMResult:
-    def __init__(self, run_result: AgentRunResult[str], deps: BotDeps) -> None:
+    def __init__(self, run_result: AgentRunResult[str] | None, deps: BotDeps) -> None:
         self._run_result = run_result
-        self.output: str = run_result.output
+        self.output: str = run_result.output if run_result is not None else ""
         self.photo: bytes | None = deps.photo_result
         self.ignored: bool = deps.ignored
         self.reaction: str | None = deps.reaction
 
     def all_messages(self) -> list[ModelMessage]:
-        return self._run_result.all_messages()
+        return self._run_result.all_messages() if self._run_result is not None else []
 
 
 class LLMClient:
@@ -187,7 +187,16 @@ class LLMClient:
             "".join(parts),
             *(image.content for image in images),
         ]
-        run_result = await self._agent.run(prompt, deps=deps)
+        try:
+            run_result = await self._agent.run(prompt, deps=deps)
+        except UnexpectedModelBehavior:
+            # Answering with silence or a bare reaction means ending the turn with no
+            # text at all, which the agent's str output rejects and retries into this
+            # error. Her answer is already made — recorded on deps, and the reaction
+            # already on the message — so there is nothing left to retry.
+            if not deps.ignored and deps.reaction is None:
+                raise
+            return LLMResult(None, deps)
         return LLMResult(run_result, deps)
 
 
