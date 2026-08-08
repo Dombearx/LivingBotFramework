@@ -171,11 +171,13 @@ def record_agent_calls(request, monkeypatch):
 
 @pytest.fixture
 def save_image(request):
-    """Write a generated image out for review, and list it in the run's summary."""
+    """Write an image out for review, and list it in the run's summary. Used both for
+    pictures a test generated and for ones it showed her, which is the only way to
+    judge whether what she said about a picture was right."""
 
-    def save(name: str, image_bytes: bytes, caption: str) -> Path:
+    def save(name: str, image_bytes: bytes, caption: str, suffix: str = ".jpg") -> Path:
         IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-        filename = f"{name}.jpg"
+        filename = f"{name}{suffix}"
         path = IMAGE_DIR / filename
         path.write_bytes(image_bytes)
         _records[request.node.nodeid].images.append(

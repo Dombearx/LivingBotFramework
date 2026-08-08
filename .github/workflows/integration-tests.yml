@@ -29,6 +29,7 @@ on:
           - hobby_pickup
           - hobby_tone
           - image_prompt_generation
+          - image_reading
           - inside_jokes
           - inventory_tools
           - memory_extraction
@@ -104,6 +105,7 @@ jobs:
             images)            files="$t/test_image_prompt_generation.py $t/test_hobby_image_skill.py" ;;
             hobby_image_skill) files="$t/test_hobby_image_skill.py" ;;
             image_prompt_generation) files="$t/test_image_prompt_generation.py" ;;
+            image_reading)     files="$t/test_image_reading.py" ;;
             calendar_tools)    files="$t/test_calendar_tools.py" ;;
             commitments)       files="$t/test_commitment_tools.py $t/test_commitment_timing.py" ;;
             commitment_tools)  files="$t/test_commitment_tools.py" ;;

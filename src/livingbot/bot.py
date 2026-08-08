@@ -435,13 +435,16 @@ class LivingBot(discord.Client):
             )
             return False
 
-        history = [
-            format_message(message, own=message.author == self.user)
+        history_messages = [
+            message
             async for message in channel.history(
                 limit=config.COMMITMENT_FOLLOWUP_HISTORY_LIMIT
             )
         ]
-        history.reverse()
+        history = [
+            format_message(message, own=message.author == self.user)
+            for message in reversed(history_messages)
+        ]
         decision = await self._commitment_timing_judge.decide(
             self._build_commitment_timing_context(commitment, now, history)
         )
@@ -474,6 +477,11 @@ class LivingBot(discord.Client):
             [(commitment.description, commitment.user_id)]
         )
         relation = self._relation_store.load(commitment.user_id)
+        # Downloaded only now that she is definitely following up, so the far more
+        # common "not yet" decision above costs nothing.
+        images = await recent_message_images(
+            history_messages, config.HISTORY_IMAGE_LIMIT
+        )
         directory = self._directory()
         result = await self._llm_client.complete(
             [],
@@ -491,6 +499,7 @@ class LivingBot(discord.Client):
             memories,
             [relation],
             mood,
+            images=images,
             history=history,
             commitments=[commitment],
             trigger=prompts.COMMITMENT_TRIGGER_MESSAGE,
