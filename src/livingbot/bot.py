@@ -4,7 +4,7 @@ import logging
 import os
 import random
 from datetime import date, datetime, time, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import discord
 import logfire
@@ -16,8 +16,9 @@ from livingbot.commitment_timing import CommitmentTimingJudge
 from livingbot.directory import Directory
 from livingbot.commitments import Commitment, CommitmentStatus, CommitmentStore
 from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, find_hobby
+from livingbot.ignoring import IgnoreStore, may_ignore, record_ignore
 from livingbot.inventory import InventoryStore
-from livingbot.llm import LLMClient, own_messages
+from livingbot.llm import LLMClient, LLMResult, own_messages
 from livingbot.reply_shapes import ReplyShapeLabeller
 from livingbot.memory import MemoryStore
 from livingbot.mood import (
@@ -56,9 +57,15 @@ from livingbot.tools import (
     resolve_reply,
 )
 
+if TYPE_CHECKING:
+    from discord.abc import MessageableChannel
+
 logger = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 2000
+# Stands in for her reply when the relation updater judges an exchange she
+# answered with silence or a bare reaction, so her attitude still moves.
+IGNORED_OUTCOME = "(you didn't answer them at all — you ignored this)"
 
 
 async def _send_chunked(
@@ -155,6 +162,7 @@ class LivingBot(discord.Client):
         mood_store: MoodStore,
         preference_store: PreferenceStore,
         photo_cooldown_store: PhotoCooldownStore,
+        ignore_store: IgnoreStore,
         commitment_store: CommitmentStore,
         commitment_timing_judge: CommitmentTimingJudge,
         reply_shape_labeller: ReplyShapeLabeller,
@@ -185,6 +193,7 @@ class LivingBot(discord.Client):
         self._mood_store = mood_store
         self._preference_store = preference_store
         self._photo_cooldown_store = photo_cooldown_store
+        self._ignore_store = ignore_store
         self._commitment_store = commitment_store
         self._commitment_timing_judge = commitment_timing_judge
         self._reply_shape_labeller = reply_shape_labeller
@@ -864,6 +873,7 @@ class LivingBot(discord.Client):
                         ]
                     )
                     relations = [self._relation_store.load(uid) for uid in author_ids]
+                    can_ignore = may_ignore(relations, self._ignore_store.load(), now)
                     commitments = [
                         c
                         for c in self._commitment_store.load().open_entries()
@@ -902,20 +912,62 @@ class LivingBot(discord.Client):
                         shared_ending=shared_ending,
                         commitments=commitments,
                         directory=directory,
+                        can_ignore=can_ignore,
                     )
                     span.set_attribute("photo", result.photo is not None)
-                    if result.photo is not None:
-                        self._on_photo_taken()
-                    await _send_chunked(
-                        channel, result.output, directory, photo=result.photo
+                    span.set_attribute("ignored", result.ignored)
+                    span.set_attribute("reaction", result.reaction or "")
+                    outcome = await self._deliver(
+                        result, channel, messages, author_ids, directory, now
                     )
                     asyncio.create_task(
-                        self._store_memories(messages, result.output, author_ids)
-                    )
-                    asyncio.create_task(
-                        self._update_relations(relations, messages, result.output)
+                        self._update_relations(relations, messages, outcome)
                     )
             return True
+
+    async def _deliver(
+        self,
+        result: LLMResult,
+        channel: "MessageableChannel",
+        messages: list[discord.Message],
+        author_ids: list[str],
+        directory: Directory,
+        now: datetime,
+    ) -> str:
+        """Send her reply, or carry out whichever wordless answer she chose instead.
+
+        Returns what the relation updater should read as her side of the exchange:
+        going quiet is still a response to judge her attitude on.
+        """
+        if result.ignored:
+            await self._record_ignore(author_ids, now)
+            logger.info(
+                "Ignored %d message(s) from %s in channel %s",
+                len(messages),
+                ", ".join(author_ids),
+                channel.id,
+            )
+            return IGNORED_OUTCOME
+        if result.reaction is not None:
+            logger.info(
+                "Answered %d message(s) in channel %s with a %s reaction",
+                len(messages),
+                channel.id,
+                result.reaction,
+            )
+            return (
+                f"(you didn't write anything — you just reacted with {result.reaction})"
+            )
+        if result.photo is not None:
+            self._on_photo_taken()
+        await _send_chunked(channel, result.output, directory, photo=result.photo)
+        asyncio.create_task(self._store_memories(messages, result.output, author_ids))
+        return result.output
+
+    async def _record_ignore(self, user_ids: list[str], now: datetime) -> None:
+        async with self._state_lock:
+            log = record_ignore(self._ignore_store.load(), user_ids, now)
+            self._ignore_store.save(log)
 
     async def _store_memories(
         self, messages: list[discord.Message], bot_response: str, user_ids: list[str]
@@ -1069,6 +1121,7 @@ def build() -> LivingBot:
     mood_store = MoodStore(config.MOOD_DATA_PATH)
     preference_store = PreferenceStore(config.PREFERENCE_DATA_PATH)
     photo_cooldown_store = PhotoCooldownStore(config.PHOTO_COOLDOWN_DATA_PATH)
+    ignore_store = IgnoreStore(config.IGNORE_DATA_PATH)
     commitment_store = CommitmentStore(config.COMMITMENT_DATA_PATH)
     commitment_timing_judge = CommitmentTimingJudge.create()
     reply_shape_labeller = ReplyShapeLabeller.create()
@@ -1090,6 +1143,7 @@ def build() -> LivingBot:
         mood_store=mood_store,
         preference_store=preference_store,
         photo_cooldown_store=photo_cooldown_store,
+        ignore_store=ignore_store,
         commitment_store=commitment_store,
         commitment_timing_judge=commitment_timing_judge,
         reply_shape_labeller=reply_shape_labeller,

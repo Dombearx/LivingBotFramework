@@ -19,6 +19,7 @@ from livingbot.commitment_timing import CommitmentTimingDecision
 from livingbot.commitments import Commitment, Commitments
 from livingbot.directory import Directory
 from livingbot.hobbies import Hobbies, Hobby, HobbyLevel
+from livingbot.ignoring import IgnoreLog
 from livingbot.mood import Mood
 from livingbot.photo import PhotoCooldown
 from livingbot.preferences import Preferences
@@ -43,6 +44,8 @@ def make_llm_client(response: str = "llm response") -> MagicMock:
     mock_result = MagicMock()
     mock_result.output = response
     mock_result.photo = None
+    mock_result.ignored = False
+    mock_result.reaction = None
     client = MagicMock()
     client.complete = AsyncMock(return_value=mock_result)
     return client
@@ -136,6 +139,15 @@ def make_photo_cooldown_store(
     return store
 
 
+def make_ignore_store(ignore_log: IgnoreLog | None = None) -> MagicMock:
+    store = MagicMock()
+    store.load = MagicMock(
+        return_value=ignore_log if ignore_log is not None else IgnoreLog()
+    )
+    store.save = MagicMock()
+    return store
+
+
 def make_story_generator() -> MagicMock:
     generator = MagicMock()
     generator.generate = AsyncMock(return_value=None)
@@ -193,6 +205,7 @@ def make_bot(
     mood_store: MagicMock | None = None,
     preference_store: MagicMock | None = None,
     photo_cooldown_store: MagicMock | None = None,
+    ignore_store: MagicMock | None = None,
     commitment_store: MagicMock | None = None,
     commitment_timing_judge: MagicMock | None = None,
     reply_shape_labeller: MagicMock | None = None,
@@ -216,6 +229,7 @@ def make_bot(
         mood_store=mood_store or make_mood_store(),
         preference_store=preference_store or make_preference_store(),
         photo_cooldown_store=photo_cooldown_store or make_photo_cooldown_store(),
+        ignore_store=ignore_store or make_ignore_store(),
         commitment_store=commitment_store or make_commitment_store(),
         commitment_timing_judge=commitment_timing_judge
         or make_commitment_timing_judge(),
@@ -599,6 +613,7 @@ async def test_attempt_response_sends_all_queued_channel_messages_to_llm(
         shared_ending=None,
         commitments=[],
         directory=ANY,
+        can_ignore=False,
     )
 
 

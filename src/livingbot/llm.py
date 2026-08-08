@@ -31,8 +31,10 @@ from livingbot.tools import (
     buy_item,
     check_budget,
     fetch_link,
+    ignore_message,
     load_context,
     mark_story_told,
+    react_to_message,
     recall_story,
     record_preference,
     remove_activity_note,
@@ -50,6 +52,8 @@ class LLMResult:
         self._run_result = run_result
         self.output: str = run_result.output
         self.photo: bytes | None = deps.photo_result
+        self.ignored: bool = deps.ignored
+        self.reaction: str | None = deps.reaction
 
     def all_messages(self) -> list[ModelMessage]:
         return self._run_result.all_messages()
@@ -88,6 +92,8 @@ class LLMClient:
                 take_photo,
                 add_commitment,
                 resolve_commitment,
+                react_to_message,
+                ignore_message,
             ],
         )
 
@@ -117,6 +123,7 @@ class LLMClient:
         trigger: str | None = None,
         server_emojis: list[str] | None = None,
         directory: Directory | None = None,
+        can_ignore: bool = False,
     ) -> LLMResult:
         directory = directory if directory is not None else Directory({})
         deps = BotDeps(
@@ -131,6 +138,7 @@ class LLMClient:
             preference_store=preference_store,
             commitment_store=commitment_store,
             directory=directory,
+            can_ignore=can_ignore,
         )
         parts: list[str] = []
         if photo_hint:
@@ -167,6 +175,8 @@ class LLMClient:
             parts.append(_build_history_block(history))
         if shared_ending:
             parts.append(_build_shared_ending_block(shared_ending))
+        if can_ignore:
+            parts.append(_build_ignore_block())
         parts.append(
             trigger if trigger is not None else _build_new_messages_block(user_messages)
         )
@@ -445,6 +455,16 @@ def _build_shared_ending_block(shared_ending: str) -> str:
         "is a habit now, and one more would make it your voice rather than a thing you "
         "happened to do. This reply ends some other way — finish on the plain thing you "
         "meant, or on whatever this particular message actually calls for.\n\n"
+    )
+
+
+def _build_ignore_block() -> str:
+    return (
+        "Not answering at all is available to you this time: ignore_message leaves "
+        "them with nothing, no message and no reaction. It is on the table because of "
+        "how you feel about whoever is talking to you right now — but it stays a rare "
+        "thing, for someone who has actually provoked you here, not for someone you "
+        "merely don't like. If any part of you would answer, answer.\n\n"
     )
 
 
