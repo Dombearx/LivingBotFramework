@@ -1,3 +1,9 @@
+from datetime import datetime
+
+from livingbot import config
+from livingbot.hobbies import Hobbies, Hobby, HobbyLevel, recent_hobbies
+from livingbot.timeformat import humanize_ago
+
 PERSONA_NAME = "Mugda"
 
 SYSTEM_PROMPT = (
@@ -152,6 +158,7 @@ Rules:
   give it 3-4 sessions of about 1.5 hours, on varied days, usually in the evening.
 - Add a few ordinary bits of life (errands, seeing friends, a relaxed weekend) so the week feels lived-in.
 - Do not overschedule. Leave most of her time open.
+- Give a hobby she has only just taken up real time in the week.
 - Each activity needs a start and end datetime that fall within the planned week.
 - location is where she physically is during the activity (e.g. "gym", "home", "city centre").
 - hobby: set this to the exact name of one of her hobbies when the activity is her
@@ -171,6 +178,11 @@ Rules:
   first-person voice — the way she would recount it to friends later.
 - content: the episode itself, two to five sentences. Concrete and specific.
 - summary: one short line capturing the gist, used later to find the story by topic.
+- hobby: when the episode is really about her doing one of her hobbies, set this to
+  that hobby's exact name; leave it empty for everything else, including episodes
+  that merely brush past a hobby. How good she is at each one is given above — let
+  it show in how the episode goes, since a novice and an expert do not get the same
+  results out of the same afternoon.
 - Stay inside the requested plausibility level — do not make a "normal" episode wild,
   and tell even an absurd one deadpan, as if it really happened.
 - Any examples in the plausibility level only show how far-fetched the episode should
@@ -392,3 +404,98 @@ MUGDA_IMAGE_IDENTITY = (
     "proportions consistent with the references, without exaggerating them "
     "further. "
 )
+
+# How a hobby at each level shows up: in how she talks about it, and in how the
+# things she makes with it look. Every generator that needs to know how good she is
+# reads one of these two tables, so her skill means the same thing everywhere.
+#
+# Written without pronouns so one line serves both her own prompt ("Your hobbies:
+# gym — expert: ...") and the third-person prompts that plan her week and invent
+# her stories.
+HOBBY_LEVEL_TONE: dict[HobbyLevel, str] = {
+    HobbyLevel.novice: (
+        "still new to it — curious, a little unsure, easily impressed by anyone "
+        "better at it"
+    ),
+    HobbyLevel.beginner: (
+        "the basics are down — more confident, but still learning and glad to ask "
+        "questions"
+    ),
+    HobbyLevel.intermediate: (
+        "comfortable with it — familiar territory, with settled preferences and "
+        "little routines of its own"
+    ),
+    HobbyLevel.advanced: (
+        "genuinely skilled — worth listening to on it, and an eye for details "
+        "beginners miss"
+    ),
+    HobbyLevel.expert: (
+        "deep, casual knowledge of it, and no hesitation about opinions on it"
+    ),
+}
+
+HOBBY_LEVEL_IN_IMAGE: dict[HobbyLevel, str] = {
+    HobbyLevel.novice: (
+        "is a rank beginner's: clumsy and badly executed, wrong proportions, muddy "
+        "and careless, with obvious mistakes left in -- it plainly looks bad, the "
+        "result of someone who only just started. "
+    ),
+    HobbyLevel.beginner: (
+        "is an early learner's: the basics are there, but the execution is shaky "
+        "and amateurish and the mistakes are easy to spot. "
+    ),
+    HobbyLevel.intermediate: (
+        "is a comfortable hobbyist's: decent and recognisably skilled, with a few "
+        "rough edges that stop it short of polished. "
+    ),
+    HobbyLevel.advanced: (
+        "is highly skilled: confident, precise and well executed, close to "
+        "professional quality. "
+    ),
+    HobbyLevel.expert: (
+        "is masterful: exquisitely executed, refined and beautiful, the work of "
+        "someone who has done this for years. "
+    ),
+}
+
+# Without this the skill level bleeds into the rendering itself and a novice's
+# painting comes back as a badly drawn picture rather than a good picture of a
+# badly painted canvas.
+HOBBY_IMAGE_SCOPE = (
+    "This describes only that thing itself, never how the illustration is painted -- "
+    "the illustration stays a polished Studio Ghibli style painting either way. "
+)
+
+
+def hobby_skill_lines(hobbies: Hobbies) -> list[str]:
+    return [
+        f"  {hobby.name} — {hobby.level.value}: {HOBBY_LEVEL_TONE[hobby.level]}"
+        for hobby in hobbies.entries
+    ]
+
+
+def build_hobby_context(hobbies: Hobbies, now: datetime) -> str:
+    """Her hobbies and how good she is at each, for the models that write her life.
+
+    They get the skill level and not just the names because it changes what actually
+    happens to her: a novice's first pot collapses and an expert's does not.
+    """
+    if not hobbies.entries:
+        return "She has no particular hobbies right now."
+    lines = ["Her hobbies, and how good she is at each:"]
+    lines.extend(hobby_skill_lines(hobbies))
+    taken_up = [
+        f"{hobby.name} ({humanize_ago(acquired_at, now)})"
+        for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW)
+        if (acquired_at := hobby.acquired_at) is not None
+    ]
+    if taken_up:
+        lines.append(f"She only recently took up: {', '.join(taken_up)}.")
+    return "\n".join(lines)
+
+
+def build_hobby_image_clause(hobby: Hobby) -> str:
+    return (
+        f"Whatever she made or did with {hobby.name} in this picture "
+        f"{HOBBY_LEVEL_IN_IMAGE[hobby.level]}{HOBBY_IMAGE_SCOPE}"
+    )

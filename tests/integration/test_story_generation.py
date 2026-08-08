@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from livingbot import llm_config
+from livingbot.hobbies import Hobbies, Hobby
 from livingbot.stories import STORY_TIERS, StoryGenerator
 
 pytestmark = pytest.mark.skipif(
@@ -25,6 +26,8 @@ pytestmark = pytest.mark.skipif(
 
 WEEK_START = date(2026, 6, 1)
 OCCURS_AT = datetime(2026, 6, 4, 15, 0)
+NOW = datetime(2026, 6, 1, 9, 0)
+HOBBIES = Hobbies(entries=[Hobby(name="gym")])
 _JUDGE_MODEL = "openai/gpt-5.4-mini"
 _TIERS = {tier.name: tier for tier in STORY_TIERS}
 
@@ -59,7 +62,9 @@ async def test_generated_story_reads_like_a_personal_anecdote(
     generator: StoryGenerator,
 ) -> None:
     """The story should read like something that happened to one real person."""
-    story = await generator.generate(WEEK_START, ["gym"], "home", OCCURS_AT, None, [])
+    story = await generator.generate(
+        WEEK_START, HOBBIES, "home", OCCURS_AT, None, [], NOW
+    )
 
     verdict = await _judge(
         story.content,
@@ -82,7 +87,9 @@ async def test_normal_tier_story_is_grounded_and_believable(
     """A 'normal' tier episode should stay everyday and entirely believable."""
     mock_choose_tier.return_value = _TIERS["normal"]
 
-    story = await generator.generate(WEEK_START, ["gym"], "home", OCCURS_AT, None, [])
+    story = await generator.generate(
+        WEEK_START, HOBBIES, "home", OCCURS_AT, None, [], NOW
+    )
 
     verdict = await _judge(
         story.content,
@@ -105,7 +112,9 @@ async def test_unbelievable_tier_story_is_fantastical(
     """An 'unbelievable' tier episode should be clearly far-fetched."""
     mock_choose_tier.return_value = _TIERS["unbelievable"]
 
-    story = await generator.generate(WEEK_START, ["gym"], "home", OCCURS_AT, None, [])
+    story = await generator.generate(
+        WEEK_START, HOBBIES, "home", OCCURS_AT, None, [], NOW
+    )
 
     verdict = await _judge(
         story.content,
@@ -128,7 +137,7 @@ async def test_anchored_story_takes_place_during_the_activity(
     mock_choose_tier.return_value = _TIERS["normal"]
 
     story = await generator.generate(
-        WEEK_START, ["gym"], "home", OCCURS_AT, "gym session at gym", []
+        WEEK_START, HOBBIES, "home", OCCURS_AT, "gym session at gym", [], NOW
     )
 
     verdict = await _judge(
@@ -153,7 +162,7 @@ async def test_generated_story_differs_from_recent_episode(
     avoid = ["Mugda bumped into Arnold Schwarzenegger on the train and chatted."]
 
     story = await generator.generate(
-        WEEK_START, ["gym"], "home", OCCURS_AT, None, avoid
+        WEEK_START, HOBBIES, "home", OCCURS_AT, None, avoid, NOW
     )
 
     verdict = await _judge(
@@ -174,6 +183,8 @@ async def test_generated_story_carries_requested_occurs_at(
     generator: StoryGenerator,
 ) -> None:
     """The story should be stamped with the moment it is scheduled to happen."""
-    story = await generator.generate(WEEK_START, ["gym"], "home", OCCURS_AT, None, [])
+    story = await generator.generate(
+        WEEK_START, HOBBIES, "home", OCCURS_AT, None, [], NOW
+    )
 
     assert story.occurs_at == OCCURS_AT

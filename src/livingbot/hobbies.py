@@ -1,9 +1,11 @@
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+from pydantic_ai import ModelRetry
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,27 @@ def experience_progress(hobby: Hobby) -> str:
     return f"{hobby.experience} / {threshold} xp → {next_level}"
 
 
+def find_hobby(hobbies: Hobbies, name: str) -> Hobby | None:
+    return next((hobby for hobby in hobbies.entries if hobby.name == name), None)
+
+
+def reject_unknown_hobbies(used: Iterable[str], known: list[str]) -> None:
+    """Send a model back when it names a hobby she doesn't have.
+
+    An invented name matches nothing downstream — a week's experience is dropped, a
+    story's picture loses the skill level it should have been drawn at — and the loss
+    is silent, so it is worth spending a retry to get a real name.
+    """
+    unknown = sorted({name for name in used if name and name not in known})
+    if not unknown:
+        return
+    raise ModelRetry(
+        f"These are not her hobbies: {', '.join(unknown)}. A hobby must be exactly "
+        f"one of: {', '.join(known)} — or empty where nothing fits. Fix that and "
+        "return the whole result again."
+    )
+
+
 def recent_hobbies(hobbies: Hobbies, now: datetime, within: timedelta) -> list[Hobby]:
     return [
         hobby
@@ -91,14 +114,14 @@ class HobbyStore:
 
     def gain_experience(self, name: str, amount: int) -> None:
         hobbies = self.load()
-        for hobby in hobbies.entries:
-            if hobby.name == name:
-                hobby.gain_experience(amount)
-                self.save(hobbies)
-                return
-        logger.warning(
-            "Dropped %d xp: no hobby named %r. Her hobbies are: %s",
-            amount,
-            name,
-            ", ".join(hobby.name for hobby in hobbies.entries) or "(none)",
-        )
+        hobby = find_hobby(hobbies, name)
+        if hobby is None:
+            logger.warning(
+                "Dropped %d xp: no hobby named %r. Her hobbies are: %s",
+                amount,
+                name,
+                ", ".join(entry.name for entry in hobbies.entries) or "(none)",
+            )
+            return
+        hobby.gain_experience(amount)
+        self.save(hobbies)

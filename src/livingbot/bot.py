@@ -16,7 +16,7 @@ from livingbot.calendar import Calendar, CalendarStore, WeekPlanner
 from livingbot.commitment_timing import CommitmentTimingJudge
 from livingbot.directory import Directory
 from livingbot.commitments import Commitment, CommitmentStatus, CommitmentStore
-from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, recent_hobbies
+from livingbot.hobbies import EXPERIENCE_PER_SESSION, HobbyStore, find_hobby
 from livingbot.inventory import InventoryStore
 from livingbot.llm import LLMClient, own_messages
 from livingbot.reply_shapes import ReplyShapeLabeller
@@ -584,18 +584,11 @@ class LivingBot(discord.Client):
         calendar = self._calendar_store.load()
         calendar.prune_past(now)
         if calendar.planned_week_start != week_start:
-            hobbies = self._hobby_store.load()
-            hobby_names = [hobby.name for hobby in hobbies.entries]
-            new_hobby_notes = [
-                f"{hobby.name} (took up {humanize_ago(acquired_at, now)})"
-                for hobby in recent_hobbies(hobbies, now, config.RECENT_HOBBY_WINDOW)
-                if (acquired_at := hobby.acquired_at) is not None
-            ]
             entries = await self._week_planner.plan(
                 week_start,
-                hobby_names,
+                self._hobby_store.load(),
                 calendar.home_location,
-                new_hobby_notes,
+                now,
             )
             # Reload so plans the bot added through tools while we awaited the
             # planner aren't clobbered by this save.
@@ -615,21 +608,15 @@ class LivingBot(discord.Client):
                 "Planned week starting %s with %d entries", week_start, len(entries)
             )
             self._calendar_store.save(calendar)
-            asyncio.create_task(
-                self._generate_week_story(
-                    calendar, hobby_names, week_start, now, new_hobby_notes
-                )
-            )
+            asyncio.create_task(self._generate_week_story(calendar, week_start, now))
             return
         self._calendar_store.save(calendar)
 
     async def _generate_week_story(
         self,
         calendar: Calendar,
-        hobbies: list[str],
         week_start: date,
         now: datetime,
-        new_hobbies: list[str],
     ) -> None:
         with logfire.span("generate_week_story", week_start=str(week_start)):
             try:
@@ -639,12 +626,12 @@ class LivingBot(discord.Client):
                 )
                 story = await self._story_generator.generate(
                     week_start,
-                    hobbies,
+                    self._hobby_store.load(),
                     calendar.home_location,
                     occurs_at,
                     anchor,
                     avoid,
-                    new_hobbies,
+                    now,
                 )
                 if story is None:
                     return
@@ -658,7 +645,9 @@ class LivingBot(discord.Client):
     async def _render_story_image(self, story: Story) -> str | None:
         try:
             image_bytes = await generate_image(
-                description=story.content, include_mugda=True
+                description=story.content,
+                include_mugda=True,
+                hobby=find_hobby(self._hobby_store.load(), story.hobby),
             )
         except Exception:
             logger.exception("Failed to render image for story %s", story.id)

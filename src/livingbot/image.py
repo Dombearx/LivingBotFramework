@@ -8,11 +8,13 @@ import logfire
 from pydantic_ai import Agent, ModelSettings
 
 from livingbot import config, llm_config
+from livingbot.hobbies import Hobby
 from livingbot.prompts import (
     IMAGE_ENHANCER_SYSTEM_PROMPT,
     IMAGE_STYLE_PREFIX,
     MUGDA_IMAGE_IDENTITY,
     SELFIE_PERSONA,
+    build_hobby_image_clause,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,7 @@ async def _enhance_prompt(
     description: str,
     include_mugda: bool,
     outfit_description: str,
+    skill_clause: str = "",
 ) -> str:
     parts: list[str] = [description]
     if include_mugda:
@@ -52,6 +55,8 @@ async def _enhance_prompt(
         if outfit_description:
             persona += f" She is wearing: {outfit_description}."
         parts.append(persona)
+    if skill_clause:
+        parts.append(skill_clause)
     user_message = " ".join(parts)
     agent = _build_enhancer_agent()
     with logfire.span("enhance_image_prompt", model=llm_config.PROMPT_ENHANCER_MODEL):
@@ -84,19 +89,29 @@ async def generate_image(
     description: str,
     include_mugda: bool,
     outfit_description: str = "",
+    hobby: Hobby | None = None,
 ) -> bytes:
     with logfire.span(
         "generate_image",
         include_mugda=include_mugda,
         has_outfit=bool(outfit_description),
+        hobby=hobby.name if hobby is not None else "",
+        hobby_level=hobby.level.value if hobby is not None else "",
     ) as span:
-        scene = await _enhance_prompt(description, include_mugda, outfit_description)
+        # Goes to the enhancer so it writes the scene around the right level of
+        # craft, and again verbatim into the prompt so a reworded paragraph can't
+        # quietly turn a beginner's daub into a masterpiece.
+        skill_clause = build_hobby_image_clause(hobby) if hobby is not None else ""
+        scene = await _enhance_prompt(
+            description, include_mugda, outfit_description, skill_clause
+        )
         span.set_attribute("scene", scene)
         logger.info("Enhanced scene: %s", scene)
 
         prompt = IMAGE_STYLE_PREFIX
         if include_mugda:
             prompt += MUGDA_IMAGE_IDENTITY
+        prompt += skill_clause
         prompt += scene
 
         if include_mugda:

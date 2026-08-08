@@ -18,7 +18,7 @@ from livingbot.calendar import Calendar, PlanEntry
 from livingbot.commitment_timing import CommitmentTimingDecision
 from livingbot.commitments import Commitment, Commitments
 from livingbot.directory import Directory
-from livingbot.hobbies import Hobbies, Hobby
+from livingbot.hobbies import Hobbies, Hobby, HobbyLevel
 from livingbot.mood import Mood
 from livingbot.photo import PhotoCooldown
 from livingbot.preferences import Preferences
@@ -988,39 +988,38 @@ async def test_ensure_week_planned_when_week_unplanned_plans_and_saves(
     await bot._ensure_week_planned()
 
     week_start = datetime(2026, 6, 1).date()
-    week_planner.plan.assert_called_once_with(week_start, ["gym"], "home", [])
+    week_planner.plan.assert_called_once_with(
+        week_start, hobby_store.load(), "home", mock_clock.now.return_value
+    )
     saved = calendar_store.save.call_args.args[0]
     assert saved.entries == [entry]
     assert saved.planned_week_start == week_start
 
 
 @patch("livingbot.bot.clock")
-async def test_ensure_week_planned_passes_recently_acquired_hobby_note_to_planner(
+async def test_ensure_week_planned_passes_her_hobbies_to_planner(
     mock_clock: MagicMock,
 ) -> None:
     now = datetime(2026, 6, 3, 14, 30)
     mock_clock.now.return_value = now
     calendar_store = make_calendar_store(Calendar(home_location="home"))
     week_planner = make_week_planner()
-    hobby_store = make_hobby_store(
-        Hobbies(
-            entries=[
-                Hobby(name="gym"),
-                Hobby(name="pottery", acquired_at=now - timedelta(days=2)),
-            ]
-        )
+    hobbies = Hobbies(
+        entries=[
+            Hobby(name="gym"),
+            Hobby(name="pottery", acquired_at=now - timedelta(days=2)),
+        ]
     )
     bot = make_bot(
         calendar_store=calendar_store,
         week_planner=week_planner,
-        hobby_store=hobby_store,
+        hobby_store=make_hobby_store(hobbies),
     )
 
     await bot._ensure_week_planned()
 
-    week_start = datetime(2026, 6, 1).date()
     week_planner.plan.assert_called_once_with(
-        week_start, ["gym", "pottery"], "home", ["pottery (took up 2 days ago)"]
+        datetime(2026, 6, 1).date(), hobbies, "home", now
     )
 
 
@@ -1456,11 +1455,7 @@ async def test_generate_week_story_adds_story_with_rendered_image_path(
     bot = make_bot(story_generator=generator, story_store=story_store)
 
     await bot._generate_week_story(
-        Calendar(home_location="home"),
-        ["gym"],
-        date(2026, 6, 1),
-        datetime(2026, 6, 1),
-        [],
+        Calendar(home_location="home"), date(2026, 6, 1), datetime(2026, 6, 1)
     )
 
     story_store.add.assert_awaited_once()
@@ -1473,11 +1468,7 @@ async def test_generate_week_story_when_generation_returns_none_adds_nothing() -
     bot = make_bot(story_generator=generator, story_store=story_store)
 
     await bot._generate_week_story(
-        Calendar(home_location="home"),
-        ["gym"],
-        date(2026, 6, 1),
-        datetime(2026, 6, 1),
-        [],
+        Calendar(home_location="home"), date(2026, 6, 1), datetime(2026, 6, 1)
     )
 
     story_store.add.assert_not_awaited()
@@ -1492,31 +1483,26 @@ async def test_generate_week_story_when_generator_raises_swallows_the_error() ->
     bot = make_bot(story_generator=generator, story_store=story_store)
 
     await bot._generate_week_story(
-        Calendar(home_location="home"),
-        ["gym"],
-        date(2026, 6, 1),
-        datetime(2026, 6, 1),
-        [],
+        Calendar(home_location="home"), date(2026, 6, 1), datetime(2026, 6, 1)
     )
 
     story_store.add.assert_not_awaited()
 
 
-async def test_generate_week_story_passes_new_hobbies_to_generator() -> None:
+async def test_generate_week_story_passes_her_hobbies_to_generator() -> None:
     generator = make_story_generator()
-    story_store = make_story_store()
-    bot = make_bot(story_generator=generator, story_store=story_store)
-
-    await bot._generate_week_story(
-        Calendar(home_location="home"),
-        ["gym", "pottery"],
-        date(2026, 6, 1),
-        datetime(2026, 6, 1),
-        ["pottery (took up 2 days ago)"],
+    hobbies = Hobbies(entries=[Hobby(name="gym"), Hobby(name="pottery")])
+    bot = make_bot(
+        story_generator=generator,
+        story_store=make_story_store(),
+        hobby_store=make_hobby_store(hobbies),
     )
 
-    new_hobbies = generator.generate.call_args.args[-1]
-    assert new_hobbies == ["pottery (took up 2 days ago)"]
+    await bot._generate_week_story(
+        Calendar(home_location="home"), date(2026, 6, 1), datetime(2026, 6, 1)
+    )
+
+    assert generator.generate.call_args.args[1] == hobbies
 
 
 @patch(
@@ -1546,6 +1532,34 @@ async def test_render_story_image_sends_story_content_to_image_service(
 
     assert mock_gen.call_args.kwargs["description"] == "A wild tale"
     assert mock_gen.call_args.kwargs["include_mugda"] is True
+
+
+@patch("livingbot.bot.generate_image", new_callable=AsyncMock, return_value=b"img")
+async def test_render_story_image_passes_the_hobby_the_story_is_about(
+    mock_gen: AsyncMock, tmp_path, monkeypatch
+) -> None:
+    """The picture has to be drawn at the level she has actually reached."""
+    monkeypatch.setattr(config, "STORY_IMAGE_PATH", tmp_path / "imgs")
+    painting = Hobby(name="painting", level=HobbyLevel.novice)
+    bot = make_bot(hobby_store=make_hobby_store(Hobbies(entries=[painting])))
+
+    await bot._render_story_image(
+        Story(summary="s", content="Her first canvas", hobby="painting")
+    )
+
+    assert mock_gen.call_args.kwargs["hobby"] == painting
+
+
+@patch("livingbot.bot.generate_image", new_callable=AsyncMock, return_value=b"img")
+async def test_render_story_image_for_a_story_about_no_hobby_passes_none(
+    mock_gen: AsyncMock, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "STORY_IMAGE_PATH", tmp_path / "imgs")
+    bot = make_bot(hobby_store=make_hobby_store(Hobbies(entries=[Hobby(name="gym")])))
+
+    await bot._render_story_image(Story(summary="s", content="A tram ride"))
+
+    assert mock_gen.call_args.kwargs["hobby"] is None
 
 
 @patch(

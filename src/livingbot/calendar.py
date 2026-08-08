@@ -5,11 +5,12 @@ from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, Field, field_validator
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import clock, llm_config
-from livingbot.prompts import WEEK_PLAN_SYSTEM_PROMPT
+from livingbot.hobbies import Hobbies, reject_unknown_hobbies
+from livingbot.prompts import WEEK_PLAN_SYSTEM_PROMPT, build_hobby_context
 
 logger = logging.getLogger(__name__)
 
@@ -78,17 +79,8 @@ class WeekPlan(BaseModel):
     activities: list[PlannedActivity]
 
 
-def _reject_unknown_hobbies(ctx: RunContext[list[str]], plan: WeekPlan) -> WeekPlan:
-    unknown = sorted(
-        {a.hobby for a in plan.activities if a.hobby and a.hobby not in ctx.deps}
-    )
-    if unknown:
-        raise ModelRetry(
-            f"These are not her hobbies: {', '.join(unknown)}. "
-            f"hobby must be exactly one of: {', '.join(ctx.deps)} — or empty for "
-            "anything that is not her practising a hobby. Fix those activities and "
-            "return the whole plan again."
-        )
+def _validate_hobbies(ctx: RunContext[list[str]], plan: WeekPlan) -> WeekPlan:
+    reject_unknown_hobbies([a.hobby for a in plan.activities], ctx.deps)
     return plan
 
 
@@ -110,28 +102,25 @@ class WeekPlanner:
             deps_type=list[str],
             retries={"output": 2},
         )
-        self._agent.output_validator(_reject_unknown_hobbies)
+        self._agent.output_validator(_validate_hobbies)
 
     async def plan(
         self,
         week_start: date,
-        hobbies: list[str],
+        hobbies: Hobbies,
         home_location: str,
-        new_hobbies: list[str] | None = None,
+        now: datetime,
     ) -> list[PlanEntry]:
         week_end = week_start + timedelta(days=6)
         prompt = (
             f"Week to plan: Monday {week_start} to Sunday {week_end}.\n"
-            f"Her hobbies: {', '.join(hobbies)}.\n"
+            f"{build_hobby_context(hobbies, now)}\n"
             f"Her home base: {home_location}."
         )
-        if new_hobbies:
-            prompt += (
-                f"\nShe recently took up: {', '.join(new_hobbies)}. "
-                "Give these new hobbies real time in the week."
-            )
         try:
-            result = await self._agent.run(prompt, deps=hobbies)
+            result = await self._agent.run(
+                prompt, deps=[hobby.name for hobby in hobbies.entries]
+            )
             return [PlanEntry(**a.model_dump()) for a in result.output.activities]
         except Exception:
             logger.exception("Failed to plan week starting %s", week_start)

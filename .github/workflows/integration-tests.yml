@@ -15,6 +15,8 @@ on:
           - persona
           - lifestyle
           - background_agents
+          - hobby_skill
+          - images
           - attitude_tone
           - calendar_tools
           - commitments
@@ -23,8 +25,10 @@ on:
           - context_tool
           - discord_behavior
           - fetch_link_tool
+          - hobby_image_skill
           - hobby_pickup
           - hobby_tone
+          - image_prompt_generation
           - inside_jokes
           - inventory_tools
           - memory_extraction
@@ -40,8 +44,41 @@ on:
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    # Only to force-push generated images to their own orphan branch, so the
+    # step summary can show them. Everything else the job needs is read-only.
+    permissions:
+      contents: write
+    env:
+      # Set this secret to render real pictures. Without it the tests that need
+      # an image service skip themselves, and the two steps below — which are
+      # the only reason this workflow touches the private network — don't run.
+      IMAGE_SERVICE_URL: ${{ secrets.IMAGE_SERVICE_URL }}
     steps:
       - uses: actions/checkout@v4
+
+      # The image service runs on the host's private network, so a run that
+      # renders pictures has to join it the same way the deploy workflow does.
+      - name: Join Netbird network
+        if: env.IMAGE_SERVICE_URL != ''
+        uses: hackiron/public-actions/netbird-connect@main
+        with:
+          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          hostname: github-actions-integration-tests
+          management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
+
+      - name: Wait for the image service
+        if: env.IMAGE_SERVICE_URL != ''
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null "$IMAGE_SERVICE_URL/health"; then
+              echo "Image service is available"
+              exit 0
+            fi
+            echo "Waiting for the image service to become available..."
+            sleep 10
+          done
+          echo "::error::Timed out waiting for the image service after 5 minutes"
+          exit 1
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -54,6 +91,7 @@ jobs:
       - name: Run integration tests
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          INTEGRATION_IMAGE_DIR: integration-images
         run: |
           t=tests/integration
           case "${{ inputs.test_group }}" in
@@ -62,6 +100,10 @@ jobs:
             persona)           files="$t/test_discord_behavior.py $t/test_mood_tone.py $t/test_attitude_tone.py $t/test_spontaneous.py $t/test_reply_variety.py" ;;
             lifestyle)         files="$t/test_hobby_pickup.py $t/test_hobby_tone.py" ;;
             background_agents) files="$t/test_relation_updater.py $t/test_inside_jokes.py $t/test_week_planner.py $t/test_story_generation.py $t/test_memory_extraction.py $t/test_commitment_timing.py" ;;
+            hobby_skill)       files="$t/test_hobby_tone.py $t/test_story_generation.py $t/test_week_planner.py $t/test_hobby_image_skill.py" ;;
+            images)            files="$t/test_image_prompt_generation.py $t/test_hobby_image_skill.py" ;;
+            hobby_image_skill) files="$t/test_hobby_image_skill.py" ;;
+            image_prompt_generation) files="$t/test_image_prompt_generation.py" ;;
             calendar_tools)    files="$t/test_calendar_tools.py" ;;
             commitments)       files="$t/test_commitment_tools.py $t/test_commitment_timing.py" ;;
             commitment_tools)  files="$t/test_commitment_tools.py" ;;
@@ -86,3 +128,47 @@ jobs:
             *)                 files="$t/" ;;
           esac
           uv run pytest $files
+
+      # Both publishing steps run even on failure: a bad picture is usually why
+      # the test failed, so that is exactly when they are worth looking at.
+
+      # The summary can only display an image it can fetch over https, so the
+      # pictures go to an orphan branch under this run's id and the summary
+      # links their raw URLs. Built in a temp directory rather than by switching
+      # branches, so the checkout this job ran from is left alone. Force-pushed,
+      # so the branch holds one run's images rather than growing without bound.
+      - name: Publish generated images
+        if: always() && hashFiles('integration-images/*') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          work=$(mktemp -d)
+          mkdir -p "$work/runs/$GITHUB_RUN_ID"
+          cp integration-images/* "$work/runs/$GITHUB_RUN_ID/"
+          cd "$work"
+          git init -q -b integration-images
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -qm "integration images from run $GITHUB_RUN_ID"
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            integration-images
+
+      - name: Upload generated images
+        id: upload_images
+        if: always() && hashFiles('integration-images/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-images
+          path: integration-images/
+
+      # Appended after the upload because the artifact's URL only exists once it
+      # has been uploaded, by which point pytest has long written its summary.
+      - name: Link the images artifact
+        if: always() && steps.upload_images.outputs.artifact-url != ''
+        run: |
+          {
+            echo ""
+            echo "[Download the full-resolution images](${{ steps.upload_images.outputs.artifact-url }})"
+          } >> "$GITHUB_STEP_SUMMARY"

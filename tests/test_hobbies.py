@@ -1,6 +1,9 @@
 import logging
 from datetime import datetime, timedelta
 
+import pytest
+from pydantic_ai import ModelRetry
+
 from livingbot.hobbies import (
     Hobby,
     HobbyLevel,
@@ -8,7 +11,9 @@ from livingbot.hobbies import (
     Hobbies,
     LEVEL_UP_THRESHOLDS,
     experience_progress,
+    find_hobby,
     recent_hobbies,
+    reject_unknown_hobbies,
 )
 
 NOW = datetime(2026, 6, 12, 12, 0)
@@ -157,3 +162,57 @@ def test_recent_hobbies_excludes_hobby_with_no_acquired_at() -> None:
     result = recent_hobbies(hobbies, NOW, timedelta(days=14))
 
     assert result == []
+
+
+def test_find_hobby_returns_the_hobby_with_that_name() -> None:
+    painting = Hobby(name="painting")
+    hobbies = Hobbies(entries=[Hobby(name="gym"), painting])
+
+    result = find_hobby(hobbies, "painting")
+
+    assert result is painting
+
+
+def test_find_hobby_when_no_hobby_has_that_name_returns_none() -> None:
+    hobbies = Hobbies(entries=[Hobby(name="gym")])
+
+    result = find_hobby(hobbies, "painting")
+
+    assert result is None
+
+
+def test_find_hobby_is_case_sensitive() -> None:
+    hobbies = Hobbies(entries=[Hobby(name="gym")])
+
+    result = find_hobby(hobbies, "Gym")
+
+    assert result is None
+
+
+def test_reject_unknown_hobbies_raises_when_a_name_is_not_hers() -> None:
+    with pytest.raises(ModelRetry):
+        reject_unknown_hobbies(["pottery"], ["gym"])
+
+
+def test_reject_unknown_hobbies_retry_message_names_her_actual_hobbies() -> None:
+    with pytest.raises(ModelRetry) as error:
+        reject_unknown_hobbies(["pottery"], ["gym", "painting"])
+
+    assert "gym, painting" in str(error.value)
+
+
+def test_reject_unknown_hobbies_accepts_names_that_are_hers() -> None:
+    reject_unknown_hobbies(["gym", "painting"], ["gym", "painting"])
+
+
+def test_reject_unknown_hobbies_ignores_empty_names() -> None:
+    reject_unknown_hobbies(["", "gym"], ["gym"])
+
+
+def test_gain_experience_for_unknown_hobby_saves_nothing(tmp_path) -> None:
+    store = HobbyStore(tmp_path, default_hobbies=["gym"])
+    store.save(Hobbies(entries=[Hobby(name="gym")]))
+
+    store.gain_experience("pottery", 10)
+
+    assert store.load().entries[0].experience == 0

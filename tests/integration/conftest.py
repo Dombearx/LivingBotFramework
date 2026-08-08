@@ -8,6 +8,7 @@ import pytest
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 
+from livingbot import image
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.commitments import CommitmentStore
 from livingbot.hobbies import HobbyStore
@@ -27,6 +28,22 @@ MODEL_PRICES_PER_MILLION: dict[str, tuple[float, float]] = {
 MAX_OUTPUT_SNIPPET = 300
 MAX_FAILURE_SNIPPET = 700
 
+# Images the tests generate are written here, then uploaded as a build artifact
+# and pushed to IMAGE_BRANCH by the workflow.
+IMAGE_DIR = Path(os.environ.get("INTEGRATION_IMAGE_DIR", "integration-images"))
+# A step summary can only show an image it can fetch over https — GitHub's
+# markdown sanitiser strips data: URIs — so the workflow publishes them to this
+# orphan branch and the summary points at their raw URLs. It is force-pushed
+# with only the current run's images, so links in older summaries stop
+# resolving; the run's artifact is the durable copy.
+IMAGE_BRANCH = "integration-images"
+
+
+@dataclass
+class GeneratedImage:
+    filename: str
+    caption: str
+
 
 @dataclass
 class AgentCall:
@@ -41,17 +58,34 @@ class AgentCall:
 
 
 @dataclass
+class ImageCall:
+    endpoint: str
+    duration: float
+    cost: float | None
+
+
+@dataclass
 class TestRecord:
     nodeid: str
     description: str
     calls: list[AgentCall] = field(default_factory=list)
+    image_calls: list[ImageCall] = field(default_factory=list)
+    images: list[GeneratedImage] = field(default_factory=list)
     outcome: str = "not run"
     duration: float = 0.0
     failure: str = ""
 
     @property
-    def cost(self) -> float:
+    def llm_cost(self) -> float:
         return sum(call.cost or 0.0 for call in self.calls)
+
+    @property
+    def image_cost(self) -> float:
+        return sum(call.cost or 0.0 for call in self.image_calls)
+
+    @property
+    def cost(self) -> float:
+        return self.llm_cost + self.image_cost
 
     @property
     def llm_time(self) -> float:
@@ -113,7 +147,43 @@ def record_agent_calls(request, monkeypatch):
         return result
 
     monkeypatch.setattr(Agent, "run", recording_run)
+
+    # Rendering costs real money on top of the tokens, and the image service
+    # reports what each job actually cost, so this is measured rather than
+    # estimated from a price table the way the model calls are.
+    original_request_image = image._request_image
+
+    async def recording_request_image(endpoint, payload):
+        start = time.perf_counter()
+        result = await original_request_image(endpoint, payload)
+        record.image_calls.append(
+            ImageCall(
+                endpoint=endpoint,
+                duration=time.perf_counter() - start,
+                cost=result.get("cost"),
+            )
+        )
+        return result
+
+    monkeypatch.setattr(image, "_request_image", recording_request_image)
     yield
+
+
+@pytest.fixture
+def save_image(request):
+    """Write a generated image out for review, and list it in the run's summary."""
+
+    def save(name: str, image_bytes: bytes, caption: str) -> Path:
+        IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+        filename = f"{name}.jpg"
+        path = IMAGE_DIR / filename
+        path.write_bytes(image_bytes)
+        _records[request.node.nodeid].images.append(
+            GeneratedImage(filename=filename, caption=caption)
+        )
+        return path
+
+    return save
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -145,6 +215,35 @@ def _failure_snippet(longrepr: str) -> str:
 
 
 _OUTCOME_ICONS = {"passed": "✅", "failed": "❌", "skipped": "⏭️"}
+# Failures first: they are what a reader is looking for. Passing tests follow,
+# in full, because a green run still has to be read when what is being checked
+# is her voice or a picture rather than an assertion.
+_OUTCOME_ORDER = {"failed": 0, "skipped": 1, "passed": 2}
+
+
+def _for_review(records: list[TestRecord]) -> list[TestRecord]:
+    return sorted(records, key=lambda r: _OUTCOME_ORDER.get(r.outcome, 3))
+
+
+def _snippet(text: str) -> str:
+    text = text.replace("\n", " ")
+    if len(text) > MAX_OUTPUT_SNIPPET:
+        return text[:MAX_OUTPUT_SNIPPET] + "…"
+    return text
+
+
+def _image_cost(call: ImageCall) -> str:
+    return f"${call.cost:.4f}" if call.cost is not None else "cost not reported"
+
+
+def _total_cost(records: list[TestRecord]) -> str:
+    """Total spend, split when rendering contributed — the two differ by orders
+    of magnitude, and a single number hides which one a run actually cost."""
+    llm = sum(r.llm_cost for r in records)
+    images = sum(r.image_cost for r in records)
+    if not images:
+        return f"~${llm:.4f}"
+    return f"~${llm + images:.4f} (models ~${llm:.4f}, images ~${images:.4f})"
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
@@ -161,35 +260,51 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 def _write_console_summary(terminalreporter, records: list[TestRecord]) -> None:
     tr = terminalreporter
     tr.section("integration test summary")
-    for record in records:
+    for record in _for_review(records):
         icon = _OUTCOME_ICONS.get(record.outcome, "?")
         name = record.nodeid.split("::")[-1]
         tokens = sum(c.input_tokens + c.output_tokens for c in record.calls)
+        tr.line("")
         tr.line(
             f"{icon} {name}  "
             f"[{record.duration:.1f}s, {len(record.calls)} LLM call(s), "
             f"{tokens} tokens, ~${record.cost:.4f}]"
         )
         if record.failure:
-            tr.line(f"   failed: {record.failure}")
-    total_cost = sum(r.cost for r in records)
+            tr.line(f"   why it failed: {record.failure}")
+        for call in record.calls:
+            tr.line(f"   {call.agent_name} said: {_snippet(call.output)}")
+        for call in record.image_calls:
+            tr.line(
+                f"   rendered {call.endpoint} in {call.duration:.1f}s, "
+                f"{_image_cost(call)}"
+            )
+        for generated in record.images:
+            tr.line(f"   image: {generated.filename} — {generated.caption}")
     total_time = sum(r.duration for r in records)
-    tr.line(f"Total: {len(records)} tests, {total_time:.1f}s, ~${total_cost:.4f}")
+    passed = sum(1 for r in records if r.outcome == "passed")
+    tr.line("")
+    tr.line(
+        f"Total: {passed}/{len(records)} passed, {total_time:.1f}s, "
+        f"{_total_cost(records)}"
+    )
+    generated = [image for record in records for image in record.images]
+    if generated:
+        tr.line(f"{len(generated)} image(s) written to {IMAGE_DIR}/")
 
 
 def _markdown_summary(records: list[TestRecord]) -> str:
     lines = ["## Integration test summary", ""]
     passed = sum(1 for r in records if r.outcome == "passed")
-    total_cost = sum(r.cost for r in records)
     total_time = sum(r.duration for r in records)
     lines.append(
         f"**{passed}/{len(records)} passed** · "
-        f"total {total_time:.1f}s · estimated cost ~${total_cost:.4f}"
+        f"total {total_time:.1f}s · cost {_total_cost(records)}"
     )
     lines.append("")
     lines.append("| Test | Result | Time | LLM calls | Tokens (in/out) | Est. cost |")
     lines.append("| --- | --- | ---: | ---: | ---: | ---: |")
-    for record in records:
+    for record in _for_review(records):
         icon = _OUTCOME_ICONS.get(record.outcome, "?")
         name = record.nodeid.split("::")[-1]
         tokens_in = sum(c.input_tokens for c in record.calls)
@@ -199,9 +314,51 @@ def _markdown_summary(records: list[TestRecord]) -> str:
             f"| {len(record.calls)} | {tokens_in}/{tokens_out} | ${record.cost:.4f} |"
         )
     lines.append("")
-    for record in records:
-        lines.extend(_markdown_test_details(record))
+    lines.extend(_markdown_images(records))
+    failed = [r for r in records if r.outcome == "failed"]
+    rest = [r for r in _for_review(records) if r.outcome != "failed"]
+    if failed:
+        lines.append("## Failed")
+        lines.append("")
+        for record in failed:
+            lines.extend(_markdown_test_details(record))
+    if rest:
+        lines.append("## Passed")
+        lines.append("")
+        for record in rest:
+            lines.extend(_markdown_test_details(record))
     return "\n".join(lines) + "\n"
+
+
+def _image_url(filename: str) -> str | None:
+    """Where the workflow will have published this image by the time anyone reads
+    the summary. Nothing to point at outside Actions, where nobody publishes it."""
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    if not repo or not run_id:
+        return None
+    return (
+        f"https://raw.githubusercontent.com/{repo}/{IMAGE_BRANCH}"
+        f"/runs/{run_id}/{filename}"
+    )
+
+
+def _markdown_images(records: list[TestRecord]) -> list[str]:
+    images = [
+        (record, image) for record in _for_review(records) for image in record.images
+    ]
+    if not images:
+        return []
+    lines = ["## Generated images", ""]
+    for record, generated in images:
+        name = record.nodeid.split("::")[-1]
+        lines.append(f"**{generated.caption}** — `{generated.filename}`, from `{name}`")
+        lines.append("")
+        url = _image_url(generated.filename)
+        if url:
+            lines.append(f"![{generated.caption}]({url})")
+            lines.append("")
+    return lines
 
 
 def _markdown_test_details(record: TestRecord) -> list[str]:
@@ -214,6 +371,14 @@ def _markdown_test_details(record: TestRecord) -> list[str]:
     if record.failure:
         lines.append(f"**Why it failed:** {record.failure}")
         lines.append("")
+    for generated in record.images:
+        lines.append(f"**Image:** `{generated.filename}` — {generated.caption}")
+        lines.append("")
+    for i, call in enumerate(record.image_calls, 1):
+        lines.append(
+            f"- Render {i}: `{call.endpoint}` — {call.duration:.1f}s, "
+            f"{_image_cost(call)}"
+        )
     for i, call in enumerate(record.calls, 1):
         cost = f"${call.cost:.4f}" if call.cost is not None else "unknown"
         lines.append(
@@ -223,10 +388,7 @@ def _markdown_test_details(record: TestRecord) -> list[str]:
         )
         if call.tools_called:
             lines.append(f"  - Tools called: {', '.join(call.tools_called)}")
-        output = call.output.replace("\n", " ")
-        if len(output) > MAX_OUTPUT_SNIPPET:
-            output = output[:MAX_OUTPUT_SNIPPET] + "…"
-        lines.append(f"  - Output: {output}")
+        lines.append(f"  - Output: {_snippet(call.output)}")
     lines.append("")
     return lines
 
