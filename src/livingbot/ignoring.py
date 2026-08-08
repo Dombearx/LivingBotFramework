@@ -30,10 +30,13 @@ def may_ignore(relations: list[Relation], log: IgnoreLog, now: datetime) -> bool
 
     Both limits are deliberately outside the model's reach: it decides whether this
     particular message deserves silence, not whether silence is available at all.
+
+    Silence falls on the whole batch, so everyone in it has to have earned it — one
+    person she can't stand doesn't let her blank the friend who spoke next to them.
     """
     if not relations:
         return False
-    if min(r.attitude for r in relations) > config.IGNORE_ATTITUDE_THRESHOLD:
+    if max(r.attitude for r in relations) > config.IGNORE_ATTITUDE_THRESHOLD:
         return False
     return all(_off_cooldown(log, r.user_id, now) for r in relations)
 

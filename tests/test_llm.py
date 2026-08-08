@@ -435,3 +435,32 @@ def test_own_messages_does_not_mistake_a_quoted_marker_for_her_own_line() -> Non
     lines = own_messages(["[id:1] [2026-06-03 14:00:00] Kuba: haha (you): nope"])
 
     assert lines == []
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_ignoring_is_allowed_offers_her_the_option(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs(), can_ignore=True)
+
+    prompt_text = mock_run.await_args.args[0][0]
+    assert "ignore_message" in prompt_text
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_when_ignoring_is_not_allowed_never_mentions_it(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs())
+
+    prompt_text = mock_run.await_args.args[0][0]
+    assert "ignore_message" not in prompt_text
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_passes_the_ignore_permission_to_the_tools(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs(), can_ignore=True)
+
+    assert mock_run.await_args.kwargs["deps"].can_ignore is True

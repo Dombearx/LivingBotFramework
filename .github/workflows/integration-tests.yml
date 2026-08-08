@@ -36,6 +36,7 @@ on:
           - mood_tone
           - relation_updater
           - reply_variety
+          - silence_tools
           - spending_tools
           - spontaneous
           - story_generation
@@ -122,6 +123,7 @@ jobs:
             attitude_tone)     files="$t/test_attitude_tone.py" ;;
             relation_updater)  files="$t/test_relation_updater.py" ;;
             reply_variety)     files="$t/test_reply_variety.py" ;;
+            silence_tools)     files="$t/test_silence_tools.py" ;;
             spending_tools)    files="$t/test_spending_tools.py" ;;
             spontaneous)       files="$t/test_spontaneous.py" ;;
             story_generation)  files="$t/test_story_generation.py" ;;
