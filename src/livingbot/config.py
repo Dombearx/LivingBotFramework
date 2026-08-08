@@ -50,6 +50,10 @@ STORY_AVOID_RECENT_LIMIT = 20
 # How many prior channel messages to automatically pull in as context each
 # time she responds, so replies don't come out of nowhere.
 CHANNEL_HISTORY_LIMIT = 20
+# How many images from those prior messages are re-attached for her to look at
+# again. Every one of them is re-uploaded to the model on each reply, so this
+# stays small — only the most recent pictures are worth seeing twice.
+HISTORY_IMAGE_LIMIT = 4
 # How many of her own recent messages the reply-shape labeller reads when deciding
 # whether they have all started ending the same way.
 RECENT_OWN_MESSAGE_LIMIT = 4

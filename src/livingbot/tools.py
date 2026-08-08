@@ -8,7 +8,7 @@ from typing import Annotated
 import discord
 import httpx
 import trafilatura
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic_ai import BinaryContent, RunContext
 
 from livingbot import clock, config
@@ -82,6 +82,34 @@ def _format_link_previews(message: discord.Message) -> str:
             text = text[:MAX_LINK_PREVIEW_LENGTH].rstrip() + "…"
         previews.append(f"  [link preview: {text}]")
     return "\n".join(previews)
+
+
+class MessageImage(BaseModel):
+    message_id: int
+    content: BinaryContent
+
+
+async def message_images(message: discord.Message) -> list[MessageImage]:
+    return [
+        MessageImage(message_id=message.id, content=content)
+        for content in await extract_images(message)
+    ]
+
+
+async def recent_message_images(
+    messages: list[discord.Message], limit: int
+) -> list[MessageImage]:
+    """Gather images from `messages` given newest-first, keeping at most `limit` of the
+    most recent ones, and return them oldest-first."""
+    newest_first: list[list[MessageImage]] = []
+    remaining = limit
+    for message in messages:
+        if remaining == 0:
+            break
+        images = (await message_images(message))[:remaining]
+        remaining -= len(images)
+        newest_first.append(images)
+    return [image for images in reversed(newest_first) for image in images]
 
 
 async def extract_images(message: discord.Message) -> list[BinaryContent]:

@@ -29,6 +29,8 @@ from livingbot.tools import (
     extract_images,
     fetch_link,
     format_message,
+    message_images,
+    recent_message_images,
     remove_activity_note,
     remove_item,
     remove_plan,
@@ -939,6 +941,70 @@ async def test_extract_images_skips_embed_image_when_fetch_fails(
     msg = make_link_message([embed])
 
     images = await extract_images(msg)
+
+    assert images == []
+
+
+# ---------------------------------------------------------------------------
+# message_images / recent_message_images
+# ---------------------------------------------------------------------------
+
+
+def make_image_attachment(data: bytes) -> MagicMock:
+    attachment = MagicMock(spec=discord.Attachment)
+    attachment.content_type = "image/png"
+    attachment.read = AsyncMock(return_value=data)
+    return attachment
+
+
+def make_image_message(message_id: int, image_count: int) -> MagicMock:
+    msg = MagicMock(spec=discord.Message)
+    msg.id = message_id
+    msg.embeds = []
+    msg.attachments = [
+        make_image_attachment(f"{message_id}-{i}".encode()) for i in range(image_count)
+    ]
+    return msg
+
+
+async def test_message_images_labels_each_image_with_its_message_id() -> None:
+    msg = make_image_message(77, image_count=2)
+
+    images = await message_images(msg)
+
+    assert [image.message_id for image in images] == [77, 77]
+
+
+async def test_recent_message_images_returns_oldest_first() -> None:
+    """channel.history yields newest first, but the prompt lists the images in the
+    order they were sent, so they have to come back the other way round."""
+    newest_first = [make_image_message(30, 1), make_image_message(20, 1)]
+
+    images = await recent_message_images(newest_first, limit=4)
+
+    assert [image.content.data for image in images] == [b"20-0", b"30-0"]
+
+
+async def test_recent_message_images_keeps_only_the_newest_up_to_the_limit() -> None:
+    newest_first = [make_image_message(30, 1), make_image_message(20, 2)]
+
+    images = await recent_message_images(newest_first, limit=2)
+
+    assert [image.content.data for image in images] == [b"20-0", b"30-0"]
+
+
+async def test_recent_message_images_does_not_read_messages_beyond_the_limit() -> None:
+    """Reading an attachment downloads it, so a channel full of old pictures must not
+    cost anything once enough of them have been gathered."""
+    newest_first = [make_image_message(30, 2), make_image_message(20, 1)]
+
+    await recent_message_images(newest_first, limit=2)
+
+    newest_first[1].attachments[0].read.assert_not_awaited()
+
+
+async def test_recent_message_images_when_limit_is_zero_returns_nothing() -> None:
+    images = await recent_message_images([make_image_message(30, 1)], limit=0)
 
     assert images == []
 

@@ -635,6 +635,71 @@ async def test_attempt_response_includes_recent_channel_history_oldest_first(
     assert call_kwargs["history"] == [format_message(older), format_message(newer)]
 
 
+def with_image(message: MagicMock, message_id: int, data: bytes) -> MagicMock:
+    attachment = MagicMock(spec=discord.Attachment)
+    attachment.content_type = "image/png"
+    attachment.read = AsyncMock(return_value=data)
+    message.id = message_id
+    message.attachments = [attachment]
+    message.embeds = []
+    return message
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_re_attaches_images_from_earlier_messages(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    """A photo one message back — hers included — is only visible to the model if its
+    bytes are sent again; without this she answers questions about it by inventing."""
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client)
+    channel = make_channel()
+    hers = with_image(make_message(author=user, channel=channel), 30, b"her-photo")
+
+    async def fake_history(limit: int, before: discord.Object):
+        yield hers
+
+    channel.history = MagicMock(side_effect=fake_history)
+    bot._queue.add(make_message(author=other_user(), mentions=[user], channel=channel))
+
+    await bot._attempt_response()
+
+    images = llm_client.complete.call_args.kwargs["images"]
+    assert [(i.message_id, i.content.data) for i in images] == [(30, b"her-photo")]
+
+
+@patch("random.random", return_value=0.0)
+@patch.object(LivingBot, "user", new_callable=PropertyMock)
+async def test_attempt_response_lists_history_images_before_the_new_ones(
+    mock_user: PropertyMock,
+    mock_random: MagicMock,
+) -> None:
+    """The prompt numbers the images in the order they were sent, so the ones from
+    history have to come before the ones she is replying to."""
+    user = bot_user()
+    mock_user.return_value = user
+    llm_client = make_llm_client()
+    bot = make_bot(llm_client)
+    channel = make_channel()
+    earlier = with_image(make_message(author=user, channel=channel), 30, b"earlier")
+
+    async def fake_history(limit: int, before: discord.Object):
+        yield earlier
+
+    channel.history = MagicMock(side_effect=fake_history)
+    queued = make_message(author=other_user(), mentions=[user], channel=channel)
+    bot._queue.add(with_image(queued, 40, b"just-sent"))
+
+    await bot._attempt_response()
+
+    images = llm_client.complete.call_args.kwargs["images"]
+    assert [i.content.data for i in images] == [b"earlier", b"just-sent"]
+
+
 @patch("random.random", return_value=0.0)
 @patch.object(LivingBot, "user", new_callable=PropertyMock)
 async def test_attempt_response_marks_her_own_history_messages_as_hers(
@@ -1847,6 +1912,59 @@ async def test_maybe_follow_up_sends_at_most_one_message_per_waking(
     await bot._maybe_follow_up_on_commitments()
 
     channel.send.assert_called_once_with("hej, mam ten screen")
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_follow_up_re_attaches_images_from_channel_history(
+    mock_clock: MagicMock, mock_get_channel: MagicMock
+) -> None:
+    """Promises are often about a picture someone already posted, so she has to be
+    able to see it when she comes back to the promise."""
+    mock_clock.now.return_value = AWAKE_NOW
+    photo = with_image(MagicMock(spec=discord.Message), 30, b"the-screenshot")
+    photo.author = other_user()
+    mock_get_channel.return_value = make_messageable_channel([photo])
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision())
+    llm_client = make_llm_client()
+    bot = make_bot(
+        commitment_store=make_commitment_store(
+            Commitments(entries=[make_commitment()])
+        ),
+        commitment_timing_judge=judge,
+        llm_client=llm_client,
+    )
+
+    await bot._maybe_follow_up_on_commitments()
+
+    images = llm_client.complete.call_args.kwargs["images"]
+    assert [(i.message_id, i.content.data) for i in images] == [(30, b"the-screenshot")]
+
+
+@patch.object(LivingBot, "get_channel")
+@patch("livingbot.bot.clock")
+async def test_maybe_follow_up_when_judge_declines_does_not_download_images(
+    mock_clock: MagicMock, mock_get_channel: MagicMock
+) -> None:
+    """Most check-ins end in "not yet", and downloading the channel's pictures for
+    every one of those would cost far more than the follow-ups themselves."""
+    mock_clock.now.return_value = AWAKE_NOW
+    photo = with_image(MagicMock(spec=discord.Message), 30, b"the-screenshot")
+    photo.author = other_user()
+    mock_get_channel.return_value = make_messageable_channel([photo])
+    judge = make_commitment_timing_judge()
+    judge.decide = AsyncMock(return_value=make_timing_decision(should_follow_up=False))
+    bot = make_bot(
+        commitment_store=make_commitment_store(
+            Commitments(entries=[make_commitment()])
+        ),
+        commitment_timing_judge=judge,
+    )
+
+    await bot._maybe_follow_up_on_commitments()
+
+    photo.attachments[0].read.assert_not_awaited()
 
 
 async def test_life_loop_sleeps_a_jittered_interval_rather_than_a_fixed_hour() -> None:

@@ -1,15 +1,23 @@
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from pydantic_ai import Agent, BinaryContent
+from pydantic_ai.models.openai import OpenAIChatModel
 
 from livingbot import config
+from livingbot.activity_notes import ActivityNotes
 from livingbot.calendar import Calendar, PlanEntry
 from livingbot.commitments import Commitment
 from livingbot.directory import Directory
 from livingbot.hobbies import Hobby, Hobbies
 from livingbot.inventory import InventoryItem
+from livingbot.preferences import Preferences
 from livingbot.llm import (
+    LLMClient,
     _build_calendar_block,
     _build_commitments_block,
     _build_history_block,
+    _build_images_block,
     _build_inventory_block,
     _build_new_messages_block,
     _build_recent_block,
@@ -20,6 +28,7 @@ from livingbot.llm import (
     own_messages,
 )
 from livingbot.relations import _ATTITUDE_BEHAVIOURS, Relation, attitude_behaviour
+from livingbot.tools import MessageImage
 from livingbot.stories import Story
 
 NOW = datetime(2026, 6, 3, 14, 30)
@@ -242,6 +251,106 @@ def test_build_history_block_tells_her_not_to_copy_her_own_earlier_messages() ->
     block = _build_history_block(["[id:1] Mugda (you): hey 😭"])
 
     assert "not as a style to copy" in block
+
+
+def make_llm_client() -> LLMClient:
+    return LLMClient(MagicMock(spec=OpenAIChatModel), "instructions")
+
+
+def make_complete_kwargs() -> dict:
+    """Every store complete() reads on its way to building the prompt, stubbed with
+    the emptiest thing each block builder accepts."""
+    calendar_store = MagicMock()
+    calendar_store.load.return_value = Calendar(home_location="dom")
+    activity_notes_store = MagicMock()
+    activity_notes_store.load.return_value = ActivityNotes()
+    inventory_store = MagicMock()
+    inventory_store.recently_acquired = AsyncMock(return_value=[])
+    inventory_store.recent = AsyncMock(return_value=[])
+    spending_store = MagicMock()
+    spending_store.summary.return_value = "budget"
+    hobby_store = MagicMock()
+    hobby_store.load.return_value = Hobbies()
+    story_store = MagicMock()
+    story_store.untold = AsyncMock(return_value=[])
+    preference_store = MagicMock()
+    preference_store.load.return_value = Preferences()
+    return dict(
+        user_messages=["[id:30] Ola: co tam?"],
+        channel=MagicMock(),
+        channel_id=1,
+        calendar_store=calendar_store,
+        activity_notes_store=activity_notes_store,
+        inventory_store=inventory_store,
+        spending_store=spending_store,
+        hobby_store=hobby_store,
+        story_store=story_store,
+        preference_store=preference_store,
+        commitment_store=MagicMock(),
+        now=NOW,
+    )
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_sends_every_image_after_the_prompt_text(
+    mock_run: AsyncMock,
+) -> None:
+    images = [make_message_image(10), make_message_image(20)]
+
+    await make_llm_client().complete(**make_complete_kwargs(), images=images)
+
+    prompt = mock_run.await_args.args[0]
+    assert prompt[1:] == [image.content for image in images]
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_tells_her_which_message_each_image_came_from(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(
+        **make_complete_kwargs(), images=[make_message_image(10)]
+    )
+
+    prompt_text = mock_run.await_args.args[0][0]
+    assert "- image 1: attached to message [id:10]" in prompt_text
+
+
+@patch.object(Agent, "run", new_callable=AsyncMock)
+async def test_complete_without_images_sends_the_prompt_text_alone(
+    mock_run: AsyncMock,
+) -> None:
+    await make_llm_client().complete(**make_complete_kwargs())
+
+    prompt = mock_run.await_args.args[0]
+    assert len(prompt) == 1
+
+
+def make_message_image(message_id: int) -> MessageImage:
+    return MessageImage(
+        message_id=message_id,
+        content=BinaryContent(data=b"bytes", media_type="image/png"),
+    )
+
+
+def test_build_images_block_numbers_the_images_in_the_order_they_are_attached() -> None:
+    """The images arrive after the text with nothing tying them to a sender, so the
+    only thing she can match them by is their position and the message id."""
+    block = _build_images_block([make_message_image(10), make_message_image(20)])
+
+    assert "- image 1: attached to message [id:10]" in block
+    assert "- image 2: attached to message [id:20]" in block
+
+
+def test_build_images_block_states_how_many_images_follow() -> None:
+    block = _build_images_block([make_message_image(10), make_message_image(20)])
+
+    assert "The 2 images at the end of this message" in block
+
+
+def test_build_images_block_tells_her_to_describe_what_is_actually_there() -> None:
+    block = _build_images_block([make_message_image(10)])
+
+    assert "go by what you can actually see in it" in block
 
 
 def test_build_new_messages_block_labels_messages_to_respond_to() -> None:
