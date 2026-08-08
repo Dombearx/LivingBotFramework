@@ -44,6 +44,10 @@ on:
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    # Only to force-push generated images to their own orphan branch, so the
+    # step summary can show them. Everything else the job needs is read-only.
+    permissions:
+      contents: write
     env:
       # Set this secret to render real pictures. Without it the tests that need
       # an image service skip themselves, and the two steps below — which are
@@ -125,12 +129,46 @@ jobs:
           esac
           uv run pytest $files
 
-      # Neither the job log nor the step summary can render image bytes, so any
-      # picture a test generated is uploaded for download instead. Runs even on
-      # failure: a bad picture is usually why the test failed.
+      # Both publishing steps run even on failure: a bad picture is usually why
+      # the test failed, so that is exactly when they are worth looking at.
+
+      # The summary can only display an image it can fetch over https, so the
+      # pictures go to an orphan branch under this run's id and the summary
+      # links their raw URLs. Built in a temp directory rather than by switching
+      # branches, so the checkout this job ran from is left alone. Force-pushed,
+      # so the branch holds one run's images rather than growing without bound.
+      - name: Publish generated images
+        if: always() && hashFiles('integration-images/*') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          work=$(mktemp -d)
+          mkdir -p "$work/runs/$GITHUB_RUN_ID"
+          cp integration-images/* "$work/runs/$GITHUB_RUN_ID/"
+          cd "$work"
+          git init -q -b integration-images
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -qm "integration images from run $GITHUB_RUN_ID"
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            integration-images
+
       - name: Upload generated images
+        id: upload_images
         if: always() && hashFiles('integration-images/*') != ''
         uses: actions/upload-artifact@v4
         with:
           name: integration-images
           path: integration-images/
+
+      # Appended after the upload because the artifact's URL only exists once it
+      # has been uploaded, by which point pytest has long written its summary.
+      - name: Link the images artifact
+        if: always() && steps.upload_images.outputs.artifact-url != ''
+        run: |
+          {
+            echo ""
+            echo "[Download the full-resolution images](${{ steps.upload_images.outputs.artifact-url }})"
+          } >> "$GITHUB_STEP_SUMMARY"

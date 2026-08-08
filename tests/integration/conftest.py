@@ -28,9 +28,15 @@ MODEL_PRICES_PER_MILLION: dict[str, tuple[float, float]] = {
 MAX_OUTPUT_SNIPPET = 300
 MAX_FAILURE_SNIPPET = 700
 
-# Images the tests generate are written here and uploaded as a build artifact,
-# since neither the job log nor the step summary can render image bytes.
+# Images the tests generate are written here, then uploaded as a build artifact
+# and pushed to IMAGE_BRANCH by the workflow.
 IMAGE_DIR = Path(os.environ.get("INTEGRATION_IMAGE_DIR", "integration-images"))
+# A step summary can only show an image it can fetch over https — GitHub's
+# markdown sanitiser strips data: URIs — so the workflow publishes them to this
+# orphan branch and the summary points at their raw URLs. It is force-pushed
+# with only the current run's images, so links in older summaries stop
+# resolving; the run's artifact is the durable copy.
+IMAGE_BRANCH = "integration-images"
 
 
 @dataclass
@@ -324,22 +330,34 @@ def _markdown_summary(records: list[TestRecord]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _image_url(filename: str) -> str | None:
+    """Where the workflow will have published this image by the time anyone reads
+    the summary. Nothing to point at outside Actions, where nobody publishes it."""
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    if not repo or not run_id:
+        return None
+    return (
+        f"https://raw.githubusercontent.com/{repo}/{IMAGE_BRANCH}"
+        f"/runs/{run_id}/{filename}"
+    )
+
+
 def _markdown_images(records: list[TestRecord]) -> list[str]:
     images = [
         (record, image) for record in _for_review(records) for image in record.images
     ]
     if not images:
         return []
-    lines = [
-        "## Generated images",
-        "",
-        "Download the **integration-images** artifact from this run to view them.",
-        "",
-    ]
+    lines = ["## Generated images", ""]
     for record, generated in images:
         name = record.nodeid.split("::")[-1]
-        lines.append(f"- `{generated.filename}` — {generated.caption} (from `{name}`)")
-    lines.append("")
+        lines.append(f"**{generated.caption}** — `{generated.filename}`, from `{name}`")
+        lines.append("")
+        url = _image_url(generated.filename)
+        if url:
+            lines.append(f"![{generated.caption}]({url})")
+            lines.append("")
     return lines
 
 
