@@ -16,7 +16,6 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from livingbot.activity_notes import ActivityNotesStore
 from livingbot.calendar import CalendarStore
@@ -53,15 +52,6 @@ LIKED = Relation(
     attitude=45.0,
     most_important_memory="They train together most weeks.",
 )
-
-
-def _tool_was_called(result, tool_name: str) -> bool:
-    for message in result.all_messages():
-        if isinstance(message, ModelResponse):
-            for part in message.parts:
-                if isinstance(part, ToolCallPart) and part.tool_name == tool_name:
-                    return True
-    return False
 
 
 def make_channel() -> MagicMock:
@@ -297,7 +287,8 @@ async def test_react_to_message_puts_the_reaction_on_the_message_she_was_sent(
     commitment_store: CommitmentStore,
 ) -> None:
     """The id she passes has to be the one from the message, or the reaction lands on
-    the wrong message — or nothing at all."""
+    the wrong message — or nothing at all. Asserted through Discord rather than the
+    message history, which is empty whenever she ends her turn without words."""
     channel = make_channel()
     user_messages = [
         "[id:3140] [2026-06-03 14:30:00] Kasia: @Mugda nie odpisuj, tylko zareaguj "
@@ -320,7 +311,7 @@ async def test_react_to_message_puts_the_reaction_on_the_message_she_was_sent(
         can_ignore=False,
     )
 
-    assert _tool_was_called(result, "react_to_message"), (
-        f"Expected react_to_message to be called. LLM response: {result.output}"
+    assert result.reaction is not None, (
+        f"Expected her to react rather than write. LLM response: {result.output}"
     )
     channel.fetch_message.assert_awaited_once_with(3140)
