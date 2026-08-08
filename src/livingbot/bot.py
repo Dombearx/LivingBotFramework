@@ -47,7 +47,14 @@ from livingbot.scheduled_posts import ScheduledPostStore
 from livingbot.spontaneous import SpontaneousStore
 from livingbot.stories import Story, StoryGenerator, StoryStore
 from livingbot.timeformat import humanize_ago
-from livingbot.tools import format_message, message_images, recent_message_images
+from livingbot.tools import (
+    MessageImage,
+    format_message,
+    message_images,
+    recent_message_images,
+    reply_target_images,
+    resolve_reply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -737,6 +744,51 @@ class LivingBot(discord.Client):
             return False
         return discord.utils.utcnow() - min(join_times) < config.ONBOARDING_PERIOD
 
+    async def _resolve_replies(
+        self, messages: list[discord.Message]
+    ) -> dict[int, discord.Message]:
+        resolved: dict[int, discord.Message] = {}
+        for message in messages:
+            replied_to = await resolve_reply(message)
+            if replied_to is not None:
+                resolved[message.id] = replied_to
+        return resolved
+
+    def _format(
+        self, message: discord.Message, replies: dict[int, discord.Message]
+    ) -> str:
+        replied_to = replies.get(message.id)
+        return format_message(
+            message,
+            own=message.author == self.user,
+            replied_to=replied_to,
+            replied_to_own=replied_to is not None and replied_to.author == self.user,
+        )
+
+    async def _gather_images(
+        self,
+        messages: list[discord.Message],
+        history_messages: list[discord.Message],
+        replies: dict[int, discord.Message],
+    ) -> list[MessageImage]:
+        images = await recent_message_images(
+            history_messages, config.HISTORY_IMAGE_LIMIT
+        )
+        # Only what the new messages point at: chasing the reply targets of the whole
+        # history would flood her with pictures nobody asked her to look at.
+        targets = [replies[m.id] for m in messages if m.id in replies]
+        already_gathered = {image.message_id for image in images} | {
+            m.id for m in messages
+        }
+        images.extend(
+            await reply_target_images(
+                targets, already_gathered, config.REPLY_IMAGE_LIMIT
+            )
+        )
+        for message in messages:
+            images.extend(await message_images(message))
+        return images
+
     async def _attempt_response(self) -> bool:
         if len(self._queue) == 0:
             return True
@@ -775,7 +827,6 @@ class LivingBot(discord.Client):
                     channel_id=channel.id,
                     message_count=len(messages),
                 ) as span:
-                    formatted = [format_message(m) for m in messages]
                     history_messages = [
                         m
                         async for m in channel.history(
@@ -783,15 +834,14 @@ class LivingBot(discord.Client):
                             before=discord.Object(id=messages[0].id),
                         )
                     ]
+                    replies = await self._resolve_replies(messages + history_messages)
+                    formatted = [self._format(m, replies) for m in messages]
                     history = [
-                        format_message(m, own=m.author == self.user)
-                        for m in reversed(history_messages)
+                        self._format(m, replies) for m in reversed(history_messages)
                     ]
-                    images = await recent_message_images(
-                        history_messages, config.HISTORY_IMAGE_LIMIT
+                    images = await self._gather_images(
+                        messages, history_messages, replies
                     )
-                    for m in messages:
-                        images.extend(await message_images(m))
                     author_ids = list(dict.fromkeys(str(m.author.id) for m in messages))
                     memories = await self._memory_store.retrieve(
                         [
