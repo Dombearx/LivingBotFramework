@@ -321,6 +321,39 @@ async def remove_plan(ctx: RunContext[BotDeps], entry_id: str) -> str:
     return f"Removed calendar entry {entry_id}."
 
 
+async def recall_past_plans(
+    ctx: RunContext[BotDeps],
+    query: str = "",
+    n: Annotated[int, Field(ge=1, le=20)] = 10,
+) -> str:
+    """Look back at what you have actually been doing: the plans on your calendar that
+    have already finished, most recent first. Your calendar only lists what is still
+    ahead of you, so use this whenever you need to remember how your week went — when
+    someone asks what you've been up to, whether you made it to the gym, or how that
+    thing you mentioned the other day turned out. Pass query to keep only the entries
+    whose activity or location contains it. Goes back about a week."""
+    entries = ctx.deps.calendar_store.load().past(clock.now())
+    if query:
+        needle = query.strip().lower()
+        entries = [
+            e
+            for e in entries
+            if needle in e.activity.lower() or needle in e.location.lower()
+        ]
+    if not entries:
+        return "Nothing like that on your calendar in the past week."
+    lines = []
+    for entry in entries[:n]:
+        line = (
+            f"{entry.start:%a %m-%d %H:%M}–{entry.end:%a %m-%d %H:%M} "
+            f"{entry.activity} @ {entry.location}"
+        )
+        if entry.note:
+            line += f" ({entry.note})"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 async def add_activity_note(ctx: RunContext[BotDeps], activity: str, note: str) -> str:
     """Save a standing reminder tied to an activity, so you remember it every time you
     do that activity — e.g. activity "gym", note "bring my new personalised dumbbells".

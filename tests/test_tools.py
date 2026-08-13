@@ -32,6 +32,7 @@ from livingbot.tools import (
     ignore_message,
     message_images,
     react_to_message,
+    recall_past_plans,
     recent_message_images,
     remove_activity_note,
     remove_item,
@@ -162,6 +163,90 @@ async def test_remove_plan_when_id_missing_keeps_entries(tmp_path) -> None:
 
     assert store.load().entries == [existing]
     assert "No calendar entry" in result
+
+
+def _past_and_future_calendar() -> Calendar:
+    return Calendar(
+        home_location="home",
+        entries=[
+            PlanEntry(
+                activity="gym session",
+                location="gym",
+                start=datetime(2026, 6, 1, 18, 0),
+                end=datetime(2026, 6, 1, 19, 30),
+            ),
+            PlanEntry(
+                activity="coffee with Ola",
+                location="city centre",
+                start=datetime(2026, 6, 2, 16, 0),
+                end=datetime(2026, 6, 2, 17, 0),
+            ),
+            PlanEntry(
+                activity="swimming",
+                location="pool",
+                start=datetime(2026, 6, 5, 18, 0),
+                end=datetime(2026, 6, 5, 19, 0),
+            ),
+        ],
+    )
+
+
+@patch("livingbot.tools.clock")
+async def test_recall_past_plans_lists_finished_entries_most_recent_first(
+    mock_clock: MagicMock, tmp_path
+) -> None:
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
+    store = CalendarStore(tmp_path, home_location="home")
+    store.save(_past_and_future_calendar())
+    ctx = make_ctx(store)
+
+    result = await recall_past_plans(ctx)
+
+    assert result == (
+        "Tue 06-02 16:00–Tue 06-02 17:00 coffee with Ola @ city centre\n"
+        "Mon 06-01 18:00–Mon 06-01 19:30 gym session @ gym"
+    )
+
+
+@patch("livingbot.tools.clock")
+async def test_recall_past_plans_with_query_keeps_only_matching_entries(
+    mock_clock: MagicMock, tmp_path
+) -> None:
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
+    store = CalendarStore(tmp_path, home_location="home")
+    store.save(_past_and_future_calendar())
+    ctx = make_ctx(store)
+
+    result = await recall_past_plans(ctx, query="GYM")
+
+    assert result == "Mon 06-01 18:00–Mon 06-01 19:30 gym session @ gym"
+
+
+@patch("livingbot.tools.clock")
+async def test_recall_past_plans_returns_at_most_n_entries(
+    mock_clock: MagicMock, tmp_path
+) -> None:
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
+    store = CalendarStore(tmp_path, home_location="home")
+    store.save(_past_and_future_calendar())
+    ctx = make_ctx(store)
+
+    result = await recall_past_plans(ctx, n=1)
+
+    assert result == "Tue 06-02 16:00–Tue 06-02 17:00 coffee with Ola @ city centre"
+
+
+@patch("livingbot.tools.clock")
+async def test_recall_past_plans_when_nothing_finished_says_so(
+    mock_clock: MagicMock, tmp_path
+) -> None:
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
+    store = CalendarStore(tmp_path, home_location="home")
+    ctx = make_ctx(store)
+
+    result = await recall_past_plans(ctx)
+
+    assert result == "Nothing like that on your calendar in the past week."
 
 
 async def test_add_item_stores_item_in_inventory() -> None:

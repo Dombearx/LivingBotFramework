@@ -1130,12 +1130,12 @@ async def test_ensure_week_planned_passes_her_hobbies_to_planner(
 
 
 @patch("livingbot.bot.clock")
-async def test_ensure_week_planned_when_week_already_planned_does_not_replan(
+async def test_ensure_week_planned_when_next_week_already_planned_does_not_replan(
     mock_clock: MagicMock,
 ) -> None:
     mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
     calendar = Calendar(
-        home_location="home", planned_week_start=datetime(2026, 6, 1).date()
+        home_location="home", planned_week_start=datetime(2026, 6, 8).date()
     )
     week_planner = make_week_planner()
     bot = make_bot(
@@ -1145,6 +1145,44 @@ async def test_ensure_week_planned_when_week_already_planned_does_not_replan(
     await bot._ensure_week_planned()
 
     week_planner.plan.assert_not_called()
+
+
+@patch("livingbot.bot.clock")
+async def test_ensure_week_planned_when_only_current_week_planned_plans_the_next_one(
+    mock_clock: MagicMock,
+) -> None:
+    now = datetime(2026, 6, 3, 14, 30)
+    mock_clock.now.return_value = now
+    calendar = Calendar(
+        home_location="home", planned_week_start=datetime(2026, 6, 1).date()
+    )
+    week_planner = make_week_planner()
+    hobby_store = make_hobby_store()
+    bot = make_bot(
+        calendar_store=make_calendar_store(calendar),
+        week_planner=week_planner,
+        hobby_store=hobby_store,
+    )
+
+    await bot._ensure_week_planned()
+
+    week_planner.plan.assert_called_once_with(
+        datetime(2026, 6, 8).date(), hobby_store.load(), "home", now
+    )
+
+
+@patch("livingbot.bot.clock")
+async def test_ensure_week_planned_when_planner_returns_nothing_leaves_week_unplanned(
+    mock_clock: MagicMock,
+) -> None:
+    mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
+    calendar_store = make_calendar_store(Calendar(home_location="home"))
+    bot = make_bot(calendar_store=calendar_store, week_planner=make_week_planner([]))
+
+    await bot._ensure_week_planned()
+
+    saved = calendar_store.save.call_args.args[0]
+    assert saved.planned_week_start is None
 
 
 @patch("livingbot.bot.clock")
@@ -1689,9 +1727,15 @@ async def test_ensure_week_planned_schedules_story_generation_for_new_week(
     mock_clock: MagicMock, mock_create_task: MagicMock
 ) -> None:
     mock_clock.now.return_value = datetime(2026, 6, 3, 14, 30)
+    entry = PlanEntry(
+        activity="gym",
+        location="gym",
+        start=datetime(2026, 6, 4, 18, 0),
+        end=datetime(2026, 6, 4, 19, 30),
+    )
     bot = make_bot(
         calendar_store=make_calendar_store(Calendar(home_location="home")),
-        week_planner=make_week_planner([]),
+        week_planner=make_week_planner([entry]),
         hobby_store=make_hobby_store(Hobbies(entries=[Hobby(name="gym")])),
     )
 

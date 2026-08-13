@@ -46,6 +46,13 @@ class Calendar(BaseModel):
     def upcoming(self, now: datetime) -> list[PlanEntry]:
         return sorted((e for e in self.entries if e.end >= now), key=lambda e: e.start)
 
+    def past(self, now: datetime) -> list[PlanEntry]:
+        return sorted(
+            (e for e in self.entries if e.end < now),
+            key=lambda e: e.start,
+            reverse=True,
+        )
+
     def prune_past(self, now: datetime) -> None:
         cutoff = now - timedelta(days=7)
         self.entries = [e for e in self.entries if e.end >= cutoff]
