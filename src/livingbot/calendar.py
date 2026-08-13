@@ -47,7 +47,7 @@ class Calendar(BaseModel):
         return sorted((e for e in self.entries if e.end >= now), key=lambda e: e.start)
 
     def prune_past(self, now: datetime) -> None:
-        cutoff = now - timedelta(days=30)
+        cutoff = now - timedelta(days=7)
         self.entries = [e for e in self.entries if e.end >= cutoff]
 
     def next_week_to_plan(self, now: datetime) -> date | None:
