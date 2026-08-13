@@ -75,8 +75,57 @@ def test_upcoming_excludes_past_and_sorts_by_start() -> None:
     assert result == [sooner, later]
 
 
-def test_prune_past_removes_entries_older_than_30_days_keeps_recent() -> None:
-    old = entry(start=datetime(2026, 5, 1, 8, 0), end=datetime(2026, 5, 1, 9, 0))
+def test_past_excludes_upcoming_and_sorts_most_recent_first() -> None:
+    earlier = entry(start=datetime(2026, 6, 1, 8, 0), end=datetime(2026, 6, 1, 9, 0))
+    recent = entry(start=datetime(2026, 6, 2, 8, 0), end=datetime(2026, 6, 2, 9, 0))
+    ongoing = entry(start=datetime(2026, 6, 3, 14, 0), end=datetime(2026, 6, 3, 16, 0))
+    calendar = Calendar(home_location="home", entries=[earlier, ongoing, recent])
+
+    result = calendar.past(NOW)
+
+    assert result == [recent, earlier]
+
+
+def test_next_week_to_plan_when_nothing_planned_returns_current_week() -> None:
+    calendar = Calendar(home_location="home")
+
+    result = calendar.next_week_to_plan(NOW)
+
+    assert result == datetime(2026, 6, 1).date()
+
+
+def test_next_week_to_plan_when_current_week_planned_returns_next_week() -> None:
+    calendar = Calendar(
+        home_location="home", planned_week_start=datetime(2026, 6, 1).date()
+    )
+
+    result = calendar.next_week_to_plan(NOW)
+
+    assert result == datetime(2026, 6, 8).date()
+
+
+def test_next_week_to_plan_when_next_week_planned_returns_none() -> None:
+    calendar = Calendar(
+        home_location="home", planned_week_start=datetime(2026, 6, 8).date()
+    )
+
+    result = calendar.next_week_to_plan(NOW)
+
+    assert result is None
+
+
+def test_next_week_to_plan_when_last_plan_is_stale_returns_current_week() -> None:
+    calendar = Calendar(
+        home_location="home", planned_week_start=datetime(2026, 5, 11).date()
+    )
+
+    result = calendar.next_week_to_plan(NOW)
+
+    assert result == datetime(2026, 6, 1).date()
+
+
+def test_prune_past_removes_entries_older_than_a_week_keeps_recent() -> None:
+    old = entry(start=datetime(2026, 5, 25, 8, 0), end=datetime(2026, 5, 25, 9, 0))
     recent_finished = entry(
         start=datetime(2026, 6, 2, 8, 0), end=datetime(2026, 6, 2, 9, 0)
     )

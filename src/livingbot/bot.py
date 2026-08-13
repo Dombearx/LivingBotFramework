@@ -613,37 +613,42 @@ class LivingBot(discord.Client):
 
     async def _ensure_week_planned(self) -> None:
         now = clock.now()
-        week_start = now.date() - timedelta(days=now.weekday())
         calendar = self._calendar_store.load()
         calendar.prune_past(now)
-        if calendar.planned_week_start != week_start:
-            entries = await self._week_planner.plan(
-                week_start,
-                self._hobby_store.load(),
-                calendar.home_location,
-                now,
-            )
-            # Reload so plans the bot added through tools while we awaited the
-            # planner aren't clobbered by this save.
-            calendar = self._calendar_store.load()
-            calendar.prune_past(now)
-            activity_notes = self._activity_notes_store.load()
-            for entry in entries:
-                activity_notes.apply_to(entry)
-            calendar.entries.extend(entries)
-            calendar.planned_week_start = week_start
-            for entry in entries:
-                if entry.hobby:
-                    self._hobby_store.gain_experience(
-                        entry.hobby, EXPERIENCE_PER_SESSION
-                    )
-            logger.info(
-                "Planned week starting %s with %d entries", week_start, len(entries)
-            )
-            self._calendar_store.save(calendar)
-            asyncio.create_task(self._generate_week_story(calendar, week_start, now))
-            return
         self._calendar_store.save(calendar)
+        week_start = calendar.next_week_to_plan(now)
+        if week_start is None:
+            return
+        entries = await self._week_planner.plan(
+            week_start,
+            self._hobby_store.load(),
+            calendar.home_location,
+            now,
+        )
+        if not entries:
+            # Leaving the week unplanned means the next loop iteration retries it;
+            # marking it planned would cost her the whole week over one failed call.
+            logger.warning(
+                "Planner returned no entries for week starting %s", week_start
+            )
+            return
+        # Reload so plans the bot added through tools while we awaited the
+        # planner aren't clobbered by this save.
+        calendar = self._calendar_store.load()
+        calendar.prune_past(now)
+        activity_notes = self._activity_notes_store.load()
+        for entry in entries:
+            activity_notes.apply_to(entry)
+        calendar.entries.extend(entries)
+        calendar.planned_week_start = week_start
+        for entry in entries:
+            if entry.hobby:
+                self._hobby_store.gain_experience(entry.hobby, EXPERIENCE_PER_SESSION)
+        logger.info(
+            "Planned week starting %s with %d entries", week_start, len(entries)
+        )
+        self._calendar_store.save(calendar)
+        asyncio.create_task(self._generate_week_story(calendar, week_start, now))
 
     async def _generate_week_story(
         self,

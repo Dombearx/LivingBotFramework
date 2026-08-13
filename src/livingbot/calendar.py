@@ -46,9 +46,30 @@ class Calendar(BaseModel):
     def upcoming(self, now: datetime) -> list[PlanEntry]:
         return sorted((e for e in self.entries if e.end >= now), key=lambda e: e.start)
 
+    def past(self, now: datetime) -> list[PlanEntry]:
+        return sorted(
+            (e for e in self.entries if e.end < now),
+            key=lambda e: e.start,
+            reverse=True,
+        )
+
     def prune_past(self, now: datetime) -> None:
-        cutoff = now - timedelta(days=30)
+        cutoff = now - timedelta(days=7)
         self.entries = [e for e in self.entries if e.end >= cutoff]
+
+    def next_week_to_plan(self, now: datetime) -> date | None:
+        """The Monday of the next week she still needs a plan for, or None.
+
+        planned_week_start is the last week she has a plan for. She stays planned one
+        week ahead, so her calendar still has something in it late in a week and the
+        coming week is already there when this one runs out.
+        """
+        current_week = now.date() - timedelta(days=now.weekday())
+        if self.planned_week_start is None or self.planned_week_start < current_week:
+            return current_week
+        if self.planned_week_start >= current_week + timedelta(days=7):
+            return None
+        return self.planned_week_start + timedelta(days=7)
 
 
 class CalendarStore:
@@ -114,6 +135,7 @@ class WeekPlanner:
         week_end = week_start + timedelta(days=6)
         prompt = (
             f"Week to plan: Monday {week_start} to Sunday {week_end}.\n"
+            f"Right now it is {now:%A, %Y-%m-%d %H:%M}.\n"
             f"{build_hobby_context(hobbies, now)}\n"
             f"Her home base: {home_location}."
         )

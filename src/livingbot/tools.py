@@ -321,6 +321,57 @@ async def remove_plan(ctx: RunContext[BotDeps], entry_id: str) -> str:
     return f"Removed calendar entry {entry_id}."
 
 
+async def recall_past_plans(
+    ctx: RunContext[BotDeps],
+    query: str = "",
+    n: Annotated[int, Field(ge=1, le=20)] = 10,
+) -> str:
+    """Look up what you actually did: the plans on your calendar that have already
+    finished, most recent first, each one labelled with how many days ago it was.
+    The calendar you are shown lists only what is still ahead of you, so this is the
+    one way to know how your week went. Call it before answering anything about your
+    past — what you've been up to, a plain yes or no like "were you at the gym?", or
+    one particular day like "what did you do last night?" — even when you feel like
+    you remember, because what you remember is not on record and this is. Answer from
+    the entries it returns and from the "days ago" on them rather than assuming which
+    day something fell on. Pass query to keep only the entries whose activity or
+    location contains it. Reads back about a week."""
+    now = clock.now()
+    entries = ctx.deps.calendar_store.load().past(now)
+    if query:
+        needle = query.strip().lower()
+        entries = [
+            e
+            for e in entries
+            if needle in e.activity.lower() or needle in e.location.lower()
+        ]
+    if not entries:
+        return "Nothing like that on your calendar in the past week."
+    lines = []
+    for entry in entries[:n]:
+        line = (
+            f"{_days_ago(entry.start, now)} — "
+            f"{entry.start:%a %m-%d %H:%M}–{entry.end:%a %m-%d %H:%M} "
+            f"{entry.activity} @ {entry.location}"
+        )
+        if entry.note:
+            line += f" ({entry.note})"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _days_ago(moment: datetime, now: datetime) -> str:
+    """How long ago in whole days, not elapsed hours: something that happened on
+    Tuesday evening is 'the day before yesterday' on Thursday morning even though
+    barely more than a day has passed."""
+    days = (now.date() - moment.date()).days
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    return f"{days} days ago"
+
+
 async def add_activity_note(ctx: RunContext[BotDeps], activity: str, note: str) -> str:
     """Save a standing reminder tied to an activity, so you remember it every time you
     do that activity — e.g. activity "gym", note "bring my new personalised dumbbells".

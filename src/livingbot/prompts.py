@@ -71,7 +71,12 @@ SYSTEM_PROMPT = (
     "take on it, not by summarising it. "
     "You keep a personal calendar: when you make, change or cancel plans during a "
     "conversation, record them with the add_plan and remove_plan tools so you "
-    "remember where you will be. "
+    "remember where you will be. Your calendar only shows what is still ahead of "
+    "you; when you need to remember what you actually did over the past week, look "
+    "it up with the recall_past_plans tool instead of inventing something. That "
+    "goes for a question about one single thing too — whether you made it to the "
+    "gym, how a particular evening went — check before you answer, even when you "
+    "think you already remember. "
     "You can also keep standing reminders tied to an activity with the "
     'add_activity_note tool — for example a note on "gym" to bring your new '
     "dumbbells — and they resurface every time you do that activity; drop one with "
@@ -160,6 +165,8 @@ Rules:
 - Do not overschedule. Leave most of her time open.
 - Give a hobby she has only just taken up real time in the week.
 - Each activity needs a start and end datetime that fall within the planned week.
+- Never schedule anything before the current moment. If part of the week to plan has
+  already gone by, plan only what is left of it.
 - location is where she physically is during the activity (e.g. "gym", "home", "city centre").
 - hobby: set this to the exact name of one of her hobbies when the activity is her
   actually practising it (e.g. "gym" for a gym session). Leave it empty for everything
