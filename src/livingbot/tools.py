@@ -332,7 +332,8 @@ async def recall_past_plans(
     someone asks what you've been up to, whether you made it to the gym, or how that
     thing you mentioned the other day turned out. Pass query to keep only the entries
     whose activity or location contains it. Goes back about a week."""
-    entries = ctx.deps.calendar_store.load().past(clock.now())
+    now = clock.now()
+    entries = ctx.deps.calendar_store.load().past(now)
     if query:
         needle = query.strip().lower()
         entries = [
@@ -345,6 +346,7 @@ async def recall_past_plans(
     lines = []
     for entry in entries[:n]:
         line = (
+            f"{_days_ago(entry.start, now)} — "
             f"{entry.start:%a %m-%d %H:%M}–{entry.end:%a %m-%d %H:%M} "
             f"{entry.activity} @ {entry.location}"
         )
@@ -352,6 +354,18 @@ async def recall_past_plans(
             line += f" ({entry.note})"
         lines.append(line)
     return "\n".join(lines)
+
+
+def _days_ago(moment: datetime, now: datetime) -> str:
+    """How long ago in whole days, not elapsed hours: something that happened on
+    Tuesday evening is 'the day before yesterday' on Thursday morning even though
+    barely more than a day has passed."""
+    days = (now.date() - moment.date()).days
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    return f"{days} days ago"
 
 
 async def add_activity_note(ctx: RunContext[BotDeps], activity: str, note: str) -> str:

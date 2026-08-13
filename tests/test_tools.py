@@ -203,8 +203,8 @@ async def test_recall_past_plans_lists_finished_entries_most_recent_first(
     result = await recall_past_plans(ctx)
 
     assert result == (
-        "Tue 06-02 16:00–Tue 06-02 17:00 coffee with Ola @ city centre\n"
-        "Mon 06-01 18:00–Mon 06-01 19:30 gym session @ gym"
+        "yesterday — Tue 06-02 16:00–Tue 06-02 17:00 coffee with Ola @ city centre\n"
+        "2 days ago — Mon 06-01 18:00–Mon 06-01 19:30 gym session @ gym"
     )
 
 
@@ -219,7 +219,7 @@ async def test_recall_past_plans_with_query_keeps_only_matching_entries(
 
     result = await recall_past_plans(ctx, query="GYM")
 
-    assert result == "Mon 06-01 18:00–Mon 06-01 19:30 gym session @ gym"
+    assert result == "2 days ago — Mon 06-01 18:00–Mon 06-01 19:30 gym session @ gym"
 
 
 @patch("livingbot.tools.clock")
@@ -233,7 +233,9 @@ async def test_recall_past_plans_returns_at_most_n_entries(
 
     result = await recall_past_plans(ctx, n=1)
 
-    assert result == "Tue 06-02 16:00–Tue 06-02 17:00 coffee with Ola @ city centre"
+    assert result == (
+        "yesterday — Tue 06-02 16:00–Tue 06-02 17:00 coffee with Ola @ city centre"
+    )
 
 
 @patch("livingbot.tools.clock")
