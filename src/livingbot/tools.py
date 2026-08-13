@@ -326,12 +326,16 @@ async def recall_past_plans(
     query: str = "",
     n: Annotated[int, Field(ge=1, le=20)] = 10,
 ) -> str:
-    """Look back at what you have actually been doing: the plans on your calendar that
-    have already finished, most recent first. Your calendar only lists what is still
-    ahead of you, so use this whenever you need to remember how your week went — when
-    someone asks what you've been up to, whether you made it to the gym, or how that
-    thing you mentioned the other day turned out. Pass query to keep only the entries
-    whose activity or location contains it. Goes back about a week."""
+    """Look up what you actually did: the plans on your calendar that have already
+    finished, most recent first, each one labelled with how many days ago it was.
+    The calendar you are shown lists only what is still ahead of you, so this is the
+    one way to know how your week went. Call it before answering anything about your
+    past — what you've been up to, a plain yes or no like "were you at the gym?", or
+    one particular day like "what did you do last night?" — even when you feel like
+    you remember, because what you remember is not on record and this is. Answer from
+    the entries it returns and from the "days ago" on them rather than assuming which
+    day something fell on. Pass query to keep only the entries whose activity or
+    location contains it. Reads back about a week."""
     now = clock.now()
     entries = ctx.deps.calendar_store.load().past(now)
     if query:
