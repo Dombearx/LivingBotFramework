@@ -160,6 +160,8 @@ Rules:
 - Do not overschedule. Leave most of her time open.
 - Give a hobby she has only just taken up real time in the week.
 - Each activity needs a start and end datetime that fall within the planned week.
+- Never schedule anything before the current moment. If part of the week to plan has
+  already gone by, plan only what is left of it.
 - location is where she physically is during the activity (e.g. "gym", "home", "city centre").
 - hobby: set this to the exact name of one of her hobbies when the activity is her
   actually practising it (e.g. "gym" for a gym session). Leave it empty for everything
