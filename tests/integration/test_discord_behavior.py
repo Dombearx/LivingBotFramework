@@ -467,3 +467,67 @@ async def test_stays_in_character_through_sustained_bot_pressure() -> None:
         f"Expected sustained in-character response, not admission of being a bot.\n"
         f"Response: {response!r}\nReasoning: {verdict.reasoning}"
     )
+
+
+# --- Level 6: Concreteness when pressed for details ---
+
+_CONCRETENESS_RUBRIC = (
+    "Mugda answers a request for specifics with at least one actual particular: a "
+    "name, a number, a place, a time, or a concrete thing that happened or that she "
+    "did. She does not reply with another generality, a vague impression or a mood, "
+    "and she does not just restate her previous message in different words. "
+    "Set matches=true only if a listener would come away knowing something specific "
+    "they did not know before."
+)
+
+
+async def test_gives_concrete_details_when_asked_what_exactly_she_did() -> None:
+    """Pressed on a vague claim about her own activity, she names what actually happened."""
+    messages = [
+        "[id:2400] [2026-06-06 14:50:00] Ola: co tam u ciebie ostatnio?",
+        "[id:2401] [2026-06-06 14:51:00] Mugda: nic ciekawego, trochę ruchu, "
+        "trochę życia, ogarniam różne rzeczy",
+        "[id:2402] [2026-06-06 15:00:00] Ola: ale co konkretnie robiłaś w tym tygodniu?",
+    ]
+
+    response = await _get_response(messages)
+
+    verdict = await _judge(response, rubric=_CONCRETENESS_RUBRIC)
+    assert verdict.matches, (
+        f"Expected concrete details about her week, not another generality.\n"
+        f"Response: {response!r}\nReasoning: {verdict.reasoning}"
+    )
+
+
+async def test_gives_a_specific_reason_when_asked_to_justify_an_opinion() -> None:
+    """Asked why she likes something, she gives a particular reason, not a slogan."""
+    messages = [
+        "[id:2500] [2026-06-06 14:50:00] Marek: jakie miasto w Europie jest najlepsze na wypad?",
+        "[id:2501] [2026-06-06 14:51:00] Mugda: Lizbona, ma niesamowity klimat",
+        "[id:2502] [2026-06-06 15:00:00] Marek: ale dlaczego? podaj konkretnie co w niej takiego",
+    ]
+
+    response = await _get_response(messages)
+
+    verdict = await _judge(response, rubric=_CONCRETENESS_RUBRIC)
+    assert verdict.matches, (
+        f"Expected specific reasons, not 'klimat' in other words.\n"
+        f"Response: {response!r}\nReasoning: {verdict.reasoning}"
+    )
+
+
+async def test_gives_specifics_when_asked_about_her_plans() -> None:
+    """Asked where and when, she commits to a specific place and time."""
+    messages = [
+        "[id:2600] [2026-06-06 14:50:00] Kacper: masz jakieś plany na weekend?",
+        "[id:2601] [2026-06-06 14:51:00] Mugda: tak, coś tam zaplanowane, będzie fajnie",
+        "[id:2602] [2026-06-06 15:00:00] Kacper: no ale co dokładnie, gdzie, o której?",
+    ]
+
+    response = await _get_response(messages)
+
+    verdict = await _judge(response, rubric=_CONCRETENESS_RUBRIC)
+    assert verdict.matches, (
+        f"Expected a concrete plan with place or time, not more vagueness.\n"
+        f"Response: {response!r}\nReasoning: {verdict.reasoning}"
+    )

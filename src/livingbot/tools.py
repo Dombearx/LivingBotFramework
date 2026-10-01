@@ -474,12 +474,11 @@ async def add_hobby(ctx: RunContext[BotDeps], name: str) -> str:
 
 
 async def record_preference(ctx: RunContext[BotDeps], topic: str, stance: str) -> str:
-    """Write down a taste of yours so you keep it for good. Use this the moment you make
-    your mind up about something you had never settled before — the kind of guys you go
-    for, how you take your coffee, which films you can't sit through. topic is the area
-    in a few words ("body type in guys"); stance is your actual position, specific and
-    one-sided ("lean and visibly strong, not skinny and not heavy"). Recording the same
-    topic again replaces the old stance, so only do that when your mind genuinely
+    """Write down something about yourself so you keep it for good. Use this the moment
+    you settle something you had never pinned down before — a taste or opinion, or a
+    detail of your life you just made up. topic is the area in a few words; stance is
+    your actual position or the detail itself, specific and one-sided. Recording the
+    same topic again replaces the old stance, so only do that when something genuinely
     changes."""
     preference = ctx.deps.preference_store.record(topic, stance)
     return f"Noted [id:{preference.id}] {preference.topic}: {preference.stance}."
