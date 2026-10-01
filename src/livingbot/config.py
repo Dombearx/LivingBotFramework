@@ -48,8 +48,8 @@ DEFAULT_HOBBIES = ["gym"]
 # her unprompted messages don't land in a visibly mechanical rhythm.
 LIFE_LOOP_INTERVAL_MIN_SECONDS = 3000
 LIFE_LOOP_INTERVAL_MAX_SECONDS = 4200
-PHOTO_COOLDOWN_MIN = 40
-PHOTO_COOLDOWN_MAX = 60
+PHOTO_COOLDOWN_MIN = 10
+PHOTO_COOLDOWN_MAX = 20
 STORY_TIED_TO_PLAN_PROBABILITY = 0.3
 # The hours she is awake and active; outside this window she is asleep.
 AWAKE_HOUR_START = 8

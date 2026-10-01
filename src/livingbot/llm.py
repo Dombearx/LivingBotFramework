@@ -372,7 +372,7 @@ def _build_inventory_block(items: list[InventoryItem]) -> str:
 
 
 def _build_preferences_block(preferences: Preferences) -> str:
-    lines = ["Tastes and preferences you have already settled on:"]
+    lines = ["Tastes, opinions and details of your life you have already settled on:"]
     if preferences.entries:
         for preference in preferences.entries:
             lines.append(f"  {preference.topic}: {preference.stance}")
@@ -380,8 +380,8 @@ def _build_preferences_block(preferences: Preferences) -> str:
         lines.append("  (you haven't pinned any down yet)")
     lines.append(
         "Stay consistent with these — they are yours. When you're asked about "
-        "something not on the list, don't sit on the fence: decide, say which side "
-        "you're on, and record it with record_preference so it sticks."
+        "something not on the list, don't sit on the fence: decide, say what's true "
+        "for you, and record it with record_preference so it sticks."
     )
     return "\n".join(lines) + "\n\n"
 
